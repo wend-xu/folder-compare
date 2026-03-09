@@ -1,0 +1,5 @@
+msrv = "1.75.0"
+
+# Keep threshold conservative for maintainability.
+too-many-arguments-threshold = 7
+type-complexity-threshold = 250

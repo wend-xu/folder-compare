@@ -1,0 +1,17 @@
+[package]
+name = "fc-ui-slint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+fc-ai.workspace = true
+fc-core.workspace = true
+slint.workspace = true
+smol_str.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
