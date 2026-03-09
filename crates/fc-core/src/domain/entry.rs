@@ -73,6 +73,15 @@ pub enum EntryDetail {
     Message(String),
     /// Left and right entry kinds do not match.
     TypeMismatch { left: EntryKind, right: EntryKind },
+    /// File-level comparison summary.
+    FileComparison {
+        /// File size from left side.
+        left_size: u64,
+        /// File size from right side.
+        right_size: u64,
+        /// Whether byte-level content comparison was executed.
+        content_checked: bool,
+    },
     /// Content comparison is deferred to later phases.
     ContentComparisonDeferred,
     /// Summary from text diff stage.

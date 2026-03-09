@@ -5,7 +5,10 @@ use crate::domain::error::{CompareError, PathSide};
 use crate::domain::options::{CompareOptions, CompareRequest};
 use crate::domain::report::CompareReport;
 use crate::infra::path_norm;
+use crate::services::hasher;
 use crate::services::scanner;
+use crate::services::text_diff;
+use crate::services::text_loader::{self, TextLoadOutcome};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -47,7 +50,7 @@ pub(crate) fn run_compare(req: CompareRequest) -> Result<CompareReport, CompareE
         PathSide::Right,
         context.options.follow_symlinks,
     )?;
-    let entries = align_scanned_trees(&left_tree, &right_tree);
+    let entries = align_scanned_trees(&left_tree, &right_tree, &context.options)?;
 
     Ok(CompareReport::from_entries(entries, Vec::new(), false))
 }
@@ -55,7 +58,8 @@ pub(crate) fn run_compare(req: CompareRequest) -> Result<CompareReport, CompareE
 fn align_scanned_trees(
     left_tree: &scanner::ScannedTree,
     right_tree: &scanner::ScannedTree,
-) -> Vec<CompareEntry> {
+    options: &CompareOptions,
+) -> Result<Vec<CompareEntry>, CompareError> {
     debug_assert_eq!(left_tree.side, PathSide::Left);
     debug_assert_eq!(right_tree.side, PathSide::Right);
     debug_assert_ne!(left_tree.root, right_tree.root);
@@ -103,11 +107,68 @@ fn align_scanned_trees(
                             CompareEntry::new(key, EntryKind::Directory, EntryStatus::Equal)
                         }
                         EntryKind::File => {
-                            CompareEntry::new(key, EntryKind::File, EntryStatus::Pending)
-                                .with_detail(EntryDetail::Message(format!(
-                                    "content compare deferred (left_size={:?}, right_size={:?})",
-                                    left_entry.size_bytes, right_entry.size_bytes
-                                )))
+                            let left_text = text_loader::load_text_if_candidate(
+                                &left_entry.absolute_path,
+                                options.text_detection,
+                            )?;
+                            let right_text = text_loader::load_text_if_candidate(
+                                &right_entry.absolute_path,
+                                options.text_detection,
+                            )?;
+
+                            match (left_text, right_text) {
+                                (
+                                    TextLoadOutcome::Loaded(left_doc),
+                                    TextLoadOutcome::Loaded(right_doc),
+                                ) => {
+                                    let summary = text_diff::summarize_text_pair(
+                                        &left_doc.content,
+                                        &right_doc.content,
+                                        options,
+                                    );
+                                    if summary.is_equal() {
+                                        CompareEntry::new(key, EntryKind::File, EntryStatus::Equal)
+                                            .with_detail(EntryDetail::TextDiff(summary))
+                                    } else {
+                                        CompareEntry::new(
+                                            key,
+                                            EntryKind::File,
+                                            EntryStatus::Different,
+                                        )
+                                        .with_detail(EntryDetail::TextDiff(summary))
+                                    }
+                                }
+                                _ => {
+                                    let file_result = hasher::compare_files(
+                                        &left_entry.absolute_path,
+                                        &right_entry.absolute_path,
+                                    )?;
+                                    debug_assert_eq!(
+                                        left_entry.size_bytes,
+                                        Some(file_result.left_size)
+                                    );
+                                    debug_assert_eq!(
+                                        right_entry.size_bytes,
+                                        Some(file_result.right_size)
+                                    );
+                                    let detail = EntryDetail::FileComparison {
+                                        left_size: file_result.left_size,
+                                        right_size: file_result.right_size,
+                                        content_checked: file_result.content_checked,
+                                    };
+                                    if file_result.is_equal {
+                                        CompareEntry::new(key, EntryKind::File, EntryStatus::Equal)
+                                            .with_detail(detail)
+                                    } else {
+                                        CompareEntry::new(
+                                            key,
+                                            EntryKind::File,
+                                            EntryStatus::Different,
+                                        )
+                                        .with_detail(detail)
+                                    }
+                                }
+                            }
                         }
                         EntryKind::Symlink => {
                             CompareEntry::new(key, EntryKind::Symlink, EntryStatus::Pending)
@@ -128,5 +189,5 @@ fn align_scanned_trees(
         entries.push(compare_entry);
     }
 
-    entries
+    Ok(entries)
 }

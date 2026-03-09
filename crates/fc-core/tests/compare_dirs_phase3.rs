@@ -32,7 +32,7 @@ fn compare_dirs_empty_directories_are_clean() {
 }
 
 #[test]
-fn compare_dirs_aligns_entries_and_marks_pending_files() {
+fn compare_dirs_aligns_entries_and_compares_files() {
     let left = tempfile::tempdir().expect("left tempdir should be created");
     let right = tempfile::tempdir().expect("right tempdir should be created");
 
@@ -78,8 +78,12 @@ fn compare_dirs_aligns_entries_and_marks_pending_files() {
 
     assert_eq!(
         by_path["nested/common/aligned.txt"].status,
-        EntryStatus::Pending
+        EntryStatus::Different
     );
+    assert!(matches!(
+        &by_path["nested/common/aligned.txt"].detail,
+        EntryDetail::TextDiff(_)
+    ));
 
     assert_eq!(by_path["type_mismatch"].status, EntryStatus::Different);
     assert!(matches!(
@@ -89,7 +93,6 @@ fn compare_dirs_aligns_entries_and_marks_pending_files() {
 
     assert!(report.summary.left_only >= 1);
     assert!(report.summary.right_only >= 1);
-    assert!(report.summary.pending >= 1);
     assert!(report.summary.different >= 1);
 }
 
