@@ -1,7 +1,6 @@
 //! Report-level models.
 
-use crate::domain::entry::CompareEntry;
-use crate::domain::entry::EntryStatus;
+use crate::domain::entry::{CompareEntry, EntryDetail, EntryStatus, TextDetailDeferredReason};
 use serde::{Deserialize, Serialize};
 
 /// Top-level result for one compare request.
@@ -32,6 +31,7 @@ impl CompareReport {
         let mut summary = CompareSummary::default();
         for entry in &entries {
             summary.record_status(entry.status);
+            summary.record_detail(&entry.detail);
         }
 
         Self {
@@ -45,6 +45,7 @@ impl CompareReport {
     /// Appends one entry and updates summary counters.
     pub fn push_entry(&mut self, entry: CompareEntry) {
         self.summary.record_status(entry.status);
+        self.summary.record_detail(&entry.detail);
         self.entries.push(entry);
     }
 }
@@ -66,6 +67,14 @@ pub struct CompareSummary {
     pub pending: usize,
     /// Count of skipped entries.
     pub skipped: usize,
+    /// Indicates large-directory protection mode was enabled.
+    pub large_mode: bool,
+    /// Indicates summary-first protection mode was enabled.
+    pub summary_first_mode: bool,
+    /// Count of entries whose detail was deferred by protection policy.
+    pub deferred_detail_entries: usize,
+    /// Count of text entries whose detail was deferred due to file size.
+    pub oversized_text_entries: usize,
 }
 
 impl CompareSummary {
@@ -95,5 +104,31 @@ impl CompareSummary {
             EntryStatus::Pending => self.pending += 1,
             EntryStatus::Skipped => self.skipped += 1,
         }
+    }
+
+    /// Records one entry detail into summary counters.
+    pub fn record_detail(&mut self, detail: &EntryDetail) {
+        match detail {
+            EntryDetail::ContentComparisonDeferred => {
+                self.deferred_detail_entries += 1;
+            }
+            EntryDetail::TextDetailDeferred { reason, .. } => {
+                self.deferred_detail_entries += 1;
+                if matches!(reason, TextDetailDeferredReason::FileTooLarge) {
+                    self.oversized_text_entries += 1;
+                }
+            }
+            EntryDetail::None
+            | EntryDetail::Message(_)
+            | EntryDetail::TypeMismatch { .. }
+            | EntryDetail::FileComparison { .. }
+            | EntryDetail::TextDiff(_) => {}
+        }
+    }
+
+    /// Applies compare-level protection mode flags.
+    pub fn set_protection_mode(&mut self, large_mode: bool, summary_first_mode: bool) {
+        self.large_mode = large_mode;
+        self.summary_first_mode = summary_first_mode;
     }
 }

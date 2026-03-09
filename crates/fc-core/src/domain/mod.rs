@@ -7,7 +7,7 @@ pub mod options;
 pub mod report;
 
 pub use diff::{DiffHunk, DiffLine, DiffLineKind, TextDiffResult, TextDiffSummary};
-pub use entry::{CompareEntry, EntryDetail, EntryKind, EntryStatus};
+pub use entry::{CompareEntry, EntryDetail, EntryKind, EntryStatus, TextDetailDeferredReason};
 pub use error::{
     CompareError, DeferredOperation, InvalidInputKind, IoOperation, PathSide,
     TextPathUnavailableReason, UnsupportedOperation,

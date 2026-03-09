@@ -19,8 +19,16 @@ pub(crate) fn run_text_diff(req: TextDiffRequest) -> Result<TextDiffResult, Comp
         return Ok(TextDiffResult::empty());
     }
 
-    let left = text_loader::load_text_for_diff(&left_path, req.options.text_detection)?;
-    let right = text_loader::load_text_for_diff(&right_path, req.options.text_detection)?;
+    let left = text_loader::load_text_for_diff(
+        &left_path,
+        req.options.text_detection,
+        req.options.max_file_size_bytes,
+    )?;
+    let right = text_loader::load_text_for_diff(
+        &right_path,
+        req.options.text_detection,
+        req.options.max_file_size_bytes,
+    )?;
 
     Ok(build_detailed_diff(
         &left.content,
@@ -418,6 +426,7 @@ mod tests {
             context_lines: 0,
             max_hunks: 1,
             max_lines: 1,
+            max_file_size_bytes: 1_024,
         };
 
         let result = build_detailed_diff("a\nb\n", "x\ny\n", &options);

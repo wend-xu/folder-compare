@@ -45,7 +45,17 @@ pub(crate) fn load_text_if_candidate(
 pub(crate) fn load_text_for_diff(
     path: &Path,
     strategy: TextDetectionStrategy,
+    max_file_size_bytes: u64,
 ) -> Result<LoadedText, CompareError> {
+    let metadata = fs::metadata(path)?;
+    if metadata.len() > max_file_size_bytes {
+        return Err(CompareError::DetailedDiffInputTooLarge {
+            path: path.to_path_buf(),
+            actual_bytes: metadata.len(),
+            max_bytes: max_file_size_bytes,
+        });
+    }
+
     match load_text_if_candidate(path, strategy)? {
         TextLoadOutcome::Loaded(doc) => Ok(doc),
         TextLoadOutcome::NotTextCandidate => Err(CompareError::TextPathUnavailable {
@@ -57,6 +67,11 @@ pub(crate) fn load_text_for_diff(
             reason: TextPathUnavailableReason::DecodeFailed,
         }),
     }
+}
+
+/// Returns true when file extension is a known text extension.
+pub(crate) fn has_text_extension_hint(path: &Path) -> bool {
+    has_text_extension(path)
 }
 
 fn is_text_candidate(path: &Path, bytes: &[u8], strategy: TextDetectionStrategy) -> bool {

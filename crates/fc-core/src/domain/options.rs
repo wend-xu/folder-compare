@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const MAX_CONTEXT_LINES: usize = 10_000;
+const DEFAULT_MAX_ENTRIES_SOFT_LIMIT: usize = 10_000;
+const DEFAULT_MAX_ENTRIES_HARD_LIMIT: usize = 50_000;
+const DEFAULT_MAX_TOTAL_BYTES_SOFT_LIMIT: u64 = 512 * 1024 * 1024;
+const DEFAULT_MAX_TOTAL_BYTES_HARD_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_TEXT_FILE_SIZE_BYTES: u64 = 8 * 1024 * 1024;
+const DEFAULT_MAX_DIFF_FILE_SIZE_BYTES: u64 = 32 * 1024 * 1024;
 
 /// Compare directories request.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,8 +69,16 @@ pub struct CompareOptions {
     pub ignore_line_endings: bool,
     /// Policy to apply for large directories.
     pub large_dir_policy: LargeDirPolicy,
-    /// Maximum entries allowed before policy may trigger.
-    pub max_entries: usize,
+    /// Soft limit for aligned entry count.
+    pub max_entries_soft_limit: usize,
+    /// Hard limit for aligned entry count.
+    pub max_entries_hard_limit: usize,
+    /// Soft limit for total bytes across both trees.
+    pub max_total_bytes_soft_limit: u64,
+    /// Hard limit for total bytes across both trees.
+    pub max_total_bytes_hard_limit: u64,
+    /// Maximum file size eligible for summary-level text diff in `compare_dirs`.
+    pub max_text_file_size_bytes: u64,
 }
 
 impl Default for CompareOptions {
@@ -76,7 +90,11 @@ impl Default for CompareOptions {
             follow_symlinks: false,
             ignore_line_endings: false,
             large_dir_policy: LargeDirPolicy::SummaryFirst,
-            max_entries: 10_000,
+            max_entries_soft_limit: DEFAULT_MAX_ENTRIES_SOFT_LIMIT,
+            max_entries_hard_limit: DEFAULT_MAX_ENTRIES_HARD_LIMIT,
+            max_total_bytes_soft_limit: DEFAULT_MAX_TOTAL_BYTES_SOFT_LIMIT,
+            max_total_bytes_hard_limit: DEFAULT_MAX_TOTAL_BYTES_HARD_LIMIT,
+            max_text_file_size_bytes: DEFAULT_MAX_TEXT_FILE_SIZE_BYTES,
         }
     }
 }
@@ -84,10 +102,52 @@ impl Default for CompareOptions {
 impl CompareOptions {
     /// Validates option bounds.
     pub fn validate(&self) -> Result<(), CompareError> {
-        if self.max_entries == 0 {
+        if self.max_entries_soft_limit == 0 {
             return Err(CompareError::InvalidInput {
                 kind: InvalidInputKind::OptionOutOfRange {
-                    name: "max_entries",
+                    name: "max_entries_soft_limit",
+                },
+            });
+        }
+        if self.max_entries_hard_limit == 0 {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange {
+                    name: "max_entries_hard_limit",
+                },
+            });
+        }
+        if self.max_entries_soft_limit > self.max_entries_hard_limit {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange {
+                    name: "max_entries_soft_limit",
+                },
+            });
+        }
+        if self.max_total_bytes_soft_limit == 0 {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange {
+                    name: "max_total_bytes_soft_limit",
+                },
+            });
+        }
+        if self.max_total_bytes_hard_limit == 0 {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange {
+                    name: "max_total_bytes_hard_limit",
+                },
+            });
+        }
+        if self.max_total_bytes_soft_limit > self.max_total_bytes_hard_limit {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange {
+                    name: "max_total_bytes_soft_limit",
+                },
+            });
+        }
+        if self.max_text_file_size_bytes == 0 {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange {
+                    name: "max_text_file_size_bytes",
                 },
             });
         }
@@ -153,6 +213,8 @@ pub struct TextDiffOptions {
     pub max_hunks: usize,
     /// Maximum diff lines to include in output.
     pub max_lines: usize,
+    /// Maximum single input file size allowed for detailed text diff.
+    pub max_file_size_bytes: u64,
 }
 
 impl Default for TextDiffOptions {
@@ -164,6 +226,7 @@ impl Default for TextDiffOptions {
             context_lines: 3,
             max_hunks: 128,
             max_lines: 20_000,
+            max_file_size_bytes: DEFAULT_MAX_DIFF_FILE_SIZE_BYTES,
         }
     }
 }
@@ -186,6 +249,13 @@ impl TextDiffOptions {
         if self.max_lines == 0 {
             return Err(CompareError::InvalidInput {
                 kind: InvalidInputKind::OptionOutOfRange { name: "max_lines" },
+            });
+        }
+        if self.max_file_size_bytes == 0 {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange {
+                    name: "max_file_size_bytes",
+                },
             });
         }
 
@@ -228,11 +298,11 @@ pub enum IgnoreWhitespaceMode {
 /// Policy for oversized directory trees.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum LargeDirPolicy {
+    /// Continue full compare flow even when hard limits are reached.
+    Normal,
     /// Return summary-level information first when size thresholds are reached.
     #[default]
     SummaryFirst,
-    /// Continue processing.
-    Allow,
-    /// Abort with an error.
-    Error,
+    /// Refuse compare when hard limits are exceeded.
+    RefuseAboveHardLimit,
 }

@@ -84,6 +84,28 @@ pub enum EntryDetail {
     },
     /// Content comparison is deferred to later phases.
     ContentComparisonDeferred,
+    /// Text detail is intentionally deferred with a structured reason.
+    TextDetailDeferred {
+        /// Why text detail was deferred.
+        reason: TextDetailDeferredReason,
+        /// File size from left side.
+        left_size: u64,
+        /// File size from right side.
+        right_size: u64,
+        /// Configured text-size limit used by compare.
+        max_text_file_size_bytes: u64,
+        /// Whether byte-level content comparison was executed.
+        content_checked: bool,
+    },
     /// Summary from text diff stage.
     TextDiff(TextDiffSummary),
+}
+
+/// Reason why text detail was deferred in directory compare output.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TextDetailDeferredReason {
+    /// Deferred because compare is in large-directory summary-first protection mode.
+    LargeDirectoryMode,
+    /// Deferred because file size exceeds `max_text_file_size_bytes`.
+    FileTooLarge,
 }

@@ -59,6 +59,32 @@ pub enum CompareError {
         /// Why text path cannot continue.
         reason: TextPathUnavailableReason,
     },
+    /// Directory compare input exceeds configured hard limits.
+    #[error(
+        "directory input exceeds hard limits: entries={entries}, total_bytes={total_bytes}, hard_entries={max_entries_hard_limit}, hard_total_bytes={max_total_bytes_hard_limit}"
+    )]
+    DirectoryTooLarge {
+        /// Aligned entry count at guard evaluation.
+        entries: usize,
+        /// Estimated total bytes across both trees.
+        total_bytes: u64,
+        /// Configured hard limit for entry count.
+        max_entries_hard_limit: usize,
+        /// Configured hard limit for total bytes.
+        max_total_bytes_hard_limit: u64,
+    },
+    /// Single-file detailed diff input exceeds configured size limit.
+    #[error(
+        "detailed diff input too large for `{path}`: actual_bytes={actual_bytes}, max_bytes={max_bytes}"
+    )]
+    DetailedDiffInputTooLarge {
+        /// Oversized file path.
+        path: PathBuf,
+        /// Actual file size in bytes.
+        actual_bytes: u64,
+        /// Configured maximum allowed file size.
+        max_bytes: u64,
+    },
     /// I/O boundary error.
     #[error("io boundary error during {operation} at `{path}`: {source}")]
     IoBoundary {

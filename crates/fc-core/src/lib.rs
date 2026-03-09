@@ -9,7 +9,9 @@ pub mod services;
 pub use api::compare::compare_dirs;
 pub use api::diff::diff_text_file;
 pub use domain::diff::{DiffHunk, DiffLine, DiffLineKind, TextDiffResult, TextDiffSummary};
-pub use domain::entry::{CompareEntry, EntryDetail, EntryKind, EntryStatus};
+pub use domain::entry::{
+    CompareEntry, EntryDetail, EntryKind, EntryStatus, TextDetailDeferredReason,
+};
 pub use domain::error::{
     CompareError, DeferredOperation, InvalidInputKind, IoOperation, PathSide,
     TextPathUnavailableReason, UnsupportedOperation,
@@ -31,7 +33,9 @@ mod tests {
         assert!(!options.follow_symlinks);
         assert!(!options.ignore_line_endings);
         assert_eq!(options.large_dir_policy, LargeDirPolicy::SummaryFirst);
-        assert_eq!(options.max_entries, 10_000);
+        assert_eq!(options.max_entries_soft_limit, 10_000);
+        assert_eq!(options.max_entries_hard_limit, 50_000);
+        assert_eq!(options.max_text_file_size_bytes, 8 * 1024 * 1024);
     }
 
     #[test]
@@ -40,6 +44,7 @@ mod tests {
         assert_eq!(options.context_lines, 3);
         assert_eq!(options.max_hunks, 128);
         assert_eq!(options.max_lines, 20_000);
+        assert_eq!(options.max_file_size_bytes, 32 * 1024 * 1024);
         assert!(!options.ignore_line_endings);
         assert_eq!(options.ignore_whitespace, IgnoreWhitespaceMode::Preserve);
     }
@@ -162,6 +167,7 @@ mod tests {
                 context_lines: 20_000,
                 max_hunks: 128,
                 max_lines: 20_000,
+                max_file_size_bytes: 1_024,
             },
         );
         let err = diff_text_file(req).expect_err("out-of-range option should be rejected");
