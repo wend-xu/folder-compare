@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-10.5)
+# Folder Compare Architecture (Phase 1-10.6)
 
 ## Crate responsibilities
 
@@ -90,12 +90,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
 - OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
 
-## `fc-ui-slint` usability maturity after Phase 10.5
+## `fc-ui-slint` interaction/layout maturity after Phase 10.6
 
 - Main window now supports:
   - left/right directory path input;
   - compare trigger button;
   - compare status, summary, warning, and error display;
+  - compare-truncated warning display separate from summary text;
   - scrollable compare result list with stable row selection state;
   - lightweight compare row filtering by path/detail text;
   - structured list row rendering (`status`, `relative_path`, `detail`) instead of one raw line;
@@ -105,19 +106,25 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
     - visual separation for hunk headers and added/removed/context rows;
     - diff warning and diff truncated semantics;
     - diff-level error display isolated from compare-level errors.
+- Interaction/runtime improvements:
+  - compare and detailed diff execution moved to background worker threads with a short startup defer so loading state can render first;
+  - periodic UI snapshot refresh keeps view state synchronized while background work is running;
+  - compare list and detailed diff panel now have independent scroll areas in a split layout;
+  - window uses preferred/min size constraints and stretches key regions with resize.
 - UI orchestration boundaries:
   - `commands`: user actions and compare execution trigger;
-  - `presenter`: compare workflow plus filtering and selected-row detailed diff orchestration;
+  - `presenter`: compare workflow plus filtering and selected-row detailed diff orchestration (including background task state transitions);
   - `bridge`: request construction and `CompareReport`/`TextDiffResult` to UI view-model mapping;
   - `state/view_models`: lightweight, UI-facing data and filter/viewer projection helpers.
 - `fc-core` integration now includes:
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 10.5
+## Still deferred after Phase 10.6
 
 - real remote provider execution (HTTP/API integration) is not implemented.
 - UI and AI analysis integration flow is not implemented.
+- tree-based directory explorer and side-by-side directory comparison layout are not implemented.
 
 ## Next implementation priority
 

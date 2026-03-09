@@ -4,16 +4,19 @@ use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
 use crate::presenter::Presenter;
 use crate::state::AppState;
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 slint::slint! {
     import { Button, LineEdit, ListView } from "std-widgets.slint";
 
     export component MainWindow inherits Window {
         title: "Folder Compare";
-        width: 980px;
-        height: 920px;
+        preferred-width: 1200px;
+        preferred-height: 860px;
+        min-width: 900px;
+        min-height: 620px;
 
         in-out property <string> left_root;
         in-out property <string> right_root;
@@ -22,6 +25,7 @@ slint::slint! {
         in property <string> summary_text;
         in property <string> warnings_text;
         in property <string> error_text;
+        in property <bool> compare_truncated;
         in-out property <string> entry_filter;
         in property <string> filter_stats_text;
         in property <[string]> row_statuses;
@@ -51,7 +55,7 @@ slint::slint! {
             spacing: 10px;
 
             Text {
-                text: "Folder Compare MVP";
+                text: "Folder Compare";
                 font-size: 24px;
             }
 
@@ -130,180 +134,237 @@ slint::slint! {
                 }
             }
 
-            Text {
-                text: "Compare Results";
-                color: #444;
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                Text {
-                    text: "Filter:";
-                    width: 64px;
-                    color: #444;
-                }
-                LineEdit {
-                    text <=> root.entry_filter;
-                    enabled: !root.running;
-                    edited(value) => {
-                        root.filter_changed(value);
-                    }
-                }
-                Text {
-                    text: root.filter_stats_text;
-                    color: #666;
-                }
-            }
-
-            Rectangle {
-                border-width: 1px;
-                border-color: #d6d6d6;
-                height: 260px;
-                ListView {
-                    for row_path[index] in root.row_paths: Rectangle {
-                        height: 50px;
-                        border-width: 1px;
-                        border-color: root.row_source_indices[index] == root.selected_row ? rgb(110, 174, 232) : rgb(236, 236, 236);
-                        background: root.row_source_indices[index] == root.selected_row ? rgb(234, 244, 255)
-                            : (root.row_can_load_diff[index] ? rgb(255, 255, 255) : rgb(247, 247, 247));
-
-                        VerticalLayout {
-                            spacing: 2px;
-                            HorizontalLayout {
-                                spacing: 6px;
-                                Rectangle {
-                                    width: 92px;
-                                    height: 20px;
-                                    border-radius: 4px;
-                                    background: root.row_statuses[index] == "different" ? rgb(255, 226, 226)
-                                        : (root.row_statuses[index] == "equal" ? rgb(232, 248, 234)
-                                        : (root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only" ? rgb(255, 242, 218) : rgb(238, 242, 247)));
-                                    Text {
-                                        text: root.row_statuses[index];
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                        color: #333;
-                                    }
-                                }
-                                Text {
-                                    text: row_path;
-                                    color: #1b3a57;
-                                    vertical-alignment: center;
-                                }
-                            }
-                            Text {
-                                text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
-                                color: root.row_can_load_diff[index] ? #555 : #777;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        TouchArea {
-                            clicked => {
-                                root.row_selected(root.row_source_indices[index]);
-                            }
-                        }
-                    }
-                }
-            }
-
-            Text {
-                text: "Detailed Diff Panel:";
-                color: #444;
-            }
-
-            Rectangle {
-                border-width: 1px;
-                border-color: #d6d6d6;
-                height: 68px;
-                VerticalLayout {
-                    spacing: 2px;
-                    Text {
-                        text: root.selected_relative_path == "" ? "Path: (none selected)" : "Path: " + root.selected_relative_path;
-                        color: #222;
-                    }
-                    Text {
-                        text: root.diff_summary_text;
-                        color: #222;
-                    }
-                    Text {
-                        text: root.diff_loading ? "Loading detailed diff..." : (root.diff_truncated ? "Detailed diff is truncated." : "");
-                        color: #7a4b00;
-                    }
-                }
-            }
-
             Rectangle {
                 border-width: 1px;
                 border-color: #f0b64f;
-                visible: root.diff_warning_text != "";
-                height: root.diff_warning_text == "" ? 0px : 60px;
+                visible: root.compare_truncated;
+                height: root.compare_truncated ? 34px : 0px;
                 Text {
-                    text: root.diff_warning_text;
-                    wrap: word-wrap;
+                    text: "Compare result is truncated.";
                     color: #7a4b00;
-                }
-            }
-
-            Rectangle {
-                border-width: 1px;
-                border-color: #d36f6f;
-                visible: root.diff_error_text != "";
-                height: root.diff_error_text == "" ? 0px : 60px;
-                Text {
-                    text: root.diff_error_text;
-                    wrap: word-wrap;
-                    color: #8c1d1d;
+                    vertical-alignment: center;
                 }
             }
 
             Rectangle {
                 border-width: 1px;
                 border-color: #d6d6d6;
-                height: 320px;
-                ListView {
-                    for row_content[index] in root.diff_contents: Rectangle {
-                        height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
-                        background: root.diff_row_kinds[index] == "hunk" ? rgb(238, 244, 251)
-                            : (root.diff_row_kinds[index] == "added" ? rgb(236, 255, 241)
-                            : (root.diff_row_kinds[index] == "removed" ? rgb(255, 241, 241) : rgb(255, 255, 255)));
-
-                        Text {
-                            visible: root.diff_row_kinds[index] == "hunk";
-                            text: row_content;
-                            color: #1c4365;
-                            vertical-alignment: center;
-                        }
-
-                        HorizontalLayout {
-                            visible: root.diff_row_kinds[index] != "hunk";
+                vertical-stretch: 1;
+                HorizontalLayout {
+                    spacing: 10px;
+                    Rectangle {
+                        border-width: 1px;
+                        border-color: #d6d6d6;
+                        horizontal-stretch: 4;
+                        min-width: 320px;
+                        VerticalLayout {
+                            padding: 8px;
                             spacing: 8px;
                             Text {
-                                text: root.diff_old_line_nos[index];
-                                width: 56px;
-                                horizontal-alignment: right;
-                                vertical-alignment: center;
-                                color: #6a6a6a;
+                                text: "Compare Results";
+                                color: #444;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: "Filter:";
+                                    width: 64px;
+                                    color: #444;
+                                }
+                                LineEdit {
+                                    text <=> root.entry_filter;
+                                    enabled: !root.running;
+                                    edited(value) => {
+                                        root.filter_changed(value);
+                                    }
+                                }
                             }
                             Text {
-                                text: root.diff_new_line_nos[index];
-                                width: 56px;
-                                horizontal-alignment: right;
-                                vertical-alignment: center;
-                                color: #6a6a6a;
+                                text: root.filter_stats_text;
+                                color: #666;
                             }
-                            Text {
-                                text: root.diff_markers[index];
-                                width: 20px;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                                color: root.diff_row_kinds[index] == "added" ? #1f6d39
-                                    : (root.diff_row_kinds[index] == "removed" ? #8a1b1b : #4a4a4a);
+                            ListView {
+                                vertical-stretch: 1;
+                                for row_path[index] in root.row_paths: Rectangle {
+                                    height: 50px;
+                                    border-width: 1px;
+                                    border-color: root.row_source_indices[index] == root.selected_row ? rgb(110, 174, 232) : rgb(236, 236, 236);
+                                    background: root.row_source_indices[index] == root.selected_row ? rgb(234, 244, 255)
+                                        : (root.row_can_load_diff[index] ? rgb(255, 255, 255) : rgb(247, 247, 247));
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Rectangle {
+                                                width: 92px;
+                                                height: 20px;
+                                                border-radius: 4px;
+                                                background: root.row_statuses[index] == "different" ? rgb(255, 226, 226)
+                                                    : (root.row_statuses[index] == "equal" ? rgb(232, 248, 234)
+                                                    : (root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only" ? rgb(255, 242, 218) : rgb(238, 242, 247)));
+                                                Text {
+                                                    text: root.row_statuses[index];
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                    color: #333;
+                                                }
+                                            }
+                                            Text {
+                                                text: row_path;
+                                                color: #1b3a57;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                        Text {
+                                            text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
+                                            color: root.row_can_load_diff[index] ? #555 : #777;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    TouchArea {
+                                        clicked => {
+                                            root.row_selected(root.row_source_indices[index]);
+                                        }
+                                    }
+                                }
                             }
+                        }
+                    }
+
+                    Rectangle {
+                        border-width: 1px;
+                        border-color: #d6d6d6;
+                        horizontal-stretch: 6;
+                        VerticalLayout {
+                            padding: 8px;
+                            spacing: 8px;
                             Text {
-                                text: row_content;
-                                color: #222;
-                                vertical-alignment: center;
+                                text: "Detailed Diff";
+                                color: #444;
+                            }
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #d6d6d6;
+                                height: 70px;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text {
+                                        text: root.selected_relative_path == "" ? "Path: (none selected)" : "Path: " + root.selected_relative_path;
+                                        color: #222;
+                                    }
+                                    Text {
+                                        text: root.diff_summary_text;
+                                        color: #222;
+                                    }
+                                    Text {
+                                        text: root.diff_loading ? "Loading detailed diff..." : (root.diff_truncated ? "Detailed diff is truncated." : "");
+                                        color: #7a4b00;
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #f0b64f;
+                                visible: root.diff_warning_text != "";
+                                height: root.diff_warning_text == "" ? 0px : 52px;
+                                Text {
+                                    text: root.diff_warning_text;
+                                    wrap: word-wrap;
+                                    color: #7a4b00;
+                                }
+                            }
+
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #d36f6f;
+                                visible: root.diff_error_text != "";
+                                height: root.diff_error_text == "" ? 0px : 52px;
+                                Text {
+                                    text: root.diff_error_text;
+                                    wrap: word-wrap;
+                                    color: #8c1d1d;
+                                }
+                            }
+
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #e3e3e3;
+                                height: 26px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: "old";
+                                        width: 56px;
+                                        horizontal-alignment: right;
+                                        color: #666;
+                                    }
+                                    Text {
+                                        text: "new";
+                                        width: 56px;
+                                        horizontal-alignment: right;
+                                        color: #666;
+                                    }
+                                    Text {
+                                        text: " ";
+                                        width: 20px;
+                                    }
+                                    Text {
+                                        text: "content";
+                                        color: #666;
+                                    }
+                                }
+                            }
+
+                            ListView {
+                                vertical-stretch: 1;
+                                for row_content[index] in root.diff_contents: Rectangle {
+                                    height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
+                                    background: root.diff_row_kinds[index] == "hunk" ? rgb(238, 244, 251)
+                                        : (root.diff_row_kinds[index] == "added" ? rgb(236, 255, 241)
+                                        : (root.diff_row_kinds[index] == "removed" ? rgb(255, 241, 241) : rgb(255, 255, 255)));
+
+                                    Text {
+                                        visible: root.diff_row_kinds[index] == "hunk";
+                                        text: row_content;
+                                        color: #1c4365;
+                                        vertical-alignment: center;
+                                    }
+
+                                    HorizontalLayout {
+                                        visible: root.diff_row_kinds[index] != "hunk";
+                                        spacing: 8px;
+                                        Text {
+                                            text: root.diff_old_line_nos[index];
+                                            width: 56px;
+                                            horizontal-alignment: right;
+                                            vertical-alignment: center;
+                                            color: #6a6a6a;
+                                        }
+                                        Text {
+                                            text: root.diff_new_line_nos[index];
+                                            width: 56px;
+                                            horizontal-alignment: right;
+                                            vertical-alignment: center;
+                                            color: #6a6a6a;
+                                        }
+                                        Text {
+                                            text: root.diff_markers[index];
+                                            width: 20px;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                            color: root.diff_row_kinds[index] == "added" ? #1f6d39
+                                                : (root.diff_row_kinds[index] == "removed" ? #8a1b1b : #4a4a4a);
+                                        }
+                                        Text {
+                                            text: row_content;
+                                            color: #222;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -321,6 +382,7 @@ fn sync_window_state(window: &MainWindow, state: &AppState) {
     window.set_summary_text(state.summary_text.clone().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
+    window.set_compare_truncated(state.truncated);
     window.set_entry_filter(state.entry_filter.clone().into());
     window.set_filter_stats_text(state.filter_stats_text().into());
     window.set_diff_loading(state.diff_loading);
@@ -401,6 +463,17 @@ pub fn run() -> anyhow::Result<()> {
     let bridge = UiBridge::new(presenter);
     bridge.dispatch(UiCommand::Initialize);
     sync_window_state(&app, &bridge.snapshot());
+
+    let ui_refresh_timer = Timer::default();
+    let app_weak = app.as_weak();
+    let refresh_bridge = bridge.clone();
+    ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(33), move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        let state = refresh_bridge.snapshot();
+        sync_window_state(&window, &state);
+    });
 
     let app_weak = app.as_weak();
     let compare_bridge = bridge.clone();
