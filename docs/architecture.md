@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-9)
+# Folder Compare Architecture (Phase 1-10)
 
 ## Crate responsibilities
 
@@ -90,30 +90,36 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
 - OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
 
-## `fc-ui-slint` MVP maturity after Phase 9
+## `fc-ui-slint` MVP maturity after Phase 10
 
 - Main window now supports:
   - left/right directory path input;
   - compare trigger button;
   - compare status, summary, warning, and error display;
-  - flat result list (`relative_path/status/detail`) with row selection state.
+  - flat result list (`relative_path/status/detail`) with row selection state;
+  - detailed diff panel driven by `fc-core::diff_text_file`, including:
+    - selected path display;
+    - hunk/line list display (`old_line_no/new_line_no/kind/content`);
+    - diff warning and diff truncated semantics;
+    - diff-level error display isolated from compare-level errors.
 - UI orchestration boundaries:
   - `commands`: user actions and compare execution trigger;
-  - `presenter`: state transitions and compare workflow orchestration;
-  - `bridge`: request construction and `CompareReport` to UI view-model mapping;
+  - `presenter`: compare workflow plus selected-row detailed diff orchestration;
+  - `bridge`: request construction and `CompareReport`/`TextDiffResult` to UI view-model mapping;
   - `state/view_models`: lightweight, UI-facing data only.
-- `fc-core::compare_dirs` is integrated as the only compare entry in Phase 9.
+- `fc-core` integration now includes:
+  - `compare_dirs` for summary list;
+  - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 9
+## Still deferred after Phase 10
 
 - real remote provider execution (HTTP/API integration) is not implemented.
-- UI detailed diff panel (`diff_text_file`) is not implemented.
 - UI and AI analysis integration flow is not implemented.
 
 ## Next implementation priority
 
-Phase 10 should focus on UI detailed diff panel integration:
+Phase 11 should focus on UI integration with `fc-ai` mock provider:
 
-1. selected entry to detailed diff request mapping;
-2. `fc-core::diff_text_file` invocation and hunk/line rendering;
-3. truncation/warning display for detailed diff results.
+1. selected diff panel output to `AnalyzeDiffRequest` mapping;
+2. `fc-ai` analyzer invocation with deterministic mock provider in UI flow;
+3. AI card rendering with explicit fallback when AI is disabled or unavailable.

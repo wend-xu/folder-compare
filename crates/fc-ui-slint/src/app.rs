@@ -13,7 +13,7 @@ slint::slint! {
     export component MainWindow inherits Window {
         title: "Folder Compare";
         width: 980px;
-        height: 700px;
+        height: 920px;
 
         in-out property <string> left_root;
         in-out property <string> right_root;
@@ -23,6 +23,13 @@ slint::slint! {
         in property <string> warnings_text;
         in property <string> error_text;
         in property <[string]> entry_rows;
+        in property <bool> diff_loading;
+        in property <string> selected_relative_path;
+        in property <string> diff_summary_text;
+        in property <string> diff_warning_text;
+        in property <string> diff_error_text;
+        in property <bool> diff_truncated;
+        in property <[string]> diff_rows;
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
@@ -120,7 +127,7 @@ slint::slint! {
             Rectangle {
                 border-width: 1px;
                 border-color: #d6d6d6;
-                height: 360px;
+                height: 280px;
                 clip: true;
                 VerticalLayout {
                     spacing: 2px;
@@ -140,6 +147,74 @@ slint::slint! {
                     }
                 }
             }
+
+            Text {
+                text: "Detailed Diff Panel:";
+                color: #444;
+            }
+
+            Rectangle {
+                border-width: 1px;
+                border-color: #d6d6d6;
+                height: 68px;
+                VerticalLayout {
+                    spacing: 2px;
+                    Text {
+                        text: root.selected_relative_path == "" ? "Path: (none selected)" : "Path: " + root.selected_relative_path;
+                        color: #222;
+                    }
+                    Text {
+                        text: root.diff_summary_text;
+                        color: #222;
+                    }
+                    Text {
+                        text: root.diff_loading ? "Loading detailed diff..." : (root.diff_truncated ? "Detailed diff is truncated." : "");
+                        color: #7a4b00;
+                    }
+                }
+            }
+
+            Rectangle {
+                border-width: 1px;
+                border-color: #f0b64f;
+                visible: root.diff_warning_text != "";
+                height: root.diff_warning_text == "" ? 0px : 60px;
+                Text {
+                    text: root.diff_warning_text;
+                    wrap: word-wrap;
+                    color: #7a4b00;
+                }
+            }
+
+            Rectangle {
+                border-width: 1px;
+                border-color: #d36f6f;
+                visible: root.diff_error_text != "";
+                height: root.diff_error_text == "" ? 0px : 60px;
+                Text {
+                    text: root.diff_error_text;
+                    wrap: word-wrap;
+                    color: #8c1d1d;
+                }
+            }
+
+            Rectangle {
+                border-width: 1px;
+                border-color: #d6d6d6;
+                height: 260px;
+                clip: true;
+                VerticalLayout {
+                    spacing: 2px;
+                    for row in root.diff_rows: Rectangle {
+                        height: 24px;
+                        Text {
+                            text: row;
+                            vertical-alignment: center;
+                            color: #222;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -152,6 +227,19 @@ fn sync_window_state(window: &MainWindow, state: &AppState) {
     window.set_summary_text(state.summary_text.clone().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
+    window.set_diff_loading(state.diff_loading);
+    window.set_selected_relative_path(state.selected_relative_path_text().into());
+    window.set_diff_summary_text(
+        state
+            .selected_diff
+            .as_ref()
+            .map(|vm| vm.summary_text.clone())
+            .unwrap_or_default()
+            .into(),
+    );
+    window.set_diff_warning_text(state.diff_warning_text().into());
+    window.set_diff_error_text(state.diff_error_message.clone().unwrap_or_default().into());
+    window.set_diff_truncated(state.diff_truncated);
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     let rows = state
         .entry_display_lines()
@@ -159,6 +247,12 @@ fn sync_window_state(window: &MainWindow, state: &AppState) {
         .map(SharedString::from)
         .collect::<Vec<_>>();
     window.set_entry_rows(ModelRc::new(VecModel::from(rows)));
+    let diff_rows = state
+        .diff_display_lines()
+        .into_iter()
+        .map(SharedString::from)
+        .collect::<Vec<_>>();
+    window.set_diff_rows(ModelRc::new(VecModel::from(diff_rows)));
 }
 
 /// Runs the UI application.
@@ -197,6 +291,7 @@ pub fn run() -> anyhow::Result<()> {
         };
 
         row_bridge.dispatch(UiCommand::SelectRow(index));
+        row_bridge.dispatch(UiCommand::LoadSelectedDiff);
         let state = row_bridge.snapshot();
         sync_window_state(&window, &state);
     });
