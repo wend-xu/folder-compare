@@ -3,7 +3,7 @@
 use crate::view_models::{CompareEntryRowViewModel, DiffPanelViewModel};
 
 /// In-memory UI state for compare workflow.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppState {
     /// Left compare root path.
     pub left_root: String,

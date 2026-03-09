@@ -384,6 +384,10 @@ fn should_sync_editable_inputs(mode: SyncMode) -> bool {
     matches!(mode, SyncMode::Full)
 }
 
+fn should_skip_sync(last_state: Option<&AppState>, next_state: &AppState) -> bool {
+    last_state == Some(next_state)
+}
+
 fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     if should_sync_editable_inputs(mode) {
         window.set_left_root(state.left_root.clone().into());
@@ -467,6 +471,21 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_diff_contents(ModelRc::new(VecModel::from(diff_contents)));
 }
 
+fn sync_window_state_if_changed(
+    window: &MainWindow,
+    bridge: &UiBridge,
+    cache: &Arc<Mutex<Option<AppState>>>,
+    mode: SyncMode,
+) {
+    let state = bridge.snapshot();
+    let mut cache_guard = cache.lock().expect("sync cache mutex poisoned");
+    if should_skip_sync(cache_guard.as_ref(), &state) {
+        return;
+    }
+    sync_window_state(window, &state, mode);
+    *cache_guard = Some(state);
+}
+
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
     let app = MainWindow::new().map_err(|err| anyhow::anyhow!(err.to_string()))?;
@@ -475,21 +494,24 @@ pub fn run() -> anyhow::Result<()> {
     let presenter = Presenter::new(state);
     let bridge = UiBridge::new(presenter);
     bridge.dispatch(UiCommand::Initialize);
-    sync_window_state(&app, &bridge.snapshot(), SyncMode::Full);
+    let initial_state = bridge.snapshot();
+    sync_window_state(&app, &initial_state, SyncMode::Full);
+    let sync_cache = Arc::new(Mutex::new(Some(initial_state)));
 
     let ui_refresh_timer = Timer::default();
     let app_weak = app.as_weak();
     let refresh_bridge = bridge.clone();
+    let refresh_cache = Arc::clone(&sync_cache);
     ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(33), move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
-        let state = refresh_bridge.snapshot();
-        sync_window_state(&window, &state, SyncMode::Passive);
+        sync_window_state_if_changed(&window, &refresh_bridge, &refresh_cache, SyncMode::Passive);
     });
 
     let app_weak = app.as_weak();
     let compare_bridge = bridge.clone();
+    let compare_cache = Arc::clone(&sync_cache);
     app.on_compare_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -502,12 +524,12 @@ pub fn run() -> anyhow::Result<()> {
             window.get_right_root().to_string(),
         ));
         compare_bridge.dispatch(UiCommand::RunCompare);
-        let state = compare_bridge.snapshot();
-        sync_window_state(&window, &state, SyncMode::Passive);
+        sync_window_state_if_changed(&window, &compare_bridge, &compare_cache, SyncMode::Passive);
     });
 
     let app_weak = app.as_weak();
     let row_bridge = bridge.clone();
+    let row_cache = Arc::clone(&sync_cache);
     app.on_row_selected(move |index| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -515,20 +537,19 @@ pub fn run() -> anyhow::Result<()> {
 
         row_bridge.dispatch(UiCommand::SelectRow(index));
         row_bridge.dispatch(UiCommand::LoadSelectedDiff);
-        let state = row_bridge.snapshot();
-        sync_window_state(&window, &state, SyncMode::Passive);
+        sync_window_state_if_changed(&window, &row_bridge, &row_cache, SyncMode::Passive);
     });
 
     let app_weak = app.as_weak();
     let filter_bridge = bridge.clone();
+    let filter_cache = Arc::clone(&sync_cache);
     app.on_filter_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         filter_bridge.dispatch(UiCommand::UpdateEntryFilter(value.to_string()));
-        let state = filter_bridge.snapshot();
-        sync_window_state(&window, &state, SyncMode::Passive);
+        sync_window_state_if_changed(&window, &filter_bridge, &filter_cache, SyncMode::Passive);
     });
 
     app.run().map_err(|err| anyhow::anyhow!(err.to_string()))?;
@@ -547,5 +568,21 @@ mod tests {
     #[test]
     fn full_mode_syncs_editable_inputs() {
         assert!(should_sync_editable_inputs(SyncMode::Full));
+    }
+
+    #[test]
+    fn unchanged_state_should_skip_sync() {
+        let state = AppState::default();
+        assert!(should_skip_sync(Some(&state), &state));
+    }
+
+    #[test]
+    fn changed_state_should_not_skip_sync() {
+        let previous = AppState::default();
+        let next = AppState {
+            running: true,
+            ..AppState::default()
+        };
+        assert!(!should_skip_sync(Some(&previous), &next));
     }
 }
