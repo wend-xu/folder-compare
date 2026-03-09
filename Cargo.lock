@@ -1275,11 +1275,11 @@ name = "fc-ui-slint"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "fc-ai",
  "fc-core",
  "slint",
  "slint-build",
  "smol_str 0.3.2",
+ "tempfile",
  "tracing",
 ]
 

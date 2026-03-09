@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-8)
+# Folder Compare Architecture (Phase 1-9)
 
 ## Crate responsibilities
 
@@ -90,16 +90,30 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
 - OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
 
-## Still deferred after Phase 8
+## `fc-ui-slint` MVP maturity after Phase 9
+
+- Main window now supports:
+  - left/right directory path input;
+  - compare trigger button;
+  - compare status, summary, warning, and error display;
+  - flat result list (`relative_path/status/detail`) with row selection state.
+- UI orchestration boundaries:
+  - `commands`: user actions and compare execution trigger;
+  - `presenter`: state transitions and compare workflow orchestration;
+  - `bridge`: request construction and `CompareReport` to UI view-model mapping;
+  - `state/view_models`: lightweight, UI-facing data only.
+- `fc-core::compare_dirs` is integrated as the only compare entry in Phase 9.
+
+## Still deferred after Phase 9
 
 - real remote provider execution (HTTP/API integration) is not implemented.
-- `fc-ui-slint` MVP is not implemented.
+- UI detailed diff panel (`diff_text_file`) is not implemented.
 - UI and AI analysis integration flow is not implemented.
 
 ## Next implementation priority
 
-Phase 9 should focus on `fc-ui-slint` MVP:
+Phase 10 should focus on UI detailed diff panel integration:
 
-1. directory selection and compare trigger flow;
-2. compare result list rendering for `CompareReport`;
-3. stable command/bridge boundary for future detailed diff and AI result panels.
+1. selected entry to detailed diff request mapping;
+2. `fc-core::diff_text_file` invocation and hunk/line rendering;
+3. truncation/warning display for detailed diff results.
