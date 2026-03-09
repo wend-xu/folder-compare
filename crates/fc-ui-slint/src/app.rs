@@ -1,4 +1,4 @@
-//! Slint app for compare + detailed diff with Phase 10.5 usability improvements.
+//! Slint app for compare + detailed diff with non-blocking and safe UI sync behavior.
 
 use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
@@ -374,16 +374,29 @@ slint::slint! {
     }
 }
 
-fn sync_window_state(window: &MainWindow, state: &AppState) {
-    window.set_left_root(state.left_root.clone().into());
-    window.set_right_root(state.right_root.clone().into());
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyncMode {
+    Full,
+    Passive,
+}
+
+fn should_sync_editable_inputs(mode: SyncMode) -> bool {
+    matches!(mode, SyncMode::Full)
+}
+
+fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
+    if should_sync_editable_inputs(mode) {
+        window.set_left_root(state.left_root.clone().into());
+        window.set_right_root(state.right_root.clone().into());
+        window.set_entry_filter(state.entry_filter.clone().into());
+    }
+
     window.set_running(state.running);
     window.set_status_text(state.status_text.clone().into());
     window.set_summary_text(state.summary_text.clone().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
     window.set_compare_truncated(state.truncated);
-    window.set_entry_filter(state.entry_filter.clone().into());
     window.set_filter_stats_text(state.filter_stats_text().into());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
@@ -462,7 +475,7 @@ pub fn run() -> anyhow::Result<()> {
     let presenter = Presenter::new(state);
     let bridge = UiBridge::new(presenter);
     bridge.dispatch(UiCommand::Initialize);
-    sync_window_state(&app, &bridge.snapshot());
+    sync_window_state(&app, &bridge.snapshot(), SyncMode::Full);
 
     let ui_refresh_timer = Timer::default();
     let app_weak = app.as_weak();
@@ -472,7 +485,7 @@ pub fn run() -> anyhow::Result<()> {
             return;
         };
         let state = refresh_bridge.snapshot();
-        sync_window_state(&window, &state);
+        sync_window_state(&window, &state, SyncMode::Passive);
     });
 
     let app_weak = app.as_weak();
@@ -490,7 +503,7 @@ pub fn run() -> anyhow::Result<()> {
         ));
         compare_bridge.dispatch(UiCommand::RunCompare);
         let state = compare_bridge.snapshot();
-        sync_window_state(&window, &state);
+        sync_window_state(&window, &state, SyncMode::Passive);
     });
 
     let app_weak = app.as_weak();
@@ -503,7 +516,7 @@ pub fn run() -> anyhow::Result<()> {
         row_bridge.dispatch(UiCommand::SelectRow(index));
         row_bridge.dispatch(UiCommand::LoadSelectedDiff);
         let state = row_bridge.snapshot();
-        sync_window_state(&window, &state);
+        sync_window_state(&window, &state, SyncMode::Passive);
     });
 
     let app_weak = app.as_weak();
@@ -515,9 +528,24 @@ pub fn run() -> anyhow::Result<()> {
 
         filter_bridge.dispatch(UiCommand::UpdateEntryFilter(value.to_string()));
         let state = filter_bridge.snapshot();
-        sync_window_state(&window, &state);
+        sync_window_state(&window, &state, SyncMode::Passive);
     });
 
     app.run().map_err(|err| anyhow::anyhow!(err.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn passive_mode_does_not_sync_editable_inputs() {
+        assert!(!should_sync_editable_inputs(SyncMode::Passive));
+    }
+
+    #[test]
+    fn full_mode_syncs_editable_inputs() {
+        assert!(should_sync_editable_inputs(SyncMode::Full));
+    }
 }

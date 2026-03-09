@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-10.6)
+# Folder Compare Architecture (Phase 1-10.7)
 
 ## Crate responsibilities
 
@@ -90,7 +90,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
 - OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
 
-## `fc-ui-slint` interaction/layout maturity after Phase 10.6
+## `fc-ui-slint` interaction/state-sync maturity after Phase 10.7
 
 - Main window now supports:
   - left/right directory path input;
@@ -109,6 +109,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - Interaction/runtime improvements:
   - compare and detailed diff execution moved to background worker threads with a short startup defer so loading state can render first;
   - periodic UI snapshot refresh keeps view state synchronized while background work is running;
+  - timer-driven refresh now uses a passive sync mode that updates display-only state and does not overwrite editable inputs (`left_root/right_root/filter`) while typing;
+  - full input synchronization is limited to initialization/explicit submission paths, preventing cursor/content reset during user editing;
   - compare list and detailed diff panel now have independent scroll areas in a split layout;
   - window uses preferred/min size constraints and stretches key regions with resize.
 - UI orchestration boundaries:
@@ -120,7 +122,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 10.6
+## Still deferred after Phase 10.7
 
 - real remote provider execution (HTTP/API integration) is not implemented.
 - UI and AI analysis integration flow is not implemented.

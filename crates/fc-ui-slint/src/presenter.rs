@@ -447,4 +447,50 @@ mod tests {
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.selected_diff.is_some());
     }
+
+    #[test]
+    fn compare_completion_does_not_reset_new_input_value() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("a.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("a.txt"), "right\n").expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+
+        presenter.handle_command(UiCommand::UpdateLeftRoot(
+            "/tmp/user-typing-left".to_string(),
+        ));
+        let snapshot = wait_until(&presenter, |state| !state.running);
+        assert_eq!(snapshot.left_root, "/tmp/user-typing-left");
+    }
+
+    #[test]
+    fn diff_completion_does_not_reset_new_input_value() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("doc.txt"), "a\nleft\n").expect("left file should be written");
+        fs::write(right.path().join("doc.txt"), "a\nright\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            "/tmp/user-typing-right".to_string(),
+        ));
+        let snapshot = wait_until(&presenter, |state| !state.diff_loading);
+        assert_eq!(snapshot.right_root, "/tmp/user-typing-right");
+    }
 }
