@@ -1,4 +1,4 @@
-//! Minimal Slint app for Phase 9 compare MVP.
+//! Slint app for compare + detailed diff with Phase 10.5 usability improvements.
 
 use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
@@ -8,7 +8,7 @@ use slint::{ModelRc, SharedString, VecModel};
 use std::sync::{Arc, Mutex};
 
 slint::slint! {
-    import { Button, LineEdit } from "std-widgets.slint";
+    import { Button, LineEdit, ListView } from "std-widgets.slint";
 
     export component MainWindow inherits Window {
         title: "Folder Compare";
@@ -22,17 +22,28 @@ slint::slint! {
         in property <string> summary_text;
         in property <string> warnings_text;
         in property <string> error_text;
-        in property <[string]> entry_rows;
+        in-out property <string> entry_filter;
+        in property <string> filter_stats_text;
+        in property <[string]> row_statuses;
+        in property <[string]> row_paths;
+        in property <[string]> row_details;
+        in property <[int]> row_source_indices;
+        in property <[bool]> row_can_load_diff;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
         in property <string> diff_summary_text;
         in property <string> diff_warning_text;
         in property <string> diff_error_text;
         in property <bool> diff_truncated;
-        in property <[string]> diff_rows;
+        in property <[string]> diff_row_kinds;
+        in property <[string]> diff_old_line_nos;
+        in property <[string]> diff_new_line_nos;
+        in property <[string]> diff_markers;
+        in property <[string]> diff_contents;
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
+        callback filter_changed(string);
         callback row_selected(int);
 
         VerticalLayout {
@@ -120,28 +131,76 @@ slint::slint! {
             }
 
             Text {
-                text: "Results (path / status / detail):";
+                text: "Compare Results";
                 color: #444;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: "Filter:";
+                    width: 64px;
+                    color: #444;
+                }
+                LineEdit {
+                    text <=> root.entry_filter;
+                    enabled: !root.running;
+                    edited(value) => {
+                        root.filter_changed(value);
+                    }
+                }
+                Text {
+                    text: root.filter_stats_text;
+                    color: #666;
+                }
             }
 
             Rectangle {
                 border-width: 1px;
                 border-color: #d6d6d6;
-                height: 280px;
-                clip: true;
-                VerticalLayout {
-                    spacing: 2px;
-                    for row[index] in root.entry_rows: Rectangle {
-                        height: 26px;
-                        background: index == root.selected_row ? #eaf4ff : transparent;
-                        Text {
-                            text: row;
-                            vertical-alignment: center;
-                            color: #222;
+                height: 260px;
+                ListView {
+                    for row_path[index] in root.row_paths: Rectangle {
+                        height: 50px;
+                        border-width: 1px;
+                        border-color: root.row_source_indices[index] == root.selected_row ? rgb(110, 174, 232) : rgb(236, 236, 236);
+                        background: root.row_source_indices[index] == root.selected_row ? rgb(234, 244, 255)
+                            : (root.row_can_load_diff[index] ? rgb(255, 255, 255) : rgb(247, 247, 247));
+
+                        VerticalLayout {
+                            spacing: 2px;
+                            HorizontalLayout {
+                                spacing: 6px;
+                                Rectangle {
+                                    width: 92px;
+                                    height: 20px;
+                                    border-radius: 4px;
+                                    background: root.row_statuses[index] == "different" ? rgb(255, 226, 226)
+                                        : (root.row_statuses[index] == "equal" ? rgb(232, 248, 234)
+                                        : (root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only" ? rgb(255, 242, 218) : rgb(238, 242, 247)));
+                                    Text {
+                                        text: root.row_statuses[index];
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        color: #333;
+                                    }
+                                }
+                                Text {
+                                    text: row_path;
+                                    color: #1b3a57;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Text {
+                                text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
+                                color: root.row_can_load_diff[index] ? #555 : #777;
+                                vertical-alignment: center;
+                            }
                         }
+
                         TouchArea {
                             clicked => {
-                                root.row_selected(index);
+                                root.row_selected(root.row_source_indices[index]);
                             }
                         }
                     }
@@ -201,16 +260,51 @@ slint::slint! {
             Rectangle {
                 border-width: 1px;
                 border-color: #d6d6d6;
-                height: 260px;
-                clip: true;
-                VerticalLayout {
-                    spacing: 2px;
-                    for row in root.diff_rows: Rectangle {
-                        height: 24px;
+                height: 320px;
+                ListView {
+                    for row_content[index] in root.diff_contents: Rectangle {
+                        height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
+                        background: root.diff_row_kinds[index] == "hunk" ? rgb(238, 244, 251)
+                            : (root.diff_row_kinds[index] == "added" ? rgb(236, 255, 241)
+                            : (root.diff_row_kinds[index] == "removed" ? rgb(255, 241, 241) : rgb(255, 255, 255)));
+
                         Text {
-                            text: row;
+                            visible: root.diff_row_kinds[index] == "hunk";
+                            text: row_content;
+                            color: #1c4365;
                             vertical-alignment: center;
-                            color: #222;
+                        }
+
+                        HorizontalLayout {
+                            visible: root.diff_row_kinds[index] != "hunk";
+                            spacing: 8px;
+                            Text {
+                                text: root.diff_old_line_nos[index];
+                                width: 56px;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                color: #6a6a6a;
+                            }
+                            Text {
+                                text: root.diff_new_line_nos[index];
+                                width: 56px;
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                color: #6a6a6a;
+                            }
+                            Text {
+                                text: root.diff_markers[index];
+                                width: 20px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: root.diff_row_kinds[index] == "added" ? #1f6d39
+                                    : (root.diff_row_kinds[index] == "removed" ? #8a1b1b : #4a4a4a);
+                            }
+                            Text {
+                                text: row_content;
+                                color: #222;
+                                vertical-alignment: center;
+                            }
                         }
                     }
                 }
@@ -227,6 +321,8 @@ fn sync_window_state(window: &MainWindow, state: &AppState) {
     window.set_summary_text(state.summary_text.clone().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
+    window.set_entry_filter(state.entry_filter.clone().into());
+    window.set_filter_stats_text(state.filter_stats_text().into());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
     window.set_diff_summary_text(
@@ -241,18 +337,59 @@ fn sync_window_state(window: &MainWindow, state: &AppState) {
     window.set_diff_error_text(state.diff_error_message.clone().unwrap_or_default().into());
     window.set_diff_truncated(state.diff_truncated);
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
-    let rows = state
-        .entry_display_lines()
-        .into_iter()
-        .map(SharedString::from)
+    let filtered_rows = state.filtered_entry_rows_with_index();
+    let row_statuses = filtered_rows
+        .iter()
+        .map(|(_, row)| SharedString::from(row.status.clone()))
         .collect::<Vec<_>>();
-    window.set_entry_rows(ModelRc::new(VecModel::from(rows)));
-    let diff_rows = state
-        .diff_display_lines()
-        .into_iter()
-        .map(SharedString::from)
+    window.set_row_statuses(ModelRc::new(VecModel::from(row_statuses)));
+    let row_paths = filtered_rows
+        .iter()
+        .map(|(_, row)| SharedString::from(row.relative_path.clone()))
         .collect::<Vec<_>>();
-    window.set_diff_rows(ModelRc::new(VecModel::from(diff_rows)));
+    window.set_row_paths(ModelRc::new(VecModel::from(row_paths)));
+    let row_details = filtered_rows
+        .iter()
+        .map(|(_, row)| SharedString::from(row.detail.clone()))
+        .collect::<Vec<_>>();
+    window.set_row_details(ModelRc::new(VecModel::from(row_details)));
+    let row_source_indices = filtered_rows
+        .iter()
+        .map(|(index, _)| *index as i32)
+        .collect::<Vec<_>>();
+    window.set_row_source_indices(ModelRc::new(VecModel::from(row_source_indices)));
+    let row_can_load_diff = filtered_rows
+        .iter()
+        .map(|(_, row)| row.can_load_diff)
+        .collect::<Vec<_>>();
+    window.set_row_can_load_diff(ModelRc::new(VecModel::from(row_can_load_diff)));
+
+    let diff_rows = state.diff_viewer_rows();
+    let diff_row_kinds = diff_rows
+        .iter()
+        .map(|row| SharedString::from(row.row_kind.clone()))
+        .collect::<Vec<_>>();
+    window.set_diff_row_kinds(ModelRc::new(VecModel::from(diff_row_kinds)));
+    let diff_old_line_nos = diff_rows
+        .iter()
+        .map(|row| SharedString::from(row.old_line_no.clone()))
+        .collect::<Vec<_>>();
+    window.set_diff_old_line_nos(ModelRc::new(VecModel::from(diff_old_line_nos)));
+    let diff_new_line_nos = diff_rows
+        .iter()
+        .map(|row| SharedString::from(row.new_line_no.clone()))
+        .collect::<Vec<_>>();
+    window.set_diff_new_line_nos(ModelRc::new(VecModel::from(diff_new_line_nos)));
+    let diff_markers = diff_rows
+        .iter()
+        .map(|row| SharedString::from(row.marker.clone()))
+        .collect::<Vec<_>>();
+    window.set_diff_markers(ModelRc::new(VecModel::from(diff_markers)));
+    let diff_contents = diff_rows
+        .into_iter()
+        .map(|row| SharedString::from(row.content))
+        .collect::<Vec<_>>();
+    window.set_diff_contents(ModelRc::new(VecModel::from(diff_contents)));
 }
 
 /// Runs the UI application.
@@ -293,6 +430,18 @@ pub fn run() -> anyhow::Result<()> {
         row_bridge.dispatch(UiCommand::SelectRow(index));
         row_bridge.dispatch(UiCommand::LoadSelectedDiff);
         let state = row_bridge.snapshot();
+        sync_window_state(&window, &state);
+    });
+
+    let app_weak = app.as_weak();
+    let filter_bridge = bridge.clone();
+    app.on_filter_changed(move |value| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        filter_bridge.dispatch(UiCommand::UpdateEntryFilter(value.to_string()));
+        let state = filter_bridge.snapshot();
         sync_window_state(&window, &state);
     });
 

@@ -15,6 +15,8 @@ pub enum UiCommand {
     UpdateRightRoot(String),
     /// Triggers directory compare.
     RunCompare,
+    /// Updates compare row filter text.
+    UpdateEntryFilter(String),
     /// Updates selected result row.
     SelectRow(i32),
     /// Loads detailed diff for selected row.

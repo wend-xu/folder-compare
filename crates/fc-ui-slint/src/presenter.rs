@@ -1,4 +1,4 @@
-//! Presenter layer for MVP compare orchestration.
+//! Presenter layer for compare, filtering, and detailed diff orchestration.
 
 use crate::bridge;
 use crate::commands::UiCommand;
@@ -39,6 +39,17 @@ impl Presenter {
                 state.right_root = path;
             }
             UiCommand::RunCompare => self.execute_compare(),
+            UiCommand::UpdateEntryFilter(filter) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.entry_filter = filter;
+                if let Some(selected_row) = state.selected_row {
+                    if !state.is_row_visible_in_filter(selected_row) {
+                        state.selected_row = None;
+                        state.selected_relative_path = None;
+                        state.clear_diff_panel();
+                    }
+                }
+            }
             UiCommand::SelectRow(index) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.selected_row = usize::try_from(index)
@@ -180,9 +191,9 @@ mod tests {
         assert!(!snapshot.entry_rows.is_empty());
         assert!(snapshot.status_text.contains("Compare finished"));
         assert!(snapshot
-            .entry_display_lines()
+            .entry_rows
             .iter()
-            .any(|line| line.contains("a.txt")));
+            .any(|row| row.relative_path.contains("a.txt")));
     }
 
     #[test]
@@ -192,6 +203,32 @@ mod tests {
         assert_eq!(presenter.state_snapshot().selected_row, None);
         presenter.handle_command(UiCommand::SelectRow(-1));
         assert_eq!(presenter.state_snapshot().selected_row, None);
+    }
+
+    #[test]
+    fn filter_keeps_base_entries_and_reduces_visible_entries() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("a.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("a.txt"), "right\n").expect("right file should be written");
+        fs::write(left.path().join("b.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("b.txt"), "right\n").expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        presenter.handle_command(UiCommand::UpdateEntryFilter("a.txt".to_string()));
+
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.entry_rows.len(), 2);
+        assert_eq!(snapshot.filtered_entry_rows_with_index().len(), 1);
+        assert_eq!(
+            snapshot.filtered_entry_rows_with_index()[0].1.relative_path,
+            "a.txt"
+        );
     }
 
     #[test]
@@ -214,8 +251,34 @@ mod tests {
         let snapshot = presenter.state_snapshot();
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.selected_diff.is_some());
-        assert!(!snapshot.diff_display_lines().is_empty());
+        assert!(!snapshot.diff_viewer_rows().is_empty());
         assert_eq!(snapshot.selected_relative_path.as_deref(), Some("doc.txt"));
+    }
+
+    #[test]
+    fn filter_hides_selected_row_and_clears_diff_panel() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("a.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("a.txt"), "right\n").expect("right file should be written");
+        fs::write(left.path().join("b.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("b.txt"), "right\n").expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        assert!(presenter.state_snapshot().selected_diff.is_some());
+
+        presenter.handle_command(UiCommand::UpdateEntryFilter("b.txt".to_string()));
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, None);
+        assert!(snapshot.selected_diff.is_none());
+        assert!(snapshot.selected_relative_path.is_none());
     }
 
     #[test]
@@ -253,6 +316,7 @@ mod tests {
         presenter.handle_command(UiCommand::UpdateRightRoot(
             right.path().display().to_string(),
         ));
+        presenter.handle_command(UiCommand::UpdateEntryFilter("doc".to_string()));
         presenter.handle_command(UiCommand::RunCompare);
         presenter.handle_command(UiCommand::SelectRow(0));
         presenter.handle_command(UiCommand::LoadSelectedDiff);
@@ -263,6 +327,7 @@ mod tests {
         assert!(snapshot.selected_diff.is_none());
         assert!(snapshot.diff_error_message.is_none());
         assert!(!snapshot.diff_loading);
+        assert_eq!(snapshot.entry_filter, "doc");
     }
 
     #[test]

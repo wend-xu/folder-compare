@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-10)
+# Folder Compare Architecture (Phase 1-10.5)
 
 ## Crate responsibilities
 
@@ -90,28 +90,31 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
 - OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
 
-## `fc-ui-slint` MVP maturity after Phase 10
+## `fc-ui-slint` usability maturity after Phase 10.5
 
 - Main window now supports:
   - left/right directory path input;
   - compare trigger button;
   - compare status, summary, warning, and error display;
-  - flat result list (`relative_path/status/detail`) with row selection state;
+  - scrollable compare result list with stable row selection state;
+  - lightweight compare row filtering by path/detail text;
+  - structured list row rendering (`status`, `relative_path`, `detail`) instead of one raw line;
   - detailed diff panel driven by `fc-core::diff_text_file`, including:
     - selected path display;
-    - hunk/line list display (`old_line_no/new_line_no/kind/content`);
+    - scrollable unified-style viewer rows (`old_line_no/new_line_no/marker/content`);
+    - visual separation for hunk headers and added/removed/context rows;
     - diff warning and diff truncated semantics;
     - diff-level error display isolated from compare-level errors.
 - UI orchestration boundaries:
   - `commands`: user actions and compare execution trigger;
-  - `presenter`: compare workflow plus selected-row detailed diff orchestration;
+  - `presenter`: compare workflow plus filtering and selected-row detailed diff orchestration;
   - `bridge`: request construction and `CompareReport`/`TextDiffResult` to UI view-model mapping;
-  - `state/view_models`: lightweight, UI-facing data only.
+  - `state/view_models`: lightweight, UI-facing data and filter/viewer projection helpers.
 - `fc-core` integration now includes:
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 10
+## Still deferred after Phase 10.5
 
 - real remote provider execution (HTTP/API integration) is not implemented.
 - UI and AI analysis integration flow is not implemented.

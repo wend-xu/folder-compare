@@ -20,9 +20,14 @@ pub struct CompareEntryRowViewModel {
 }
 
 impl CompareEntryRowViewModel {
-    /// Renders one compact row line for list display.
-    pub fn display_line(&self) -> String {
-        format!("[{}] {} — {}", self.status, self.relative_path, self.detail)
+    /// Returns true when filter text matches path or detail (case-insensitive).
+    pub fn matches_filter(&self, filter: &str) -> bool {
+        let needle = filter.trim().to_lowercase();
+        if needle.is_empty() {
+            return true;
+        }
+        self.relative_path.to_lowercase().contains(&needle)
+            || self.detail.to_lowercase().contains(&needle)
     }
 }
 
@@ -52,18 +57,6 @@ pub struct DiffPanelViewModel {
     pub warning: Option<String>,
     /// Whether detailed diff output was truncated.
     pub truncated: bool,
-}
-
-impl DiffPanelViewModel {
-    /// Returns a flat display list for basic panel rendering.
-    pub fn display_lines(&self) -> Vec<String> {
-        let mut out = Vec::new();
-        for hunk in &self.hunks {
-            out.push(hunk.header());
-            out.extend(hunk.lines.iter().map(DiffLineViewModel::display_line));
-        }
-        out
-    }
 }
 
 /// One hunk in detailed diff panel.
@@ -105,16 +98,21 @@ pub struct DiffLineViewModel {
 }
 
 impl DiffLineViewModel {
-    /// Returns one compact line for list display.
-    pub fn display_line(&self) -> String {
-        let old_no = self
-            .old_line_no
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        let new_no = self
-            .new_line_no
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        format!("{old_no:>6} {new_no:>6} {:<7} {}", self.kind, self.content)
+    /// Returns normalized lowercase kind token.
+    pub fn kind_tag(&self) -> &'static str {
+        match self.kind.as_str() {
+            "Added" => "added",
+            "Removed" => "removed",
+            _ => "context",
+        }
+    }
+
+    /// Returns one unified diff marker.
+    pub fn marker(&self) -> &'static str {
+        match self.kind_tag() {
+            "added" => "+",
+            "removed" => "-",
+            _ => " ",
+        }
     }
 }
