@@ -9,7 +9,8 @@ pub mod report;
 pub use diff::{DiffHunk, DiffLine, DiffLineKind, TextDiffResult, TextDiffSummary};
 pub use entry::{CompareEntry, EntryDetail, EntryKind, EntryStatus};
 pub use error::{
-    CompareError, DeferredOperation, InvalidInputKind, IoOperation, PathSide, UnsupportedOperation,
+    CompareError, DeferredOperation, InvalidInputKind, IoOperation, PathSide,
+    TextPathUnavailableReason, UnsupportedOperation,
 };
 pub use options::{
     CompareOptions, CompareRequest, HashAlgorithm, IgnoreWhitespaceMode, LargeDirPolicy,

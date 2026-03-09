@@ -145,8 +145,14 @@ pub struct TextDiffOptions {
     pub ignore_whitespace: IgnoreWhitespaceMode,
     /// Whether line ending differences are ignored.
     pub ignore_line_endings: bool,
+    /// Strategy used to decide whether a file can be treated as text.
+    pub text_detection: TextDetectionStrategy,
     /// Number of context lines around changes.
     pub context_lines: usize,
+    /// Maximum hunks to include in output.
+    pub max_hunks: usize,
+    /// Maximum diff lines to include in output.
+    pub max_lines: usize,
 }
 
 impl Default for TextDiffOptions {
@@ -154,7 +160,10 @@ impl Default for TextDiffOptions {
         Self {
             ignore_whitespace: IgnoreWhitespaceMode::Preserve,
             ignore_line_endings: false,
+            text_detection: TextDetectionStrategy::ExtensionHeuristic,
             context_lines: 3,
+            max_hunks: 128,
+            max_lines: 20_000,
         }
     }
 }
@@ -167,6 +176,16 @@ impl TextDiffOptions {
                 kind: InvalidInputKind::OptionOutOfRange {
                     name: "context_lines",
                 },
+            });
+        }
+        if self.max_hunks == 0 {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange { name: "max_hunks" },
+            });
+        }
+        if self.max_lines == 0 {
+            return Err(CompareError::InvalidInput {
+                kind: InvalidInputKind::OptionOutOfRange { name: "max_lines" },
             });
         }
 

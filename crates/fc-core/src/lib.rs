@@ -11,7 +11,8 @@ pub use api::diff::diff_text_file;
 pub use domain::diff::{DiffHunk, DiffLine, DiffLineKind, TextDiffResult, TextDiffSummary};
 pub use domain::entry::{CompareEntry, EntryDetail, EntryKind, EntryStatus};
 pub use domain::error::{
-    CompareError, DeferredOperation, InvalidInputKind, IoOperation, PathSide, UnsupportedOperation,
+    CompareError, DeferredOperation, InvalidInputKind, IoOperation, PathSide,
+    TextPathUnavailableReason, UnsupportedOperation,
 };
 pub use domain::options::{
     CompareOptions, CompareRequest, HashAlgorithm, IgnoreWhitespaceMode, LargeDirPolicy,
@@ -37,6 +38,8 @@ mod tests {
     fn text_diff_options_default_is_stable() {
         let options = TextDiffOptions::default();
         assert_eq!(options.context_lines, 3);
+        assert_eq!(options.max_hunks, 128);
+        assert_eq!(options.max_lines, 20_000);
         assert!(!options.ignore_line_endings);
         assert_eq!(options.ignore_whitespace, IgnoreWhitespaceMode::Preserve);
     }
@@ -155,7 +158,10 @@ mod tests {
             TextDiffOptions {
                 ignore_whitespace: IgnoreWhitespaceMode::Preserve,
                 ignore_line_endings: false,
+                text_detection: TextDetectionStrategy::ExtensionHeuristic,
                 context_lines: 20_000,
+                max_hunks: 128,
+                max_lines: 20_000,
             },
         );
         let err = diff_text_file(req).expect_err("out-of-range option should be rejected");
@@ -189,18 +195,13 @@ mod tests {
     }
 
     #[test]
-    fn diff_text_file_returns_deferred_for_distinct_paths() {
+    fn diff_text_file_distinct_missing_paths_return_io_error() {
         let req = TextDiffRequest::new(
             PathBuf::from("a.txt"),
             PathBuf::from("b.txt"),
             TextDiffOptions::default(),
         );
-        let err = diff_text_file(req).expect_err("text diff algorithm is deferred");
-        assert!(matches!(
-            err,
-            CompareError::Deferred {
-                operation: DeferredOperation::TextDiffAlgorithm
-            }
-        ));
+        let err = diff_text_file(req).expect_err("missing files should return io error");
+        assert!(matches!(err, CompareError::IoBoundary { .. }));
     }
 }

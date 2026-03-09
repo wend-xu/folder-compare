@@ -51,6 +51,14 @@ pub enum CompareError {
         /// Failure reason.
         reason: String,
     },
+    /// Text path cannot be used for current file.
+    #[error("text path unavailable for `{path}`: {reason}")]
+    TextPathUnavailable {
+        /// File path where text processing failed.
+        path: PathBuf,
+        /// Why text path cannot continue.
+        reason: TextPathUnavailableReason,
+    },
     /// I/O boundary error.
     #[error("io boundary error during {operation} at `{path}`: {source}")]
     IoBoundary {
@@ -192,6 +200,25 @@ impl fmt::Display for DeferredOperation {
             Self::FileComparison => "file comparison",
             Self::TextDiffAlgorithm => "text diff algorithm",
             Self::LargeDirectoryGuard => "large directory guard",
+        };
+        write!(f, "{text}")
+    }
+}
+
+/// Reason why text loading/diff path is unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextPathUnavailableReason {
+    /// Input is not considered a text candidate.
+    NotTextCandidate,
+    /// Input looked like text but decoding failed.
+    DecodeFailed,
+}
+
+impl fmt::Display for TextPathUnavailableReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = match self {
+            Self::NotTextCandidate => "not a text candidate",
+            Self::DecodeFailed => "text decode failed",
         };
         write!(f, "{text}")
     }

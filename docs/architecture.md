@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-5)
+# Folder Compare Architecture (Phase 1-6)
 
 ## Crate responsibilities
 
@@ -6,7 +6,7 @@
 - `fc-ai`: owns AI-based interpretation for diff outputs through a provider abstraction.
 - `fc-ui-slint`: owns desktop app entry, app state orchestration, and UI presentation.
 
-## `fc-core` internal boundaries (Phase 5)
+## `fc-core` internal boundaries (Phase 6)
 
 - `api/`: external entry points (`compare_dirs`, `diff_text_file`).
 - `domain/`: pure domain types (requests/options/report/entry/diff/error).
@@ -15,7 +15,7 @@
   - `comparer`: left/right path alignment, node classification, and report entry assembly;
   - `hasher`: deterministic file-level content comparison (`size + bytes`) as fallback;
   - `text_loader`: text candidate detection + BOM/encoding-aware decode boundary;
-  - `text_diff`: summary-level text diff for `compare_dirs` enrichment.
+  - `text_diff`: summary-level diff for `compare_dirs` plus detailed diff building for `diff_text_file`.
 - `infra/`: path normalization and relative-path key generation plus thin fs helpers.
 
 The dependency direction is kept as: `api -> services -> domain/infra`, and `domain` does not depend on `services`.
@@ -36,7 +36,7 @@ AI analysis is optional, probabilistic, and provider-dependent. Core compare out
 
 UI should not embed compare business logic. `fc-ui-slint` translates user intent into calls to `fc-core`/`fc-ai`, then renders results. This keeps domain logic centralized and easier to test.
 
-## `fc-core` API maturity after Phase 5
+## `fc-core` API maturity after Phase 6
 
 - `compare_dirs` now performs:
   - request validation and root normalization;
@@ -44,22 +44,28 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - text candidate detection and safe decode attempt for aligned files;
   - summary-level text diff when text path succeeds;
   - deterministic byte-level comparison fallback when text path is not applicable or decode fails.
+- `diff_text_file` now performs:
+  - full input validation and path normalization;
+  - text loading via shared Phase 5 detection/decoding boundary;
+  - structured detailed diff output with hunks, lines, line kinds, and line numbers;
+  - local output limiting via `truncated + warning`.
 - The report can now express:
   - left-only / right-only paths;
   - type mismatch between aligned paths;
   - aligned directories;
   - aligned files as `Equal` or `Different` from either text summary or byte-level fallback.
-- `diff_text_file` remains a validated skeleton with deferred algorithm stage.
+- `compare_dirs` remains summary-oriented and does not emit detailed hunk output.
 
-## Still deferred after Phase 5
+## Still deferred after Phase 6
 
-- detailed text diff / hunk API for external callers;
 - large directory protection details.
+ - large file protection details.
+ - UI/AI deep integration.
 
 ## Next implementation priority
 
-Phase 6 should focus on detailed `diff_text_file` API completion:
+Phase 7 should focus on output protection policies:
 
-1. reuse current text loading/normalization boundaries;
-2. provide explicit detailed diff output contract around hunks/lines;
-3. keep compare pipeline stable while deepening text diff capabilities.
+1. directory-level and file-level limit policies;
+2. predictable truncation/error boundaries for very large inputs;
+3. keep current detailed diff contract stable for UI consumers.

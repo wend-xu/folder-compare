@@ -1,6 +1,6 @@
 //! Text candidate detection and decoding helpers.
 
-use crate::domain::error::CompareError;
+use crate::domain::error::{CompareError, TextPathUnavailableReason};
 use crate::domain::options::TextDetectionStrategy;
 use crate::infra::fs;
 use std::path::Path;
@@ -38,6 +38,24 @@ pub(crate) fn load_text_if_candidate(
     match decode_text_bytes(&bytes) {
         Some(content) => Ok(TextLoadOutcome::Loaded(LoadedText { content })),
         None => Ok(TextLoadOutcome::DecodeFailed),
+    }
+}
+
+/// Loads text for detailed diff API and returns structured boundary errors.
+pub(crate) fn load_text_for_diff(
+    path: &Path,
+    strategy: TextDetectionStrategy,
+) -> Result<LoadedText, CompareError> {
+    match load_text_if_candidate(path, strategy)? {
+        TextLoadOutcome::Loaded(doc) => Ok(doc),
+        TextLoadOutcome::NotTextCandidate => Err(CompareError::TextPathUnavailable {
+            path: path.to_path_buf(),
+            reason: TextPathUnavailableReason::NotTextCandidate,
+        }),
+        TextLoadOutcome::DecodeFailed => Err(CompareError::TextPathUnavailable {
+            path: path.to_path_buf(),
+            reason: TextPathUnavailableReason::DecodeFailed,
+        }),
     }
 }
 

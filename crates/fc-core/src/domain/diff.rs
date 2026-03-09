@@ -9,6 +9,10 @@ pub struct TextDiffResult {
     pub summary: TextDiffSummary,
     /// Ordered list of diff hunks.
     pub hunks: Vec<DiffHunk>,
+    /// Whether output was truncated by configured limits.
+    pub truncated: bool,
+    /// Optional warning message for truncated/limited output.
+    pub warning: Option<String>,
 }
 
 impl TextDiffResult {
@@ -46,8 +50,14 @@ impl TextDiffSummary {
 /// One contiguous change block in a diff.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct DiffHunk {
-    /// Header text such as range metadata.
-    pub header: String,
+    /// Starting line number in old text (1-based).
+    pub old_start: usize,
+    /// Number of old lines covered by this hunk.
+    pub old_len: usize,
+    /// Starting line number in new text (1-based).
+    pub new_start: usize,
+    /// Number of new lines covered by this hunk.
+    pub new_len: usize,
     /// Diff lines in display order.
     pub lines: Vec<DiffLine>,
 }
@@ -57,6 +67,10 @@ pub struct DiffHunk {
 pub struct DiffLine {
     /// Semantic line kind.
     pub kind: DiffLineKind,
+    /// Old-side line number, if applicable.
+    pub old_line_no: Option<usize>,
+    /// New-side line number, if applicable.
+    pub new_line_no: Option<usize>,
     /// Original line content.
     pub content: String,
 }
