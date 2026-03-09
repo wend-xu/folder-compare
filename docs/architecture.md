@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-10.7.2)
+# Folder Compare Architecture (Phase 1-10.8)
 
 ## Crate responsibilities
 
@@ -90,13 +90,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
 - OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
 
-## `fc-ui-slint` interaction/state-sync maturity after Phase 10.7.2
+## `fc-ui-slint` interaction/layout maturity after Phase 10.8
 
 - Main window now supports:
   - left/right directory path input;
   - compare trigger button;
   - compare status, summary, warning, and error display;
-  - compare-truncated warning display separate from summary text;
+  - compact compare summary/warning/error/truncated area with lower vertical overhead;
   - scrollable compare result list with stable row selection state;
   - lightweight compare row filtering by path/detail text;
   - structured list row rendering (`status`, `relative_path`, `detail`) instead of one raw line;
@@ -106,6 +106,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
     - visual separation for hunk headers and added/removed/context rows;
     - diff warning and diff truncated semantics;
     - diff-level error display isolated from compare-level errors.
+- Right-side details area now follows a clearer Phase 11-ready hierarchy:
+  - selected path;
+  - diff summary;
+  - diff status block (loading/warning/truncated/error);
+  - analysis slot placeholder (`Phase 11`) between status and diff viewer;
+  - detailed unified diff viewer as the primary lower section.
 - Interaction/runtime improvements:
   - compare and detailed diff execution moved to background worker threads with a short startup defer so loading state can render first;
   - periodic UI snapshot refresh keeps view state synchronized while background work is running;
@@ -124,7 +130,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 10.7.2
+## Still deferred after Phase 10.8
 
 - real remote provider execution (HTTP/API integration) is not implemented.
 - UI and AI analysis integration flow is not implemented.

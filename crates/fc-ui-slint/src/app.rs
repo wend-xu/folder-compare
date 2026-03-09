@@ -102,11 +102,19 @@ slint::slint! {
             Rectangle {
                 border-width: 1px;
                 border-color: #d6d6d6;
-                height: 70px;
-                Text {
-                    text: root.summary_text;
-                    wrap: word-wrap;
-                    color: #222;
+                height: root.compare_truncated ? 62px : 48px;
+                VerticalLayout {
+                    spacing: 2px;
+                    Text {
+                        text: root.summary_text;
+                        wrap: word-wrap;
+                        color: #222;
+                    }
+                    Text {
+                        visible: root.compare_truncated;
+                        text: "Compare result is truncated.";
+                        color: #7a4b00;
+                    }
                 }
             }
 
@@ -114,7 +122,7 @@ slint::slint! {
                 border-width: 1px;
                 border-color: #f0b64f;
                 visible: root.warnings_text != "";
-                height: root.warnings_text == "" ? 0px : 90px;
+                height: root.warnings_text == "" ? 0px : 52px;
                 Text {
                     text: root.warnings_text;
                     wrap: word-wrap;
@@ -126,23 +134,11 @@ slint::slint! {
                 border-width: 1px;
                 border-color: #d36f6f;
                 visible: root.error_text != "";
-                height: root.error_text == "" ? 0px : 50px;
+                height: root.error_text == "" ? 0px : 44px;
                 Text {
                     text: root.error_text;
                     wrap: word-wrap;
                     color: #8c1d1d;
-                }
-            }
-
-            Rectangle {
-                border-width: 1px;
-                border-color: #f0b64f;
-                visible: root.compare_truncated;
-                height: root.compare_truncated ? 34px : 0px;
-                Text {
-                    text: "Compare result is truncated.";
-                    color: #7a4b00;
-                    vertical-alignment: center;
                 }
             }
 
@@ -155,7 +151,7 @@ slint::slint! {
                     Rectangle {
                         border-width: 1px;
                         border-color: #d6d6d6;
-                        horizontal-stretch: 4;
+                        horizontal-stretch: 3;
                         min-width: 320px;
                         VerticalLayout {
                             padding: 8px;
@@ -236,56 +232,80 @@ slint::slint! {
                     Rectangle {
                         border-width: 1px;
                         border-color: #d6d6d6;
-                        horizontal-stretch: 6;
+                        horizontal-stretch: 7;
                         VerticalLayout {
                             padding: 8px;
-                            spacing: 8px;
+                            spacing: 6px;
                             Text {
-                                text: "Detailed Diff";
+                                text: "Details";
                                 color: #444;
                             }
                             Rectangle {
                                 border-width: 1px;
                                 border-color: #d6d6d6;
-                                height: 70px;
+                                height: 34px;
+                                Text {
+                                    text: root.selected_relative_path == "" ? "Path: (none selected)" : "Path: " + root.selected_relative_path;
+                                    color: #222;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #d6d6d6;
+                                height: 34px;
+                                Text {
+                                    text: root.diff_summary_text;
+                                    color: #222;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #d6d6d6;
+                                visible: root.diff_loading || root.diff_truncated || root.diff_warning_text != "" || root.diff_error_text != "";
+                                height: root.diff_loading || root.diff_truncated || root.diff_warning_text != "" || root.diff_error_text != "" ? 70px : 0px;
                                 VerticalLayout {
                                     spacing: 2px;
                                     Text {
-                                        text: root.selected_relative_path == "" ? "Path: (none selected)" : "Path: " + root.selected_relative_path;
-                                        color: #222;
+                                        visible: root.diff_loading;
+                                        text: "Loading detailed diff...";
+                                        color: #2f4f70;
                                     }
                                     Text {
-                                        text: root.diff_summary_text;
-                                        color: #222;
-                                    }
-                                    Text {
-                                        text: root.diff_loading ? "Loading detailed diff..." : (root.diff_truncated ? "Detailed diff is truncated." : "");
+                                        visible: root.diff_warning_text != "";
+                                        text: root.diff_warning_text;
                                         color: #7a4b00;
                                     }
+                                    Text {
+                                        visible: root.diff_truncated;
+                                        text: "Detailed diff is truncated.";
+                                        color: #7a4b00;
+                                    }
+                                    Text {
+                                        visible: root.diff_error_text != "";
+                                        text: root.diff_error_text;
+                                        color: #8c1d1d;
+                                    }
                                 }
                             }
 
                             Rectangle {
                                 border-width: 1px;
-                                border-color: #f0b64f;
-                                visible: root.diff_warning_text != "";
-                                height: root.diff_warning_text == "" ? 0px : 52px;
-                                Text {
-                                    text: root.diff_warning_text;
-                                    wrap: word-wrap;
-                                    color: #7a4b00;
-                                }
-                            }
-
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #d36f6f;
-                                visible: root.diff_error_text != "";
-                                height: root.diff_error_text == "" ? 0px : 52px;
-                                Text {
-                                    text: root.diff_error_text;
-                                    wrap: word-wrap;
-                                    color: #8c1d1d;
+                                border-color: #d6d6d6;
+                                height: 56px;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text {
+                                        text: "Analysis Slot (Phase 11 Placeholder)";
+                                        color: #555;
+                                    }
+                                    Text {
+                                        text: "AI summary/risk panel will be inserted here.";
+                                        color: #777;
+                                    }
                                 }
                             }
 
