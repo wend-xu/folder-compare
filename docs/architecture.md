@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-7)
+# Folder Compare Architecture (Phase 1-8)
 
 ## Crate responsibilities
 
@@ -65,16 +65,41 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - report-level truncation and warning messages for policy-triggered limits.
 - `compare_dirs` remains summary-oriented and does not emit detailed hunk output.
 
-## Still deferred after Phase 7
+## `fc-ai` API maturity after Phase 8
 
-- `fc-ai` usable provider integration and end-to-end analysis workflow.
-- `fc-ui-slint` MVP integration and richer diff panel workflows.
-- real remote provider integration and engineering hardening.
+- DTO contract now includes:
+  - request context (`task`, `relative_path`, `language_hint`, `diff_excerpt`, `summary`, `truncation_note`, `config`);
+  - response fields for UI cards (`risk_level`, `title`, `rationale`, `key_points`, `review_suggestions`);
+  - provider-neutral `PromptPayload`.
+- Structured `AiError` now distinguishes:
+  - invalid request;
+  - prompt build failure;
+  - input preparation failure;
+  - provider execution failure;
+  - response parse failure;
+  - not implemented.
+- Analyzer orchestration now performs:
+  - request validation;
+  - diff input preparation/truncation with note propagation;
+  - provider-neutral prompt payload assembly;
+  - provider invocation;
+  - response normalization and parse-boundary checks.
+- Mock provider now:
+  - deterministic;
+  - supports `Summary`, `RiskReview`, and `ReviewComments`;
+  - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
+- OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
+
+## Still deferred after Phase 8
+
+- real remote provider execution (HTTP/API integration) is not implemented.
+- `fc-ui-slint` MVP is not implemented.
+- UI and AI analysis integration flow is not implemented.
 
 ## Next implementation priority
 
-Phase 8 should focus on `fc-ai` minimal usable stabilization:
+Phase 9 should focus on `fc-ui-slint` MVP:
 
-1. request/response boundary hardening for analysis APIs;
-2. provider abstraction stability and predictable mock behavior;
-3. prompt assembly, truncation policy, and response parsing reliability.
+1. directory selection and compare trigger flow;
+2. compare result list rendering for `CompareReport`;
+3. stable command/bridge boundary for future detailed diff and AI result panels.

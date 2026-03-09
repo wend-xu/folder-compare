@@ -8,10 +8,16 @@ use serde::{Deserialize, Serialize};
 pub struct AnalyzeDiffRequest {
     /// Analysis task category.
     pub task: AnalysisTask,
+    /// Relative file path associated with this diff.
+    pub relative_path: Option<String>,
+    /// Optional language hint for provider prompt context.
+    pub language_hint: Option<String>,
     /// Raw diff excerpt for model context.
     pub diff_excerpt: String,
     /// Optional structured summary from `fc-core`.
     pub summary: Option<TextDiffSummary>,
+    /// Optional truncation marker from upstream preparation stages.
+    pub truncation_note: Option<String>,
     /// Runtime AI config.
     pub config: AiConfig,
 }
@@ -25,6 +31,10 @@ pub struct AnalyzeDiffResponse {
     pub title: String,
     /// Human-readable reasoning text.
     pub rationale: String,
+    /// Key bullet points for compact UI card display.
+    pub key_points: Vec<String>,
+    /// Follow-up review suggestions for users.
+    pub review_suggestions: Vec<String>,
 }
 
 /// Supported analysis task types.
@@ -34,6 +44,8 @@ pub enum AnalysisTask {
     Summary,
     /// Assess potential risk.
     RiskReview,
+    /// Produce code-review style suggestions.
+    ReviewComments,
 }
 
 /// Risk rating returned by the AI layer.
@@ -52,6 +64,8 @@ pub enum RiskLevel {
 pub struct AiConfig {
     /// Selected provider kind.
     pub provider_kind: AiProviderKind,
+    /// Maximum characters allowed for prepared input excerpt.
+    pub max_input_chars: usize,
     /// Token budget for responses.
     pub max_output_tokens: usize,
     /// Sampling temperature.
@@ -62,6 +76,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             provider_kind: AiProviderKind::Mock,
+            max_input_chars: 12_000,
             max_output_tokens: 512,
             temperature: 0.0,
         }
@@ -75,4 +90,13 @@ pub enum AiProviderKind {
     Mock,
     /// OpenAI-compatible provider placeholder.
     OpenAiCompatible,
+}
+
+/// Provider-neutral prompt payload built by analyzer services.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PromptPayload {
+    /// Stable system instruction for the provider.
+    pub system_instruction: String,
+    /// User-facing analysis prompt content.
+    pub user_prompt: String,
 }
