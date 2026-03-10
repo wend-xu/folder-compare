@@ -1,5 +1,7 @@
 //! UI command definitions.
 
+use fc_ai::services::analyzer::Analyzer;
+use fc_ai::{AnalyzeDiffRequest, AnalyzeDiffResponse, MockAiProvider};
 use fc_core::{
     compare_dirs, diff_text_file, CompareReport, CompareRequest, TextDiffRequest, TextDiffResult,
 };
@@ -21,6 +23,8 @@ pub enum UiCommand {
     SelectRow(i32),
     /// Loads detailed diff for selected row.
     LoadSelectedDiff,
+    /// Loads AI analysis for selected detailed diff.
+    LoadAiAnalysis,
 }
 
 /// Executes one compare request against `fc-core`.
@@ -31,4 +35,12 @@ pub fn run_compare(req: CompareRequest) -> Result<CompareReport, String> {
 /// Executes one text diff request against `fc-core`.
 pub fn run_text_diff(req: TextDiffRequest) -> Result<TextDiffResult, String> {
     diff_text_file(req).map_err(|err| err.to_string())
+}
+
+/// Executes one AI analysis request against `fc-ai` mock provider via analyzer.
+pub fn run_ai_analysis(req: AnalyzeDiffRequest) -> Result<AnalyzeDiffResponse, String> {
+    let provider = MockAiProvider::new();
+    Analyzer::new(&provider)
+        .run(req)
+        .map_err(|err| err.to_string())
 }

@@ -2,7 +2,7 @@
 
 use crate::bridge;
 use crate::commands::UiCommand;
-use crate::commands::{run_compare, run_text_diff};
+use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
 use crate::state::AppState;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -51,6 +51,10 @@ impl Presenter {
                         state.selected_row = None;
                         state.selected_relative_path = None;
                         state.clear_diff_panel();
+                        state.analysis_available = false;
+                        state.clear_analysis_panel();
+                        state.analysis_hint =
+                            Some("Select one changed text file to analyze.".to_string());
                     }
                 }
             }
@@ -59,13 +63,26 @@ impl Presenter {
                 state.selected_row = usize::try_from(index)
                     .ok()
                     .filter(|value| *value < state.entry_rows.len());
-                state.selected_relative_path = state
+                let selected_row_vm = state
                     .selected_row
                     .and_then(|value| state.entry_rows.get(value))
+                    .cloned();
+                state.selected_relative_path = selected_row_vm
+                    .as_ref()
                     .map(|row| row.relative_path.clone());
                 state.clear_diff_panel();
+                state.analysis_available = false;
+                state.clear_analysis_panel();
+                state.analysis_hint = Some(match selected_row_vm {
+                    Some(row) if !row.can_load_analysis => row
+                        .analysis_blocked_reason
+                        .unwrap_or_else(|| "selected row does not support AI analysis".to_string()),
+                    Some(_) => "Load detailed diff, then click Analyze.".to_string(),
+                    None => "Select one changed text file to analyze.".to_string(),
+                });
             }
             UiCommand::LoadSelectedDiff => self.execute_load_selected_diff(),
+            UiCommand::LoadAiAnalysis => self.execute_load_ai_analysis(),
         }
     }
 
@@ -81,6 +98,9 @@ impl Presenter {
             state.selected_row = None;
             state.selected_relative_path = None;
             state.clear_diff_panel();
+            state.analysis_available = false;
+            state.clear_analysis_panel();
+            state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
             (
                 state.left_root.clone(),
                 state.right_root.clone(),
@@ -131,6 +151,9 @@ impl Presenter {
             state.selected_diff = None;
             state.diff_warning = None;
             state.diff_truncated = false;
+            state.analysis_available = false;
+            state.clear_analysis_panel();
+            state.analysis_hint = Some("Detailed diff is loading...".to_string());
             (
                 state.left_root.clone(),
                 state.right_root.clone(),
@@ -152,19 +175,33 @@ impl Presenter {
                     bridge::build_text_diff_request(&left_root, &right_root, &row)
                         .and_then(run_text_diff)
                         .map(|diff_result| {
-                            bridge::map_text_diff_result(&relative_path, diff_result)
+                            (
+                                row,
+                                bridge::map_text_diff_result(&relative_path, diff_result),
+                            )
                         })
                 });
 
             let mut state = state_ref.lock().expect("state mutex poisoned");
             state.diff_loading = false;
             match result {
-                Ok(diff_vm) => {
+                Ok((row, diff_vm)) => {
                     state.selected_relative_path = Some(diff_vm.relative_path.clone());
                     state.diff_warning = diff_vm.warning.clone();
                     state.diff_truncated = diff_vm.truncated;
                     state.diff_error_message = None;
                     state.selected_diff = Some(diff_vm);
+                    state.analysis_available = row.can_load_analysis;
+                    state.analysis_error_message = None;
+                    state.analysis_result = None;
+                    state.analysis_loading = false;
+                    state.analysis_hint = Some(if row.can_load_analysis {
+                        "Click Analyze to run AI risk review (mock provider).".to_string()
+                    } else {
+                        row.analysis_blocked_reason.unwrap_or_else(|| {
+                            "selected row does not support AI analysis".to_string()
+                        })
+                    });
                     state.status_text = "Detailed diff loaded".to_string();
                 }
                 Err(message) => {
@@ -172,7 +209,98 @@ impl Presenter {
                     state.selected_diff = None;
                     state.diff_warning = None;
                     state.diff_truncated = false;
+                    state.analysis_available = false;
+                    state.clear_analysis_panel();
+                    state.analysis_hint =
+                        Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
                     state.status_text = "Detailed diff unavailable".to_string();
+                }
+            }
+        });
+    }
+
+    fn execute_load_ai_analysis(&self) {
+        let (selected_row, selected_diff, diff_warning, diff_truncated, state_ref) = {
+            let mut state = self.state.lock().expect("state mutex poisoned");
+            if state.analysis_loading {
+                return;
+            }
+
+            let selected_row = state
+                .selected_row
+                .and_then(|idx| state.entry_rows.get(idx).cloned());
+            let Some(row) = selected_row.as_ref() else {
+                state.analysis_error_message =
+                    Some("select one compare row before running AI analysis".to_string());
+                return;
+            };
+            if !row.can_load_analysis {
+                state.analysis_error_message =
+                    Some(row.analysis_blocked_reason.clone().unwrap_or_else(|| {
+                        "selected row does not support AI analysis".to_string()
+                    }));
+                return;
+            }
+            if state.diff_loading {
+                state.analysis_error_message =
+                    Some("wait until detailed diff loading completes".to_string());
+                return;
+            }
+            if state.selected_diff.is_none() {
+                state.analysis_error_message =
+                    Some("load detailed diff before running AI analysis".to_string());
+                return;
+            }
+
+            state.analysis_loading = true;
+            state.analysis_error_message = None;
+            state.analysis_result = None;
+            state.analysis_hint = Some("Running AI analysis (mock provider)...".to_string());
+            (
+                selected_row,
+                state.selected_diff.clone(),
+                state.diff_warning.clone(),
+                state.diff_truncated,
+                Arc::clone(&self.state),
+            )
+        };
+
+        thread::spawn(move || {
+            // Give UI one short frame to render loading state before heavy work.
+            thread::sleep(BACKGROUND_START_DELAY);
+
+            let result = selected_row
+                .ok_or_else(|| "select one compare row before running AI analysis".to_string())
+                .and_then(|row| {
+                    selected_diff
+                        .as_ref()
+                        .ok_or_else(|| "load detailed diff before running AI analysis".to_string())
+                        .and_then(|diff| {
+                            bridge::build_analyze_diff_request(
+                                &row,
+                                diff,
+                                diff_warning.as_deref(),
+                                diff_truncated,
+                            )
+                        })
+                })
+                .and_then(run_ai_analysis)
+                .map(bridge::map_analyze_diff_response);
+
+            let mut state = state_ref.lock().expect("state mutex poisoned");
+            state.analysis_loading = false;
+            match result {
+                Ok(analysis_vm) => {
+                    state.analysis_error_message = None;
+                    state.analysis_result = Some(analysis_vm);
+                    state.analysis_hint =
+                        Some("AI analysis loaded from mock provider.".to_string());
+                    state.status_text = "AI analysis loaded".to_string();
+                }
+                Err(message) => {
+                    state.analysis_error_message = Some(message);
+                    state.analysis_result = None;
+                    state.status_text = "AI analysis unavailable".to_string();
                 }
             }
         });
@@ -446,6 +574,116 @@ mod tests {
         let snapshot = wait_until(&presenter, |state| !state.diff_loading);
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.selected_diff.is_some());
+    }
+
+    #[test]
+    fn load_ai_analysis_sets_loading_true_before_background_completion() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("doc.rs"), "fn old() {}\n")
+            .expect("left file should be written");
+        fs::write(
+            right.path().join("doc.rs"),
+            "fn new() {\n    unsafe { panic!(\"boom\"); }\n}\n",
+        )
+        .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+
+        presenter.handle_command(UiCommand::LoadAiAnalysis);
+        assert!(presenter.state_snapshot().analysis_loading);
+        let snapshot = wait_until(&presenter, |state| !state.analysis_loading);
+        assert!(snapshot.analysis_error_message.is_none());
+        assert!(snapshot.analysis_result.is_some());
+    }
+
+    #[test]
+    fn load_ai_analysis_for_non_analyzable_row_sets_analysis_error_only() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("left_only.txt"), "left\n")
+            .expect("left file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadAiAnalysis);
+
+        let snapshot = presenter.state_snapshot();
+        assert!(snapshot.error_message.is_none());
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.analysis_error_message.is_some());
+        assert!(snapshot.analysis_result.is_none());
+    }
+
+    #[test]
+    fn analysis_error_does_not_pollute_compare_or_diff_error() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("doc.txt"), "a\nleft\n").expect("left file should be written");
+        fs::write(right.path().join("doc.txt"), "a\nright\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadAiAnalysis);
+
+        let snapshot = presenter.state_snapshot();
+        assert!(snapshot.error_message.is_none());
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.analysis_error_message.is_some());
+    }
+
+    #[test]
+    fn rerun_compare_clears_previous_analysis_panel_state() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("doc.txt"), "fn old() {}\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("doc.txt"), "fn new() {}\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+        presenter.handle_command(UiCommand::LoadAiAnalysis);
+        wait_until(&presenter, |state| !state.analysis_loading);
+        assert!(presenter.state_snapshot().analysis_result.is_some());
+
+        presenter.handle_command(UiCommand::RunCompare);
+        let snapshot = wait_until(&presenter, |state| !state.running);
+        assert!(snapshot.analysis_result.is_none());
+        assert!(snapshot.analysis_error_message.is_none());
+        assert!(!snapshot.analysis_loading);
+        assert!(!snapshot.analysis_available);
     }
 
     #[test]

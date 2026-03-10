@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-10.8.2)
+# Folder Compare Architecture (Phase 1-11)
 
 ## Crate responsibilities
 
@@ -90,7 +90,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
 - OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
 
-## `fc-ui-slint` interaction/layout maturity after Phase 10.8.2
+## `fc-ui-slint` interaction/layout maturity after Phase 11
 
 - Main window now supports:
   - left/right directory path input;
@@ -106,6 +106,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
     - visual separation for hunk headers and added/removed/context rows;
     - diff warning and diff truncated semantics;
     - diff-level error display isolated from compare-level errors.
+- AI analysis panel now runs through `fc-ai` mock pipeline:
+  - `Analyze` action from selected diff row;
+  - bridge mapping from selected row + detailed diff to `AnalyzeDiffRequest` (`RiskReview`);
+  - `Analyzer + MockAiProvider` invocation in presenter command flow;
+  - analysis result card fields (`title`, `risk_level`, `rationale`, `key_points`, `review_suggestions`);
+  - independent analysis loading/error/result state, separated from compare/diff states.
 - Text/layout stability improvements for large-directory output:
   - compare warnings now use wrapped text with UI-side line splitting and a scrollable warning block to avoid overflow beyond container bounds;
   - selected path display now uses safe middle-ellipsis abbreviation for very long values;
@@ -114,7 +120,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - selected path;
   - diff summary;
   - diff status block (loading/warning/truncated/error);
-  - analysis slot placeholder (`Phase 11`) between status and diff viewer;
+  - AI analysis panel (mock provider) between status and diff viewer;
   - detailed unified diff viewer as the primary lower section.
 - Interaction/runtime improvements:
   - compare and detailed diff execution moved to background worker threads with a short startup defer so loading state can render first;
@@ -134,16 +140,15 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 10.8.2
+## Still deferred after Phase 11
 
 - real remote provider execution (HTTP/API integration) is not implemented.
-- UI and AI analysis integration flow is not implemented.
 - tree-based directory explorer and side-by-side directory comparison layout are not implemented.
 
 ## Next implementation priority
 
-Phase 11 should focus on UI integration with `fc-ai` mock provider:
+Phase 12 should focus on real provider integration and engineering hardening:
 
-1. selected diff panel output to `AnalyzeDiffRequest` mapping;
-2. `fc-ai` analyzer invocation with deterministic mock provider in UI flow;
-3. AI card rendering with explicit fallback when AI is disabled or unavailable.
+1. OpenAI-compatible provider wiring in `fc-ai` and provider selection in UI;
+2. retry/timeout/logging/diagnostics around remote analysis execution;
+3. release-ready UX hardening for compare/diff/analysis failure paths.

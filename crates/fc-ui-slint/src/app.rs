@@ -44,11 +44,21 @@ slint::slint! {
         in property <[string]> diff_new_line_nos;
         in property <[string]> diff_markers;
         in property <[string]> diff_contents;
+        in property <bool> analysis_loading;
+        in property <bool> analysis_available;
+        in property <string> analysis_hint_text;
+        in property <string> analysis_error_text;
+        in property <string> analysis_title_text;
+        in property <string> analysis_risk_level_text;
+        in property <string> analysis_rationale_text;
+        in property <string> analysis_key_points_text;
+        in property <string> analysis_review_suggestions_text;
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
         callback filter_changed(string);
         callback row_selected(int);
+        callback analyze_clicked();
 
         VerticalLayout {
             padding: 12px;
@@ -105,6 +115,7 @@ slint::slint! {
                 height: root.compare_truncated ? 64px : 50px;
                 clip: true;
                 VerticalLayout {
+                    padding: 6px;
                     spacing: 2px;
                     Text {
                         text: "Compare Summary";
@@ -131,6 +142,7 @@ slint::slint! {
                 height: root.warnings_text == "" ? 0px : 86px;
                 clip: true;
                 VerticalLayout {
+                    padding: 6px;
                     spacing: 2px;
                     Text {
                         text: "Compare Warnings";
@@ -154,11 +166,14 @@ slint::slint! {
                 visible: root.error_text != "";
                 height: root.error_text == "" ? 0px : 44px;
                 clip: true;
-                Text {
-                    text: root.error_text;
-                    wrap: word-wrap;
-                    color: #8c1d1d;
-                    horizontal-stretch: 1;
+                VerticalLayout {
+                    padding: 6px;
+                    Text {
+                        text: root.error_text;
+                        wrap: word-wrap;
+                        color: #8c1d1d;
+                        horizontal-stretch: 1;
+                    }
                 }
             }
 
@@ -268,6 +283,7 @@ slint::slint! {
                                 height: 58px;
                                 clip: true;
                                 VerticalLayout {
+                                    padding: 6px;
                                     spacing: 2px;
                                     Text {
                                         text: "Selected Path";
@@ -288,6 +304,7 @@ slint::slint! {
                                 height: 52px;
                                 clip: true;
                                 VerticalLayout {
+                                    padding: 6px;
                                     spacing: 2px;
                                     Text {
                                         text: "Diff Summary";
@@ -308,6 +325,7 @@ slint::slint! {
                                 height: root.diff_loading || root.diff_truncated || root.diff_warning_text != "" || root.diff_error_text != "" ? 82px : 46px;
                                 clip: true;
                                 VerticalLayout {
+                                    padding: 6px;
                                     spacing: 2px;
                                     Text {
                                         text: "Diff Status";
@@ -352,19 +370,91 @@ slint::slint! {
                             Rectangle {
                                 border-width: 1px;
                                 border-color: #d6d6d6;
-                                height: 64px;
+                                height: root.analysis_loading || root.analysis_error_text != "" || root.analysis_title_text != "" ? 180px : 86px;
                                 clip: true;
                                 VerticalLayout {
-                                    spacing: 2px;
-                                    Text {
-                                        text: "Analysis Slot (Phase 11 Placeholder)";
-                                        color: #555;
+                                    padding: 6px;
+                                    spacing: 4px;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Text {
+                                            text: "AI Analysis (Mock)";
+                                            color: #555;
+                                        }
+                                        Rectangle {
+                                            horizontal-stretch: 1;
+                                        }
+                                        Button {
+                                            text: root.analysis_loading ? "Analyzing..." : "Analyze";
+                                            enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running;
+                                            clicked => {
+                                                root.analyze_clicked();
+                                            }
+                                        }
                                     }
-                                    Text {
-                                        text: "AI summary/risk panel will be inserted here.";
-                                        color: #777;
-                                        wrap: word-wrap;
-                                        horizontal-stretch: 1;
+
+                                    ScrollView {
+                                        vertical-stretch: 1;
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            Text {
+                                                visible: root.analysis_hint_text != "";
+                                                text: root.analysis_hint_text;
+                                                color: #777;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_loading;
+                                                text: "Running AI analysis with mock provider...";
+                                                color: #2f4f70;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_error_text != "";
+                                                text: root.analysis_error_text;
+                                                color: #8c1d1d;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_title_text != "";
+                                                text: root.analysis_title_text;
+                                                color: #1f3e58;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_risk_level_text != "";
+                                                text: "Risk Level: " + root.analysis_risk_level_text;
+                                                color: #445a6a;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_rationale_text != "";
+                                                text: root.analysis_rationale_text;
+                                                color: #444;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_key_points_text != "";
+                                                text: "Key Points:\n" + root.analysis_key_points_text;
+                                                color: #444;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_review_suggestions_text != "";
+                                                text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
+                                                color: #444;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -495,6 +585,21 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_diff_warning_text(state.diff_warning_text().into());
     window.set_diff_error_text(state.diff_error_message.clone().unwrap_or_default().into());
     window.set_diff_truncated(state.diff_truncated);
+    window.set_analysis_loading(state.analysis_loading);
+    window.set_analysis_available(state.analysis_available);
+    window.set_analysis_hint_text(state.analysis_hint_text().into());
+    window.set_analysis_error_text(
+        state
+            .analysis_error_message
+            .clone()
+            .unwrap_or_default()
+            .into(),
+    );
+    window.set_analysis_title_text(state.analysis_title_text().into());
+    window.set_analysis_risk_level_text(state.analysis_risk_level_text().into());
+    window.set_analysis_rationale_text(state.analysis_rationale_text().into());
+    window.set_analysis_key_points_text(state.analysis_key_points_text().into());
+    window.set_analysis_review_suggestions_text(state.analysis_review_suggestions_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     let filtered_rows = state.filtered_entry_rows_with_index();
     let row_statuses = filtered_rows
@@ -630,6 +735,23 @@ pub fn run() -> anyhow::Result<()> {
 
         filter_bridge.dispatch(UiCommand::UpdateEntryFilter(value.to_string()));
         sync_window_state_if_changed(&window, &filter_bridge, &filter_cache, SyncMode::Passive);
+    });
+
+    let app_weak = app.as_weak();
+    let analysis_bridge = bridge.clone();
+    let analysis_cache = Arc::clone(&sync_cache);
+    app.on_analyze_clicked(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        analysis_bridge.dispatch(UiCommand::LoadAiAnalysis);
+        sync_window_state_if_changed(
+            &window,
+            &analysis_bridge,
+            &analysis_cache,
+            SyncMode::Passive,
+        );
     });
 
     app.run().map_err(|err| anyhow::anyhow!(err.to_string()))?;

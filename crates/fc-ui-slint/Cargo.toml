@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 fc-core.workspace = true
+fc-ai.workspace = true
 slint.workspace = true
 smol_str.workspace = true
 tracing.workspace = true

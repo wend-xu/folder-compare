@@ -17,6 +17,10 @@ pub struct CompareEntryRowViewModel {
     pub can_load_diff: bool,
     /// Why this row cannot trigger detailed diff (if any).
     pub diff_blocked_reason: Option<String>,
+    /// Whether this row can trigger AI analysis.
+    pub can_load_analysis: bool,
+    /// Why this row cannot trigger AI analysis (if any).
+    pub analysis_blocked_reason: Option<String>,
 }
 
 impl CompareEntryRowViewModel {
@@ -115,4 +119,41 @@ impl DiffLineViewModel {
             _ => " ",
         }
     }
+}
+
+/// AI analysis panel payload for one selected diff.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AnalysisResultViewModel {
+    /// Short headline for UI display.
+    pub title: String,
+    /// Risk level text (`low`, `medium`, `high`).
+    pub risk_level: String,
+    /// Human-readable reasoning text.
+    pub rationale: String,
+    /// Key bullet points.
+    pub key_points: Vec<String>,
+    /// Follow-up review suggestions.
+    pub review_suggestions: Vec<String>,
+}
+
+impl AnalysisResultViewModel {
+    /// Returns key points as one multiline bullet block.
+    pub fn key_points_text(&self) -> String {
+        bullet_lines(&self.key_points)
+    }
+
+    /// Returns review suggestions as one multiline bullet block.
+    pub fn review_suggestions_text(&self) -> String {
+        bullet_lines(&self.review_suggestions)
+    }
+}
+
+fn bullet_lines(items: &[String]) -> String {
+    items
+        .iter()
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .map(|item| format!("• {item}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

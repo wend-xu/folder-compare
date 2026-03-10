@@ -1,6 +1,6 @@
 //! App state for compare + detailed diff UI workflow.
 
-use crate::view_models::{CompareEntryRowViewModel, DiffPanelViewModel};
+use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
 
 const WARNING_WRAP_COLUMNS: usize = 96;
 const PATH_DISPLAY_MAX_CHARS: usize = 140;
@@ -44,6 +44,16 @@ pub struct AppState {
     pub diff_warning: Option<String>,
     /// Whether selected detailed diff is truncated.
     pub diff_truncated: bool,
+    /// Whether AI analysis can be triggered for current selection.
+    pub analysis_available: bool,
+    /// Whether AI analysis loading is running.
+    pub analysis_loading: bool,
+    /// Optional hint text for AI analysis availability.
+    pub analysis_hint: Option<String>,
+    /// Top-level AI analysis error.
+    pub analysis_error_message: Option<String>,
+    /// Structured AI analysis payload for panel rendering.
+    pub analysis_result: Option<AnalysisResultViewModel>,
 }
 
 impl Default for AppState {
@@ -66,6 +76,11 @@ impl Default for AppState {
             selected_diff: None,
             diff_warning: None,
             diff_truncated: false,
+            analysis_available: false,
+            analysis_loading: false,
+            analysis_hint: Some("Select one changed text file to analyze.".to_string()),
+            analysis_error_message: None,
+            analysis_result: None,
         }
     }
 }
@@ -182,6 +197,58 @@ impl AppState {
         self.diff_warning = None;
         self.diff_truncated = false;
     }
+
+    /// Clears AI analysis panel state without changing compare/diff state.
+    pub fn clear_analysis_panel(&mut self) {
+        self.analysis_loading = false;
+        self.analysis_error_message = None;
+        self.analysis_result = None;
+    }
+
+    /// Returns AI analysis hint text for UI rendering.
+    pub fn analysis_hint_text(&self) -> String {
+        self.analysis_hint.clone().unwrap_or_default()
+    }
+
+    /// Returns AI analysis title text for UI rendering.
+    pub fn analysis_title_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| result.title.clone())
+            .unwrap_or_default()
+    }
+
+    /// Returns AI risk level text for UI rendering.
+    pub fn analysis_risk_level_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| result.risk_level.clone())
+            .unwrap_or_default()
+    }
+
+    /// Returns AI rationale text for UI rendering.
+    pub fn analysis_rationale_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| result.rationale.clone())
+            .unwrap_or_default()
+    }
+
+    /// Returns AI key points text for UI rendering.
+    pub fn analysis_key_points_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| result.key_points_text())
+            .unwrap_or_default()
+    }
+
+    /// Returns AI review suggestions text for UI rendering.
+    pub fn analysis_review_suggestions_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| result.review_suggestions_text())
+            .unwrap_or_default()
+    }
 }
 
 fn wrap_ui_text(text: &str, max_columns: usize) -> Vec<String> {
@@ -259,6 +326,8 @@ mod tests {
                 detail_kind: "text-diff".to_string(),
                 can_load_diff: true,
                 diff_blocked_reason: None,
+                can_load_analysis: true,
+                analysis_blocked_reason: None,
             },
             CompareEntryRowViewModel {
                 relative_path: "assets/logo.png".to_string(),
@@ -268,6 +337,8 @@ mod tests {
                 detail_kind: "file-comparison".to_string(),
                 can_load_diff: false,
                 diff_blocked_reason: Some("binary candidate".to_string()),
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("binary candidate".to_string()),
             },
         ]
     }
@@ -341,5 +412,25 @@ mod tests {
         let display = state.selected_relative_path_text();
         assert!(display.contains('…'));
         assert!(display.len() < 200);
+    }
+
+    #[test]
+    fn clear_analysis_panel_resets_loading_error_and_result() {
+        let mut state = AppState {
+            analysis_loading: true,
+            analysis_error_message: Some("error".to_string()),
+            analysis_result: Some(AnalysisResultViewModel {
+                title: "title".to_string(),
+                risk_level: "low".to_string(),
+                rationale: "ok".to_string(),
+                key_points: vec!["k".to_string()],
+                review_suggestions: vec!["s".to_string()],
+            }),
+            ..AppState::default()
+        };
+        state.clear_analysis_panel();
+        assert!(!state.analysis_loading);
+        assert!(state.analysis_error_message.is_none());
+        assert!(state.analysis_result.is_none());
     }
 }

@@ -4,13 +4,16 @@ use crate::commands::UiCommand;
 use crate::presenter::Presenter;
 use crate::state::AppState;
 use crate::view_models::{
-    CompareEntryRowViewModel, CompareResultViewModel, DiffHunkViewModel, DiffLineViewModel,
-    DiffPanelViewModel,
+    AnalysisResultViewModel, CompareEntryRowViewModel, CompareResultViewModel, DiffHunkViewModel,
+    DiffLineViewModel, DiffPanelViewModel,
+};
+use fc_ai::{
+    AiConfig, AnalysisTask, AnalyzeDiffRequest, AnalyzeDiffResponse, RiskLevel as AiRiskLevel,
 };
 use fc_core::{
     CompareEntry, CompareOptions, CompareReport, CompareRequest, DiffLineKind, EntryDetail,
     EntryKind, EntryStatus, TextDetailDeferredReason, TextDiffOptions, TextDiffRequest,
-    TextDiffResult,
+    TextDiffResult, TextDiffSummary,
 };
 use std::path::PathBuf;
 
@@ -156,8 +159,65 @@ pub fn map_text_diff_result(relative_path: &str, result: TextDiffResult) -> Diff
     }
 }
 
+/// Builds an AI analysis request from selected row + detailed diff panel payload.
+pub fn build_analyze_diff_request(
+    row: &CompareEntryRowViewModel,
+    diff: &DiffPanelViewModel,
+    diff_warning: Option<&str>,
+    diff_truncated: bool,
+) -> Result<AnalyzeDiffRequest, String> {
+    if !row.can_load_analysis {
+        return Err(row
+            .analysis_blocked_reason
+            .clone()
+            .unwrap_or_else(|| "selected row does not support AI analysis".to_string()));
+    }
+    if diff.hunks.is_empty() {
+        return Err("load detailed diff before running AI analysis".to_string());
+    }
+
+    let diff_excerpt = build_diff_excerpt(diff);
+    if diff_excerpt.trim().is_empty() {
+        return Err("detailed diff excerpt is empty, cannot run AI analysis".to_string());
+    }
+
+    let mut notes = Vec::new();
+    if diff_truncated {
+        notes.push("detailed diff output is truncated".to_string());
+    }
+    if let Some(warning) = diff_warning.map(str::trim).filter(|item| !item.is_empty()) {
+        notes.push(warning.to_string());
+    }
+
+    Ok(AnalyzeDiffRequest {
+        task: AnalysisTask::RiskReview,
+        relative_path: Some(row.relative_path.clone()),
+        language_hint: infer_language_hint(&row.relative_path),
+        diff_excerpt,
+        summary: Some(build_diff_summary(diff)),
+        truncation_note: if notes.is_empty() {
+            None
+        } else {
+            Some(notes.join("; "))
+        },
+        config: AiConfig::default(),
+    })
+}
+
+/// Maps AI analysis response into panel-ready view model.
+pub fn map_analyze_diff_response(response: AnalyzeDiffResponse) -> AnalysisResultViewModel {
+    AnalysisResultViewModel {
+        title: response.title,
+        risk_level: ai_risk_level_text(response.risk_level).to_string(),
+        rationale: response.rationale,
+        key_points: response.key_points,
+        review_suggestions: response.review_suggestions,
+    }
+}
+
 fn map_entry_row(entry: &CompareEntry) -> CompareEntryRowViewModel {
     let diff_blocked_reason = detailed_diff_blocked_reason(entry);
+    let analysis_blocked_reason = detailed_analysis_blocked_reason(entry, &diff_blocked_reason);
     CompareEntryRowViewModel {
         relative_path: entry.relative_path.clone(),
         status: status_text(entry.status),
@@ -166,6 +226,8 @@ fn map_entry_row(entry: &CompareEntry) -> CompareEntryRowViewModel {
         detail_kind: detail_kind_text(&entry.detail).to_string(),
         can_load_diff: diff_blocked_reason.is_none(),
         diff_blocked_reason,
+        can_load_analysis: analysis_blocked_reason.is_none(),
+        analysis_blocked_reason,
     }
 }
 
@@ -280,6 +342,101 @@ fn detailed_diff_blocked_reason(entry: &CompareEntry) -> Option<String> {
     }
 }
 
+fn detailed_analysis_blocked_reason(
+    entry: &CompareEntry,
+    diff_blocked_reason: &Option<String>,
+) -> Option<String> {
+    if let Some(reason) = diff_blocked_reason {
+        return Some(reason.clone());
+    }
+
+    if entry.status != EntryStatus::Different {
+        return Some("AI analysis is only available for changed file entries".to_string());
+    }
+
+    None
+}
+
+fn build_diff_excerpt(diff: &DiffPanelViewModel) -> String {
+    let mut out = Vec::new();
+    for hunk in &diff.hunks {
+        out.push(hunk.header());
+        for line in &hunk.lines {
+            out.push(format!("{}{}", line.marker(), line.content));
+        }
+    }
+    out.join("\n")
+}
+
+fn build_diff_summary(diff: &DiffPanelViewModel) -> TextDiffSummary {
+    let mut added = 0usize;
+    let mut removed = 0usize;
+    let mut context = 0usize;
+    for hunk in &diff.hunks {
+        for line in &hunk.lines {
+            match line.kind_tag() {
+                "added" => added += 1,
+                "removed" => removed += 1,
+                _ => context += 1,
+            }
+        }
+    }
+
+    TextDiffSummary {
+        hunk_count: diff.hunks.len(),
+        added_lines: added,
+        removed_lines: removed,
+        context_lines: context,
+    }
+}
+
+fn infer_language_hint(relative_path: &str) -> Option<String> {
+    let extension = PathBuf::from(relative_path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())?;
+
+    let language = match extension.as_str() {
+        "rs" => "rust",
+        "py" => "python",
+        "js" => "javascript",
+        "ts" => "typescript",
+        "tsx" => "tsx",
+        "jsx" => "jsx",
+        "go" => "go",
+        "java" => "java",
+        "kt" => "kotlin",
+        "swift" => "swift",
+        "rb" => "ruby",
+        "php" => "php",
+        "c" => "c",
+        "h" => "c-header",
+        "cc" | "cpp" | "cxx" | "hpp" => "cpp",
+        "cs" => "csharp",
+        "lua" => "lua",
+        "sh" => "shell",
+        "ps1" => "powershell",
+        "json" => "json",
+        "toml" => "toml",
+        "yaml" | "yml" => "yaml",
+        "md" => "markdown",
+        "xml" => "xml",
+        "html" | "htm" => "html",
+        "css" => "css",
+        "sql" => "sql",
+        _ => return None,
+    };
+    Some(language.to_string())
+}
+
+fn ai_risk_level_text(level: AiRiskLevel) -> &'static str {
+    match level {
+        AiRiskLevel::Low => "low",
+        AiRiskLevel::Medium => "medium",
+        AiRiskLevel::High => "high",
+    }
+}
+
 fn diff_line_kind_text(kind: DiffLineKind) -> &'static str {
     match kind {
         DiffLineKind::Added => "Added",
@@ -349,6 +506,8 @@ mod tests {
             detail_kind: "text-diff".to_string(),
             can_load_diff: true,
             diff_blocked_reason: None,
+            can_load_analysis: true,
+            analysis_blocked_reason: None,
         };
         let req = build_text_diff_request("/tmp/left", "/tmp/right", &row)
             .expect("diff request should be built");
@@ -370,6 +529,8 @@ mod tests {
             detail_kind: "file-comparison".to_string(),
             can_load_diff: false,
             diff_blocked_reason: Some("binary candidate".to_string()),
+            can_load_analysis: false,
+            analysis_blocked_reason: Some("binary candidate".to_string()),
         };
         let err = build_text_diff_request("/tmp/left", "/tmp/right", &row)
             .expect_err("non-diffable row should fail");
@@ -422,6 +583,103 @@ mod tests {
     }
 
     #[test]
+    fn build_analyze_diff_request_uses_selected_diff_payload() {
+        let row = CompareEntryRowViewModel {
+            relative_path: "src/lib.rs".to_string(),
+            status: "different".to_string(),
+            detail: "text summary".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "text-diff".to_string(),
+            can_load_diff: true,
+            diff_blocked_reason: None,
+            can_load_analysis: true,
+            analysis_blocked_reason: None,
+        };
+        let diff = DiffPanelViewModel {
+            relative_path: "src/lib.rs".to_string(),
+            summary_text: "hunks=1 +1 -1 ctx=0".to_string(),
+            hunks: vec![DiffHunkViewModel {
+                old_start: 2,
+                old_len: 1,
+                new_start: 2,
+                new_len: 1,
+                lines: vec![
+                    DiffLineViewModel {
+                        old_line_no: Some(2),
+                        new_line_no: None,
+                        kind: "Removed".to_string(),
+                        content: "old".to_string(),
+                    },
+                    DiffLineViewModel {
+                        old_line_no: None,
+                        new_line_no: Some(2),
+                        kind: "Added".to_string(),
+                        content: "new".to_string(),
+                    },
+                ],
+            }],
+            warning: Some("line limit reached".to_string()),
+            truncated: true,
+        };
+
+        let req = build_analyze_diff_request(&row, &diff, diff.warning.as_deref(), diff.truncated)
+            .expect("analysis request should be built");
+        assert_eq!(req.task, AnalysisTask::RiskReview);
+        assert_eq!(req.relative_path.as_deref(), Some("src/lib.rs"));
+        assert_eq!(req.language_hint.as_deref(), Some("rust"));
+        assert!(req.diff_excerpt.contains("@@"));
+        assert!(req.diff_excerpt.contains("-old"));
+        assert!(req.diff_excerpt.contains("+new"));
+        assert_eq!(
+            req.summary.as_ref().map(|summary| summary.hunk_count),
+            Some(1)
+        );
+        assert!(req
+            .truncation_note
+            .expect("note should exist")
+            .contains("line limit reached"));
+    }
+
+    #[test]
+    fn build_analyze_diff_request_rejects_non_analyzable_row() {
+        let row = CompareEntryRowViewModel {
+            relative_path: "left-only.txt".to_string(),
+            status: "left-only".to_string(),
+            detail: "left only".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "none".to_string(),
+            can_load_diff: false,
+            diff_blocked_reason: Some(
+                "detailed diff requires files that exist on both sides".into(),
+            ),
+            can_load_analysis: false,
+            analysis_blocked_reason: Some(
+                "AI analysis is only available for changed file entries".to_string(),
+            ),
+        };
+        let diff = DiffPanelViewModel::default();
+        let err = build_analyze_diff_request(&row, &diff, None, false)
+            .expect_err("request should reject blocked rows");
+        assert!(err.contains("AI analysis") || err.contains("detailed diff"));
+    }
+
+    #[test]
+    fn map_analyze_diff_response_projects_fields() {
+        let response = AnalyzeDiffResponse {
+            risk_level: AiRiskLevel::Medium,
+            title: "Risk review for src/lib.rs".to_string(),
+            rationale: "Some risky operations changed".to_string(),
+            key_points: vec!["point a".to_string(), "point b".to_string()],
+            review_suggestions: vec!["suggestion a".to_string()],
+        };
+        let vm = map_analyze_diff_response(response);
+        assert_eq!(vm.risk_level, "medium");
+        assert!(vm.title.contains("src/lib.rs"));
+        assert!(vm.key_points_text().contains("• point a"));
+        assert!(vm.review_suggestions_text().contains("• suggestion a"));
+    }
+
+    #[test]
     fn map_compare_report_marks_left_only_as_not_diffable() {
         let report = CompareReport::from_entries(
             vec![CompareEntry::new(
@@ -437,5 +695,7 @@ mod tests {
         assert_eq!(vm.entry_rows.len(), 1);
         assert!(!vm.entry_rows[0].can_load_diff);
         assert!(vm.entry_rows[0].diff_blocked_reason.is_some());
+        assert!(!vm.entry_rows[0].can_load_analysis);
+        assert!(vm.entry_rows[0].analysis_blocked_reason.is_some());
     }
 }
