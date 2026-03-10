@@ -53,12 +53,23 @@ slint::slint! {
         in property <string> analysis_rationale_text;
         in property <string> analysis_key_points_text;
         in property <string> analysis_review_suggestions_text;
+        in property <string> analysis_provider_mode_text;
+        in property <bool> analysis_remote_mode;
+        in property <bool> analysis_remote_config_ready;
+        in-out property <string> analysis_endpoint;
+        in-out property <string> analysis_api_key;
+        in-out property <string> analysis_model;
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
         callback filter_changed(string);
         callback row_selected(int);
         callback analyze_clicked();
+        callback analysis_provider_mock_selected();
+        callback analysis_provider_openai_selected();
+        callback analysis_endpoint_changed(string);
+        callback analysis_api_key_changed(string);
+        callback analysis_model_changed(string);
 
         VerticalLayout {
             padding: 12px;
@@ -370,7 +381,7 @@ slint::slint! {
                             Rectangle {
                                 border-width: 1px;
                                 border-color: #d6d6d6;
-                                height: root.analysis_loading || root.analysis_error_text != "" || root.analysis_title_text != "" ? 180px : 86px;
+                                height: root.analysis_remote_mode ? 236px : (root.analysis_loading || root.analysis_error_text != "" || root.analysis_title_text != "" ? 188px : 110px);
                                 clip: true;
                                 VerticalLayout {
                                     padding: 6px;
@@ -379,7 +390,7 @@ slint::slint! {
                                     HorizontalLayout {
                                         spacing: 8px;
                                         Text {
-                                            text: "AI Analysis (Mock)";
+                                            text: "AI Analysis (" + root.analysis_provider_mode_text + ")";
                                             color: #555;
                                         }
                                         Rectangle {
@@ -387,9 +398,28 @@ slint::slint! {
                                         }
                                         Button {
                                             text: root.analysis_loading ? "Analyzing..." : "Analyze";
-                                            enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running;
+                                            enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running
+                                                && (!root.analysis_remote_mode || root.analysis_remote_config_ready);
                                             clicked => {
                                                 root.analyze_clicked();
+                                            }
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Button {
+                                            text: "Use Mock";
+                                            enabled: root.analysis_provider_mode_text != "Mock";
+                                            clicked => {
+                                                root.analysis_provider_mock_selected();
+                                            }
+                                        }
+                                        Button {
+                                            text: "Use OpenAI-compatible";
+                                            enabled: root.analysis_provider_mode_text != "OpenAI-compatible";
+                                            clicked => {
+                                                root.analysis_provider_openai_selected();
                                             }
                                         }
                                     }
@@ -398,6 +428,75 @@ slint::slint! {
                                         vertical-stretch: 1;
                                         VerticalLayout {
                                             spacing: 2px;
+                                            Rectangle {
+                                                visible: root.analysis_remote_mode;
+                                                border-width: 1px;
+                                                border-color: #d6d6d6;
+                                                height: 102px;
+                                                VerticalLayout {
+                                                    padding: 4px;
+                                                    spacing: 4px;
+                                                    HorizontalLayout {
+                                                        spacing: 6px;
+                                                        Text {
+                                                            text: "Endpoint:";
+                                                            width: 70px;
+                                                            color: #555;
+                                                        }
+                                                        LineEdit {
+                                                            text <=> root.analysis_endpoint;
+                                                            enabled: !root.analysis_loading;
+                                                            edited(value) => {
+                                                                root.analysis_endpoint_changed(value);
+                                                            }
+                                                        }
+                                                    }
+                                                    HorizontalLayout {
+                                                        spacing: 6px;
+                                                        Text {
+                                                            text: "API Key:";
+                                                            width: 70px;
+                                                            color: #555;
+                                                        }
+                                                        LineEdit {
+                                                            text <=> root.analysis_api_key;
+                                                            enabled: !root.analysis_loading;
+                                                            edited(value) => {
+                                                                root.analysis_api_key_changed(value);
+                                                            }
+                                                        }
+                                                    }
+                                                    HorizontalLayout {
+                                                        spacing: 6px;
+                                                        Text {
+                                                            text: "Model:";
+                                                            width: 70px;
+                                                            color: #555;
+                                                        }
+                                                        LineEdit {
+                                                            text <=> root.analysis_model;
+                                                            enabled: !root.analysis_loading;
+                                                            edited(value) => {
+                                                                root.analysis_model_changed(value);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Text {
+                                                visible: root.analysis_remote_mode;
+                                                text: "Remote mode: diff excerpt will be sent to the configured endpoint.";
+                                                color: #7a4b00;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_remote_mode && !root.analysis_remote_config_ready;
+                                                text: "Remote config incomplete: endpoint, API key and model are required.";
+                                                color: #8c1d1d;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
                                             Text {
                                                 visible: root.analysis_hint_text != "";
                                                 text: root.analysis_hint_text;
@@ -407,7 +506,7 @@ slint::slint! {
                                             }
                                             Text {
                                                 visible: root.analysis_loading;
-                                                text: "Running AI analysis with mock provider...";
+                                                text: "Running AI analysis...";
                                                 color: #2f4f70;
                                                 wrap: word-wrap;
                                                 horizontal-stretch: 1;
@@ -563,6 +662,9 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
         window.set_left_root(state.left_root.clone().into());
         window.set_right_root(state.right_root.clone().into());
         window.set_entry_filter(state.entry_filter.clone().into());
+        window.set_analysis_endpoint(state.analysis_openai_endpoint.clone().into());
+        window.set_analysis_api_key(state.analysis_openai_api_key.clone().into());
+        window.set_analysis_model(state.analysis_openai_model.clone().into());
     }
 
     window.set_running(state.running);
@@ -600,6 +702,9 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_analysis_rationale_text(state.analysis_rationale_text().into());
     window.set_analysis_key_points_text(state.analysis_key_points_text().into());
     window.set_analysis_review_suggestions_text(state.analysis_review_suggestions_text().into());
+    window.set_analysis_provider_mode_text(state.analysis_provider_mode_text().into());
+    window.set_analysis_remote_mode(state.analysis_remote_mode());
+    window.set_analysis_remote_config_ready(state.analysis_remote_config_ready());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     let filtered_rows = state.filtered_entry_rows_with_index();
     let row_statuses = filtered_rows
@@ -745,6 +850,15 @@ pub fn run() -> anyhow::Result<()> {
             return;
         };
 
+        analysis_bridge.dispatch(UiCommand::UpdateAiEndpoint(
+            window.get_analysis_endpoint().to_string(),
+        ));
+        analysis_bridge.dispatch(UiCommand::UpdateAiApiKey(
+            window.get_analysis_api_key().to_string(),
+        ));
+        analysis_bridge.dispatch(UiCommand::UpdateAiModel(
+            window.get_analysis_model().to_string(),
+        ));
         analysis_bridge.dispatch(UiCommand::LoadAiAnalysis);
         sync_window_state_if_changed(
             &window,
@@ -752,6 +866,81 @@ pub fn run() -> anyhow::Result<()> {
             &analysis_cache,
             SyncMode::Passive,
         );
+    });
+
+    let app_weak = app.as_weak();
+    let provider_bridge = bridge.clone();
+    let provider_cache = Arc::clone(&sync_cache);
+    app.on_analysis_provider_mock_selected(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        provider_bridge.dispatch(UiCommand::SetAiProviderModeMock);
+        sync_window_state_if_changed(
+            &window,
+            &provider_bridge,
+            &provider_cache,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let provider_bridge = bridge.clone();
+    let provider_cache = Arc::clone(&sync_cache);
+    app.on_analysis_provider_openai_selected(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        provider_bridge.dispatch(UiCommand::SetAiProviderModeOpenAiCompatible);
+        sync_window_state_if_changed(
+            &window,
+            &provider_bridge,
+            &provider_cache,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let endpoint_bridge = bridge.clone();
+    let endpoint_cache = Arc::clone(&sync_cache);
+    app.on_analysis_endpoint_changed(move |value| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        endpoint_bridge.dispatch(UiCommand::UpdateAiEndpoint(value.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &endpoint_bridge,
+            &endpoint_cache,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let api_key_bridge = bridge.clone();
+    let api_key_cache = Arc::clone(&sync_cache);
+    app.on_analysis_api_key_changed(move |value| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        api_key_bridge.dispatch(UiCommand::UpdateAiApiKey(value.to_string()));
+        sync_window_state_if_changed(&window, &api_key_bridge, &api_key_cache, SyncMode::Passive);
+    });
+
+    let app_weak = app.as_weak();
+    let model_bridge = bridge.clone();
+    let model_cache = Arc::clone(&sync_cache);
+    app.on_analysis_model_changed(move |value| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        model_bridge.dispatch(UiCommand::UpdateAiModel(value.to_string()));
+        sync_window_state_if_changed(&window, &model_bridge, &model_cache, SyncMode::Passive);
     });
 
     app.run().map_err(|err| anyhow::anyhow!(err.to_string()))?;

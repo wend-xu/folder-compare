@@ -1,6 +1,7 @@
 //! App state for compare + detailed diff UI workflow.
 
 use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
+use fc_ai::{AiConfig, AiProviderKind};
 
 const WARNING_WRAP_COLUMNS: usize = 96;
 const PATH_DISPLAY_MAX_CHARS: usize = 140;
@@ -54,6 +55,14 @@ pub struct AppState {
     pub analysis_error_message: Option<String>,
     /// Structured AI analysis payload for panel rendering.
     pub analysis_result: Option<AnalysisResultViewModel>,
+    /// Selected AI provider mode.
+    pub analysis_provider_kind: AiProviderKind,
+    /// OpenAI-compatible endpoint input.
+    pub analysis_openai_endpoint: String,
+    /// OpenAI-compatible API key input.
+    pub analysis_openai_api_key: String,
+    /// OpenAI-compatible model input.
+    pub analysis_openai_model: String,
 }
 
 impl Default for AppState {
@@ -81,6 +90,10 @@ impl Default for AppState {
             analysis_hint: Some("Select one changed text file to analyze.".to_string()),
             analysis_error_message: None,
             analysis_result: None,
+            analysis_provider_kind: AiProviderKind::Mock,
+            analysis_openai_endpoint: String::new(),
+            analysis_openai_api_key: String::new(),
+            analysis_openai_model: "gpt-4o-mini".to_string(),
         }
     }
 }
@@ -249,6 +262,36 @@ impl AppState {
             .map(|result| result.review_suggestions_text())
             .unwrap_or_default()
     }
+
+    /// Returns human-readable AI provider mode.
+    pub fn analysis_provider_mode_text(&self) -> String {
+        match self.analysis_provider_kind {
+            AiProviderKind::Mock => "Mock".to_string(),
+            AiProviderKind::OpenAiCompatible => "OpenAI-compatible".to_string(),
+        }
+    }
+
+    /// Returns true when remote provider mode is selected.
+    pub fn analysis_remote_mode(&self) -> bool {
+        self.analysis_provider_kind == AiProviderKind::OpenAiCompatible
+    }
+
+    /// Returns true when remote provider required config is complete.
+    pub fn analysis_remote_config_ready(&self) -> bool {
+        !self.analysis_openai_endpoint.trim().is_empty()
+            && !self.analysis_openai_api_key.trim().is_empty()
+            && !self.analysis_openai_model.trim().is_empty()
+    }
+
+    /// Builds one AI config snapshot from current UI state.
+    pub fn analysis_ai_config(&self) -> AiConfig {
+        let mut config = AiConfig::default();
+        config.provider_kind = self.analysis_provider_kind;
+        config.openai_endpoint = normalize_optional_text(&self.analysis_openai_endpoint);
+        config.openai_api_key = normalize_optional_text(&self.analysis_openai_api_key);
+        config.openai_model = normalize_optional_text(&self.analysis_openai_model);
+        config
+    }
 }
 
 fn wrap_ui_text(text: &str, max_columns: usize) -> Vec<String> {
@@ -295,6 +338,15 @@ fn abbreviate_middle(text: &str, max_chars: usize, head_chars: usize, tail_chars
     let head = chars[..head_chars].iter().collect::<String>();
     let tail = chars[chars.len() - tail_chars..].iter().collect::<String>();
     format!("{head}…{tail}")
+}
+
+fn normalize_optional_text(raw: &str) -> Option<String> {
+    let value = raw.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 /// One flattened row displayed in the unified diff viewer list.
@@ -432,5 +484,38 @@ mod tests {
         assert!(!state.analysis_loading);
         assert!(state.analysis_error_message.is_none());
         assert!(state.analysis_result.is_none());
+    }
+
+    #[test]
+    fn remote_config_ready_requires_endpoint_key_and_model() {
+        let mut state = AppState {
+            analysis_provider_kind: AiProviderKind::OpenAiCompatible,
+            ..AppState::default()
+        };
+        assert!(!state.analysis_remote_config_ready());
+
+        state.analysis_openai_endpoint = "http://localhost:11434/v1".to_string();
+        assert!(!state.analysis_remote_config_ready());
+        state.analysis_openai_api_key = "token".to_string();
+        assert!(state.analysis_remote_config_ready());
+    }
+
+    #[test]
+    fn analysis_ai_config_reflects_provider_fields() {
+        let state = AppState {
+            analysis_provider_kind: AiProviderKind::OpenAiCompatible,
+            analysis_openai_endpoint: " http://localhost:11434/v1 ".to_string(),
+            analysis_openai_api_key: " sk-test ".to_string(),
+            analysis_openai_model: " qwen2.5-coder ".to_string(),
+            ..AppState::default()
+        };
+        let config = state.analysis_ai_config();
+        assert_eq!(config.provider_kind, AiProviderKind::OpenAiCompatible);
+        assert_eq!(
+            config.openai_endpoint.as_deref(),
+            Some("http://localhost:11434/v1")
+        );
+        assert_eq!(config.openai_api_key.as_deref(), Some("sk-test"));
+        assert_eq!(config.openai_model.as_deref(), Some("qwen2.5-coder"));
     }
 }

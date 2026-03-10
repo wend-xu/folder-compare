@@ -19,9 +19,10 @@ pub(crate) fn build_prompt_payload(req: &AnalyzeDiffRequest) -> PromptPayload {
         None => "Summary Stats: (none)".to_string(),
     };
     let truncation_line = req.truncation_note.as_deref().unwrap_or("(none)");
+    let output_contract = "Return strict JSON object only with keys: risk_level (low|medium|high), title, rationale, key_points (string[]), review_suggestions (string[]).";
 
     let user_prompt = format!(
-        "{task_line}\nTarget Path: {path_line}\nLanguage Hint: {language_line}\n{summary_line}\nTruncation Note: {truncation_line}\nDiff Excerpt:\n{}",
+        "{task_line}\nTarget Path: {path_line}\nLanguage Hint: {language_line}\n{summary_line}\nTruncation Note: {truncation_line}\n{output_contract}\nDiff Excerpt:\n{}",
         req.diff_excerpt
     );
 
@@ -54,6 +55,9 @@ mod tests {
             .contains("Task: summarize the code change clearly."));
         assert!(payload.user_prompt.contains("Target Path: src/lib.rs"));
         assert!(payload.user_prompt.contains("Language Hint: rust"));
+        assert!(payload
+            .user_prompt
+            .contains("Return strict JSON object only"));
         assert!(payload.user_prompt.contains("Diff Excerpt:\n-old\n+new"));
     }
 

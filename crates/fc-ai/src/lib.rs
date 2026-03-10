@@ -8,6 +8,7 @@ pub mod services;
 pub use api::analyze::analyze_diff;
 pub use domain::error::{
     AiError, InputPreparationFailureKind, InvalidRequestKind, PromptBuildFailureKind,
+    ProviderExecutionFailureKind, ResponseParseFailureKind,
 };
 pub use domain::provider::AiProvider;
 pub use domain::types::{
@@ -51,6 +52,10 @@ mod tests {
         assert_eq!(config.max_input_chars, 12_000);
         assert_eq!(config.max_output_tokens, 512);
         assert_eq!(config.temperature, 0.0);
+        assert!(config.openai_endpoint.is_none());
+        assert!(config.openai_api_key.is_none());
+        assert_eq!(config.openai_model.as_deref(), Some("gpt-4o-mini"));
+        assert_eq!(config.request_timeout_secs, 30);
     }
 
     #[test]

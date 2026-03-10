@@ -83,6 +83,35 @@ impl Presenter {
             }
             UiCommand::LoadSelectedDiff => self.execute_load_selected_diff(),
             UiCommand::LoadAiAnalysis => self.execute_load_ai_analysis(),
+            UiCommand::SetAiProviderModeMock => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.analysis_provider_kind = fc_ai::AiProviderKind::Mock;
+                state.clear_analysis_panel();
+                state.analysis_hint =
+                    Some("Using mock provider. No remote request will be sent.".to_string());
+            }
+            UiCommand::SetAiProviderModeOpenAiCompatible => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.analysis_provider_kind = fc_ai::AiProviderKind::OpenAiCompatible;
+                state.clear_analysis_panel();
+                state.analysis_hint =
+                    Some("Using remote provider. Configure endpoint/api key/model.".to_string());
+            }
+            UiCommand::UpdateAiEndpoint(value) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.analysis_openai_endpoint = value;
+                state.analysis_error_message = None;
+            }
+            UiCommand::UpdateAiApiKey(value) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.analysis_openai_api_key = value;
+                state.analysis_error_message = None;
+            }
+            UiCommand::UpdateAiModel(value) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.analysis_openai_model = value;
+                state.analysis_error_message = None;
+            }
         }
     }
 
@@ -196,7 +225,7 @@ impl Presenter {
                     state.analysis_result = None;
                     state.analysis_loading = false;
                     state.analysis_hint = Some(if row.can_load_analysis {
-                        "Click Analyze to run AI risk review (mock provider).".to_string()
+                        "Click Analyze to run AI risk review.".to_string()
                     } else {
                         row.analysis_blocked_reason.unwrap_or_else(|| {
                             "selected row does not support AI analysis".to_string()
@@ -220,7 +249,7 @@ impl Presenter {
     }
 
     fn execute_load_ai_analysis(&self) {
-        let (selected_row, selected_diff, diff_warning, diff_truncated, state_ref) = {
+        let (selected_row, selected_diff, diff_warning, diff_truncated, ai_config, state_ref) = {
             let mut state = self.state.lock().expect("state mutex poisoned");
             if state.analysis_loading {
                 return;
@@ -251,16 +280,27 @@ impl Presenter {
                     Some("load detailed diff before running AI analysis".to_string());
                 return;
             }
+            if state.analysis_remote_mode() && !state.analysis_remote_config_ready() {
+                state.analysis_error_message = Some(
+                    "remote provider configuration is incomplete (endpoint/api key/model required)"
+                        .to_string(),
+                );
+                return;
+            }
 
             state.analysis_loading = true;
             state.analysis_error_message = None;
             state.analysis_result = None;
-            state.analysis_hint = Some("Running AI analysis (mock provider)...".to_string());
+            state.analysis_hint = Some(format!(
+                "Running AI analysis with {} provider...",
+                state.analysis_provider_mode_text()
+            ));
             (
                 selected_row,
                 state.selected_diff.clone(),
                 state.diff_warning.clone(),
                 state.diff_truncated,
+                state.analysis_ai_config(),
                 Arc::clone(&self.state),
             )
         };
@@ -281,6 +321,7 @@ impl Presenter {
                                 diff,
                                 diff_warning.as_deref(),
                                 diff_truncated,
+                                ai_config.clone(),
                             )
                         })
                 })
@@ -293,8 +334,10 @@ impl Presenter {
                 Ok(analysis_vm) => {
                     state.analysis_error_message = None;
                     state.analysis_result = Some(analysis_vm);
-                    state.analysis_hint =
-                        Some("AI analysis loaded from mock provider.".to_string());
+                    state.analysis_hint = Some(format!(
+                        "AI analysis loaded from {} provider.",
+                        state.analysis_provider_mode_text()
+                    ));
                     state.status_text = "AI analysis loaded".to_string();
                 }
                 Err(message) => {
@@ -629,6 +672,69 @@ mod tests {
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.analysis_error_message.is_some());
         assert!(snapshot.analysis_result.is_none());
+    }
+
+    #[test]
+    fn remote_provider_missing_config_sets_analysis_error() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("doc.txt"), "a\nleft\n").expect("left file should be written");
+        fs::write(right.path().join("doc.txt"), "a\nright\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+
+        presenter.handle_command(UiCommand::SetAiProviderModeOpenAiCompatible);
+        presenter.handle_command(UiCommand::LoadAiAnalysis);
+        let snapshot = presenter.state_snapshot();
+        assert!(snapshot.error_message.is_none());
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.analysis_error_message.is_some());
+        assert!(snapshot
+            .analysis_error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("incomplete"));
+    }
+
+    #[test]
+    fn switching_back_to_mock_after_remote_config_error_restores_analysis() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("doc.rs"), "fn old() {}\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("doc.rs"), "fn new() {}\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+
+        presenter.handle_command(UiCommand::SetAiProviderModeOpenAiCompatible);
+        presenter.handle_command(UiCommand::LoadAiAnalysis);
+        assert!(presenter.state_snapshot().analysis_error_message.is_some());
+
+        presenter.handle_command(UiCommand::SetAiProviderModeMock);
+        presenter.handle_command(UiCommand::LoadAiAnalysis);
+        let snapshot = wait_until(&presenter, |state| !state.analysis_loading);
+        assert!(snapshot.analysis_error_message.is_none());
+        assert!(snapshot.analysis_result.is_some());
     }
 
     #[test]

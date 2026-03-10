@@ -2,6 +2,7 @@
 
 use crate::domain::error::{
     AiError, InputPreparationFailureKind, InvalidRequestKind, PromptBuildFailureKind,
+    ResponseParseFailureKind,
 };
 use crate::domain::provider::AiProvider;
 use crate::domain::types::{AnalyzeDiffRequest, AnalyzeDiffResponse};
@@ -102,6 +103,7 @@ fn normalize_response(
     if title.is_empty() {
         return Err(AiError::ResponseParseFailed {
             provider: provider_name.to_string(),
+            kind: ResponseParseFailureKind::InvalidContract,
             message: "title is empty".to_string(),
         });
     }
@@ -110,6 +112,7 @@ fn normalize_response(
     if rationale.is_empty() {
         return Err(AiError::ResponseParseFailed {
             provider: provider_name.to_string(),
+            kind: ResponseParseFailureKind::InvalidContract,
             message: "rationale is empty".to_string(),
         });
     }

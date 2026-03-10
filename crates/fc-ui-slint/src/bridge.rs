@@ -165,6 +165,7 @@ pub fn build_analyze_diff_request(
     diff: &DiffPanelViewModel,
     diff_warning: Option<&str>,
     diff_truncated: bool,
+    mut config: AiConfig,
 ) -> Result<AnalyzeDiffRequest, String> {
     if !row.can_load_analysis {
         return Err(row
@@ -180,6 +181,43 @@ pub fn build_analyze_diff_request(
     if diff_excerpt.trim().is_empty() {
         return Err("detailed diff excerpt is empty, cannot run AI analysis".to_string());
     }
+
+    if config.provider_kind == fc_ai::AiProviderKind::OpenAiCompatible {
+        if config
+            .openai_endpoint
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            return Err(
+                "remote provider endpoint is required for OpenAI-compatible mode".to_string(),
+            );
+        }
+        if config
+            .openai_api_key
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            return Err(
+                "remote provider api key is required for OpenAI-compatible mode".to_string(),
+            );
+        }
+        if config
+            .openai_model
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            return Err("remote provider model is required for OpenAI-compatible mode".to_string());
+        }
+    }
+    config.openai_endpoint = normalize_optional_text(config.openai_endpoint);
+    config.openai_api_key = normalize_optional_text(config.openai_api_key);
+    config.openai_model = normalize_optional_text(config.openai_model);
 
     let mut notes = Vec::new();
     if diff_truncated {
@@ -200,7 +238,7 @@ pub fn build_analyze_diff_request(
         } else {
             Some(notes.join("; "))
         },
-        config: AiConfig::default(),
+        config,
     })
 }
 
@@ -429,6 +467,11 @@ fn infer_language_hint(relative_path: &str) -> Option<String> {
     Some(language.to_string())
 }
 
+fn normalize_optional_text(raw: Option<String>) -> Option<String> {
+    raw.map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn ai_risk_level_text(level: AiRiskLevel) -> &'static str {
     match level {
         AiRiskLevel::Low => "low",
@@ -622,8 +665,14 @@ mod tests {
             truncated: true,
         };
 
-        let req = build_analyze_diff_request(&row, &diff, diff.warning.as_deref(), diff.truncated)
-            .expect("analysis request should be built");
+        let req = build_analyze_diff_request(
+            &row,
+            &diff,
+            diff.warning.as_deref(),
+            diff.truncated,
+            AiConfig::default(),
+        )
+        .expect("analysis request should be built");
         assert_eq!(req.task, AnalysisTask::RiskReview);
         assert_eq!(req.relative_path.as_deref(), Some("src/lib.rs"));
         assert_eq!(req.language_hint.as_deref(), Some("rust"));
@@ -658,9 +707,51 @@ mod tests {
             ),
         };
         let diff = DiffPanelViewModel::default();
-        let err = build_analyze_diff_request(&row, &diff, None, false)
+        let err = build_analyze_diff_request(&row, &diff, None, false, AiConfig::default())
             .expect_err("request should reject blocked rows");
         assert!(err.contains("AI analysis") || err.contains("detailed diff"));
+    }
+
+    #[test]
+    fn build_analyze_diff_request_rejects_incomplete_remote_config() {
+        let row = CompareEntryRowViewModel {
+            relative_path: "src/lib.rs".to_string(),
+            status: "different".to_string(),
+            detail: "text summary".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "text-diff".to_string(),
+            can_load_diff: true,
+            diff_blocked_reason: None,
+            can_load_analysis: true,
+            analysis_blocked_reason: None,
+        };
+        let diff = DiffPanelViewModel {
+            relative_path: "src/lib.rs".to_string(),
+            summary_text: "hunks=1 +1 -1 ctx=0".to_string(),
+            hunks: vec![DiffHunkViewModel {
+                old_start: 1,
+                old_len: 1,
+                new_start: 1,
+                new_len: 1,
+                lines: vec![DiffLineViewModel {
+                    old_line_no: None,
+                    new_line_no: Some(1),
+                    kind: "Added".to_string(),
+                    content: "new".to_string(),
+                }],
+            }],
+            warning: None,
+            truncated: false,
+        };
+        let mut config = AiConfig::default();
+        config.provider_kind = fc_ai::AiProviderKind::OpenAiCompatible;
+        config.openai_endpoint = Some("http://localhost:11434/v1".to_string());
+        config.openai_api_key = None;
+        config.openai_model = Some("gpt-4o-mini".to_string());
+
+        let err = build_analyze_diff_request(&row, &diff, None, false, config)
+            .expect_err("request should reject incomplete remote config");
+        assert!(err.contains("api key"));
     }
 
     #[test]

@@ -1,7 +1,8 @@
 //! UI command definitions.
 
+use fc_ai::providers::openai_compatible::OpenAiCompatibleProvider;
 use fc_ai::services::analyzer::Analyzer;
-use fc_ai::{AnalyzeDiffRequest, AnalyzeDiffResponse, MockAiProvider};
+use fc_ai::{AiProviderKind, AnalyzeDiffRequest, AnalyzeDiffResponse, MockAiProvider};
 use fc_core::{
     compare_dirs, diff_text_file, CompareReport, CompareRequest, TextDiffRequest, TextDiffResult,
 };
@@ -25,6 +26,16 @@ pub enum UiCommand {
     LoadSelectedDiff,
     /// Loads AI analysis for selected detailed diff.
     LoadAiAnalysis,
+    /// Switches AI provider mode to mock.
+    SetAiProviderModeMock,
+    /// Switches AI provider mode to OpenAI-compatible.
+    SetAiProviderModeOpenAiCompatible,
+    /// Updates OpenAI-compatible endpoint input.
+    UpdateAiEndpoint(String),
+    /// Updates OpenAI-compatible API key input.
+    UpdateAiApiKey(String),
+    /// Updates OpenAI-compatible model input.
+    UpdateAiModel(String),
 }
 
 /// Executes one compare request against `fc-core`.
@@ -37,10 +48,20 @@ pub fn run_text_diff(req: TextDiffRequest) -> Result<TextDiffResult, String> {
     diff_text_file(req).map_err(|err| err.to_string())
 }
 
-/// Executes one AI analysis request against `fc-ai` mock provider via analyzer.
+/// Executes one AI analysis request against `fc-ai` provider via analyzer.
 pub fn run_ai_analysis(req: AnalyzeDiffRequest) -> Result<AnalyzeDiffResponse, String> {
-    let provider = MockAiProvider::new();
-    Analyzer::new(&provider)
-        .run(req)
-        .map_err(|err| err.to_string())
+    match req.config.provider_kind {
+        AiProviderKind::Mock => {
+            let provider = MockAiProvider::new();
+            Analyzer::new(&provider)
+                .run(req)
+                .map_err(|err| err.to_string())
+        }
+        AiProviderKind::OpenAiCompatible => {
+            let provider = OpenAiCompatibleProvider::new();
+            Analyzer::new(&provider)
+                .run(req)
+                .map_err(|err| err.to_string())
+        }
+    }
 }

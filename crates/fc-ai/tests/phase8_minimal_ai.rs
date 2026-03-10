@@ -1,6 +1,7 @@
 use fc_ai::{
     analyze_diff, AiConfig, AiError, AiProvider, AnalysisTask, AnalyzeDiffRequest,
-    AnalyzeDiffResponse, InvalidRequestKind, PromptPayload, RiskLevel,
+    AnalyzeDiffResponse, InvalidRequestKind, PromptPayload, ProviderExecutionFailureKind,
+    RiskLevel,
 };
 use std::sync::Mutex;
 
@@ -72,6 +73,7 @@ impl AiProvider for FailingProvider {
     ) -> Result<AnalyzeDiffResponse, AiError> {
         Err(AiError::ProviderExecutionFailed {
             provider: "failing".to_string(),
+            kind: ProviderExecutionFailureKind::NetworkFailure,
             message: "simulated failure".to_string(),
         })
     }
@@ -135,11 +137,17 @@ fn mock_provider_is_deterministic_for_multiple_tasks() {
 }
 
 #[test]
-fn openai_placeholder_remains_not_implemented() {
+fn openai_provider_requires_remote_configuration() {
     let provider = fc_ai::providers::openai_compatible::OpenAiCompatibleProvider::new();
     let req = base_request(AnalysisTask::Summary, "-a\n+b");
-    let err = analyze_diff(&provider, req).expect_err("placeholder should not be implemented");
-    assert!(matches!(err, AiError::NotImplemented { .. }));
+    let err = analyze_diff(&provider, req).expect_err("provider should require endpoint");
+    assert!(matches!(
+        err,
+        AiError::ProviderExecutionFailed {
+            kind: ProviderExecutionFailureKind::MissingEndpoint,
+            ..
+        }
+    ));
 }
 
 #[derive(Default)]

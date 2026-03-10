@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-11)
+# Folder Compare Architecture (Phase 1-12)
 
 ## Crate responsibilities
 
@@ -65,7 +65,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - report-level truncation and warning messages for policy-triggered limits.
 - `compare_dirs` remains summary-oriented and does not emit detailed hunk output.
 
-## `fc-ai` API maturity after Phase 8
+## `fc-ai` API maturity after Phase 12
 
 - DTO contract now includes:
   - request context (`task`, `relative_path`, `language_hint`, `diff_excerpt`, `summary`, `truncation_note`, `config`);
@@ -88,9 +88,15 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - deterministic;
   - supports `Summary`, `RiskReview`, and `ReviewComments`;
   - produces stable `risk_level`, `title`, `rationale`, `key_points`, and `review_suggestions`.
-- OpenAI-compatible provider remains placeholder with explicit `NotImplemented` boundary and stable provider name.
+- OpenAI-compatible provider now supports a minimal real execution path:
+  - config fields: `endpoint`, `api_key`, `model`, `timeout`;
+  - OpenAI-compatible `chat/completions` request construction;
+  - response extraction from `choices[0].message.content`;
+  - JSON contract mapping to `AnalyzeDiffResponse`;
+  - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
+  - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` interaction/layout maturity after Phase 11
+## `fc-ui-slint` interaction/layout maturity after Phase 12
 
 - Main window now supports:
   - left/right directory path input;
@@ -112,6 +118,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `Analyzer + MockAiProvider` invocation in presenter command flow;
   - analysis result card fields (`title`, `risk_level`, `rationale`, `key_points`, `review_suggestions`);
   - independent analysis loading/error/result state, separated from compare/diff states.
+- AI provider mode and remote config are now exposed in UI with minimal settings:
+  - provider mode switch (`Mock` / `OpenAI-compatible`);
+  - OpenAI-compatible inputs (`endpoint`, `api key`, `model`);
+  - analysis command dispatch chooses provider by `AiConfig.provider_kind`;
+  - remote mode warns that diff excerpt is sent to configured endpoint;
+  - remote mode requires complete config before analysis can start.
 - Text/layout stability improvements for large-directory output:
   - compare warnings now use wrapped text with UI-side line splitting and a scrollable warning block to avoid overflow beyond container bounds;
   - selected path display now uses safe middle-ellipsis abbreviation for very long values;
@@ -140,15 +152,17 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 11
+## Still deferred after Phase 12
 
-- real remote provider execution (HTTP/API integration) is not implemented.
+- advanced settings panel (persisted profiles/secure secret storage) is not implemented.
+- response caching and token/cost tracking are not implemented.
+- multi-provider plugin orchestration is not implemented.
 - tree-based directory explorer and side-by-side directory comparison layout are not implemented.
 
 ## Next implementation priority
 
-Phase 12 should focus on real provider integration and engineering hardening:
+Phase 13+ should focus on hardening and operability:
 
-1. OpenAI-compatible provider wiring in `fc-ai` and provider selection in UI;
-2. retry/timeout/logging/diagnostics around remote analysis execution;
-3. release-ready UX hardening for compare/diff/analysis failure paths.
+1. persisted provider settings with safer secret handling;
+2. richer remote reliability controls (retry/backoff, diagnostics, telemetry);
+3. UX polish and optional advanced compare views (tree/side-by-side).

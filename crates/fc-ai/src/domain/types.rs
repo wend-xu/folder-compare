@@ -70,6 +70,14 @@ pub struct AiConfig {
     pub max_output_tokens: usize,
     /// Sampling temperature.
     pub temperature: f32,
+    /// Optional OpenAI-compatible endpoint root.
+    pub openai_endpoint: Option<String>,
+    /// Optional OpenAI-compatible API key.
+    pub openai_api_key: Option<String>,
+    /// Optional OpenAI-compatible model id.
+    pub openai_model: Option<String>,
+    /// HTTP request timeout in seconds for remote provider calls.
+    pub request_timeout_secs: u64,
 }
 
 impl Default for AiConfig {
@@ -79,6 +87,10 @@ impl Default for AiConfig {
             max_input_chars: 12_000,
             max_output_tokens: 512,
             temperature: 0.0,
+            openai_endpoint: None,
+            openai_api_key: None,
+            openai_model: Some("gpt-4o-mini".to_string()),
+            request_timeout_secs: 30,
         }
     }
 }
