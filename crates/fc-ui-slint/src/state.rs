@@ -25,6 +25,8 @@ pub struct AppState {
     pub entry_rows: Vec<CompareEntryRowViewModel>,
     /// Filter text applied to compare rows.
     pub entry_filter: String,
+    /// Status filter scope applied to compare rows (`all`, `different`, ...).
+    pub entry_status_filter: String,
     /// Warning lines from compare report.
     pub warning_lines: Vec<String>,
     /// Top-level compare error message.
@@ -75,6 +77,7 @@ impl Default for AppState {
             summary_text: String::new(),
             entry_rows: Vec::new(),
             entry_filter: String::new(),
+            entry_status_filter: "all".to_string(),
             warning_lines: Vec::new(),
             error_message: None,
             truncated: false,
@@ -122,19 +125,32 @@ impl AppState {
 
     /// Returns filtered entry rows with their source index.
     pub fn filtered_entry_rows_with_index(&self) -> Vec<(usize, CompareEntryRowViewModel)> {
+        let status_filter = normalize_status_filter_token(&self.entry_status_filter);
         self.entry_rows
             .iter()
             .enumerate()
-            .filter(|(_, row)| row.matches_filter(&self.entry_filter))
+            .filter(|(_, row)| {
+                row.matches_filter(&self.entry_filter)
+                    && status_filter_matches(&row.status, status_filter.as_str())
+            })
             .map(|(index, row)| (index, row.clone()))
             .collect()
     }
 
+    /// Updates status filter scope in canonical form.
+    pub fn set_entry_status_filter(&mut self, filter: &str) {
+        self.entry_status_filter = normalize_status_filter_token(filter);
+    }
+
     /// Returns true when one source row index is currently visible by filter.
     pub fn is_row_visible_in_filter(&self, index: usize) -> bool {
+        let status_filter = normalize_status_filter_token(&self.entry_status_filter);
         self.entry_rows
             .get(index)
-            .map(|row| row.matches_filter(&self.entry_filter))
+            .map(|row| {
+                row.matches_filter(&self.entry_filter)
+                    && status_filter_matches(&row.status, status_filter.as_str())
+            })
             .unwrap_or(false)
     }
 
@@ -142,13 +158,19 @@ impl AppState {
     pub fn filter_stats_text(&self) -> String {
         let visible = self.filtered_entry_rows_with_index().len();
         let total = self.entry_rows.len();
-        if self.entry_filter.trim().is_empty() {
+        let query = self.entry_filter.trim();
+        let status_scope = normalize_status_filter_token(&self.entry_status_filter);
+        if query.is_empty() && status_scope == "all" {
             return format!("Showing all entries: {total}");
         }
-        format!(
-            "Filtered: {visible}/{total} (query: {})",
-            self.entry_filter.trim()
-        )
+        let mut scopes = Vec::new();
+        if !query.is_empty() {
+            scopes.push(format!("query: {query}"));
+        }
+        if status_scope != "all" {
+            scopes.push(format!("status: {status_scope}"));
+        }
+        format!("Filtered: {visible}/{total} ({})", scopes.join(", "))
     }
 
     /// Returns selected relative path text for UI rendering.
@@ -349,6 +371,21 @@ fn normalize_optional_text(raw: &str) -> Option<String> {
     }
 }
 
+fn normalize_status_filter_token(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "" | "all" => "all".to_string(),
+        "different" => "different".to_string(),
+        "equal" => "equal".to_string(),
+        "left-only" => "left-only".to_string(),
+        "right-only" => "right-only".to_string(),
+        _ => "all".to_string(),
+    }
+}
+
+fn status_filter_matches(status: &str, filter: &str) -> bool {
+    filter == "all" || status.eq_ignore_ascii_case(filter)
+}
+
 /// One flattened row displayed in the unified diff viewer list.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DiffViewerRow {
@@ -426,6 +463,37 @@ mod tests {
         let filtered = state.filtered_entry_rows_with_index();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].0, 0);
+    }
+
+    #[test]
+    fn status_filter_reduces_visible_rows() {
+        let mut rows = sample_rows();
+        rows.push(CompareEntryRowViewModel {
+            relative_path: "docs/guide.md".to_string(),
+            status: "equal".to_string(),
+            detail: "metadata equal".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "file-comparison".to_string(),
+            can_load_diff: false,
+            diff_blocked_reason: Some("not changed".to_string()),
+            can_load_analysis: false,
+            analysis_blocked_reason: Some("not changed".to_string()),
+        });
+        let state = AppState {
+            entry_rows: rows,
+            entry_status_filter: "equal".to_string(),
+            ..AppState::default()
+        };
+        let filtered = state.filtered_entry_rows_with_index();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].1.status, "equal");
+    }
+
+    #[test]
+    fn invalid_status_filter_falls_back_to_all() {
+        let mut state = AppState::default();
+        state.set_entry_status_filter("unexpected-status");
+        assert_eq!(state.entry_status_filter, "all");
     }
 
     #[test]

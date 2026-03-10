@@ -11,6 +11,14 @@ use std::time::Duration;
 slint::slint! {
     import { Button, LineEdit, ListView, ScrollView } from "std-widgets.slint";
 
+    component SectionCard inherits Rectangle {
+        border-width: 1px;
+        border-color: #e2e7ed;
+        border-radius: 6px;
+        background: #ffffff;
+        clip: true;
+    }
+
     export component MainWindow inherits Window {
         title: "Folder Compare";
         preferred-width: 1200px;
@@ -27,6 +35,7 @@ slint::slint! {
         in property <string> error_text;
         in property <bool> compare_truncated;
         in-out property <string> entry_filter;
+        in-out property <string> entry_status_filter;
         in property <string> filter_stats_text;
         in property <[string]> row_statuses;
         in property <[string]> row_paths;
@@ -59,10 +68,13 @@ slint::slint! {
         in-out property <string> analysis_endpoint;
         in-out property <string> analysis_api_key;
         in-out property <string> analysis_model;
+        in-out property <int> workspace_tab: 0;
+        in-out property <bool> compare_warnings_expanded: false;
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
         callback filter_changed(string);
+        callback status_filter_changed(string);
         callback row_selected(int);
         callback analyze_clicked();
         callback analysis_provider_mock_selected();
@@ -70,567 +82,694 @@ slint::slint! {
         callback analysis_endpoint_changed(string);
         callback analysis_api_key_changed(string);
         callback analysis_model_changed(string);
+        callback provider_settings_clicked();
 
         VerticalLayout {
-            padding: 12px;
-            spacing: 10px;
+            padding: 10px;
+            spacing: 8px;
 
-            Text {
-                text: "Folder Compare";
-                font-size: 24px;
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                Text {
-                    text: "Left:";
-                    width: 64px;
-                }
-                LineEdit {
-                    text <=> root.left_root;
-                    enabled: !root.running;
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                Text {
-                    text: "Right:";
-                    width: 64px;
-                }
-                LineEdit {
-                    text <=> root.right_root;
-                    enabled: !root.running;
-                }
-            }
-
-            HorizontalLayout {
-                spacing: 8px;
-                Button {
-                    text: root.running ? "Comparing..." : "Compare";
-                    enabled: !root.running;
-                    clicked => {
-                        root.compare_clicked();
-                    }
-                }
-
-                Text {
-                    text: root.status_text;
-                    color: #444;
-                }
-            }
-
-            Rectangle {
-                border-width: 1px;
-                border-color: #d6d6d6;
-                height: root.compare_truncated ? 64px : 50px;
-                clip: true;
-                VerticalLayout {
-                    padding: 6px;
-                    spacing: 2px;
+            SectionCard {
+                height: 40px;
+                border-color: #e6ebf1;
+                background: #f8fafc;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 8px;
                     Text {
-                        text: "Compare Summary";
-                        color: #666;
+                        text: "Folder Compare";
+                        font-size: 18px;
+                        color: #1f2d3d;
+                        vertical-alignment: center;
                     }
-                    Text {
-                        text: root.summary_text;
-                        wrap: word-wrap;
-                        color: #222;
+                    Rectangle {
                         horizontal-stretch: 1;
                     }
-                    Text {
-                        visible: root.compare_truncated;
-                        text: "Compare result is truncated.";
-                        color: #7a4b00;
-                    }
-                }
-            }
-
-            Rectangle {
-                border-width: 1px;
-                border-color: #f0b64f;
-                visible: root.warnings_text != "";
-                height: root.warnings_text == "" ? 0px : 86px;
-                clip: true;
-                VerticalLayout {
-                    padding: 6px;
-                    spacing: 2px;
-                    Text {
-                        text: "Compare Warnings";
-                        color: #7a4b00;
-                    }
-                    ScrollView {
-                        vertical-stretch: 1;
-                        Text {
-                            text: root.warnings_text;
-                            wrap: word-wrap;
-                            color: #7a4b00;
-                            horizontal-stretch: 1;
+                    Button {
+                        text: "Provider Settings";
+                        clicked => {
+                            root.workspace_tab = 1;
+                            root.provider_settings_clicked();
                         }
                     }
                 }
             }
 
-            Rectangle {
-                border-width: 1px;
-                border-color: #d36f6f;
-                visible: root.error_text != "";
-                height: root.error_text == "" ? 0px : 44px;
-                clip: true;
-                VerticalLayout {
-                    padding: 6px;
-                    Text {
-                        text: root.error_text;
-                        wrap: word-wrap;
-                        color: #8c1d1d;
-                        horizontal-stretch: 1;
-                    }
-                }
-            }
-
-            Rectangle {
-                border-width: 1px;
-                border-color: #d6d6d6;
+            HorizontalLayout {
                 vertical-stretch: 1;
-                HorizontalLayout {
-                    spacing: 10px;
-                    Rectangle {
-                        border-width: 1px;
-                        border-color: #d6d6d6;
-                        horizontal-stretch: 3;
-                        min-width: 320px;
-                        VerticalLayout {
-                            padding: 8px;
-                            spacing: 8px;
-                            Text {
-                                text: "Compare Results";
-                                color: #444;
-                            }
-                            HorizontalLayout {
-                                spacing: 8px;
+                spacing: 10px;
+
+                Rectangle {
+                    horizontal-stretch: 3;
+                    min-width: 320px;
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        SectionCard {
+                            height: 142px;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 6px;
                                 Text {
-                                    text: "Filter:";
-                                    width: 64px;
-                                    color: #444;
+                                    text: "Compare Inputs";
+                                    color: #4c5b6b;
                                 }
-                                LineEdit {
-                                    text <=> root.entry_filter;
-                                    enabled: !root.running;
-                                    edited(value) => {
-                                        root.filter_changed(value);
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Left";
+                                        width: 42px;
+                                        color: #5f6d7c;
+                                    }
+                                    LineEdit {
+                                        text <=> root.left_root;
+                                        enabled: !root.running;
+                                    }
+                                    Button {
+                                        text: "Browse";
+                                        enabled: false;
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Right";
+                                        width: 42px;
+                                        color: #5f6d7c;
+                                    }
+                                    LineEdit {
+                                        text <=> root.right_root;
+                                        enabled: !root.running;
+                                    }
+                                    Button {
+                                        text: "Browse";
+                                        enabled: false;
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button {
+                                        text: root.running ? "Comparing..." : "Compare";
+                                        enabled: !root.running;
+                                        clicked => {
+                                            root.compare_clicked();
+                                        }
+                                    }
+                                    Text {
+                                        text: root.running ? "Running compare..." : "Ready";
+                                        color: #6a7581;
                                     }
                                 }
                             }
-                            Text {
-                                text: root.filter_stats_text;
-                                color: #666;
-                            }
-                            ListView {
-                                vertical-stretch: 1;
-                                for row_path[index] in root.row_paths: Rectangle {
-                                    height: 50px;
-                                    border-width: 1px;
-                                    border-color: root.row_source_indices[index] == root.selected_row ? rgb(110, 174, 232) : rgb(236, 236, 236);
-                                    background: root.row_source_indices[index] == root.selected_row ? rgb(234, 244, 255)
-                                        : (root.row_can_load_diff[index] ? rgb(255, 255, 255) : rgb(247, 247, 247));
+                        }
 
-                                    VerticalLayout {
-                                        spacing: 2px;
-                                        HorizontalLayout {
-                                            spacing: 6px;
-                                            Rectangle {
-                                                width: 92px;
-                                                height: 20px;
-                                                border-radius: 4px;
-                                                background: root.row_statuses[index] == "different" ? rgb(255, 226, 226)
-                                                    : (root.row_statuses[index] == "equal" ? rgb(232, 248, 234)
-                                                    : (root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only" ? rgb(255, 242, 218) : rgb(238, 242, 247)));
+                        SectionCard {
+                            height: root.compare_warnings_expanded && root.warnings_text != "" ? 136px : 88px;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 3px;
+                                Text {
+                                    text: "Compare Status";
+                                    color: #4c5b6b;
+                                }
+                                Text {
+                                    text: root.status_text;
+                                    color: #2f4f70;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: root.summary_text == "" ? "No compare summary yet." : root.summary_text;
+                                    color: #2f3b46;
+                                    wrap: word-wrap;
+                                    height: 30px;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    visible: root.compare_truncated;
+                                    text: "Compare result is truncated.";
+                                    color: #7a4b00;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    visible: root.error_text != "";
+                                    text: root.error_text;
+                                    color: #8c1d1d;
+                                    wrap: word-wrap;
+                                    height: 20px;
+                                    overflow: elide;
+                                }
+                                HorizontalLayout {
+                                    visible: root.warnings_text != "";
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Warnings";
+                                        color: #7a4b00;
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                    Button {
+                                        text: root.compare_warnings_expanded ? "Hide" : "Show";
+                                        clicked => {
+                                            root.compare_warnings_expanded = !root.compare_warnings_expanded;
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    visible: root.compare_warnings_expanded && root.warnings_text != "";
+                                    height: 44px;
+                                    border-width: 1px;
+                                    border-color: #f0d8ac;
+                                    clip: true;
+                                    ScrollView {
+                                        Text {
+                                            text: root.warnings_text;
+                                            wrap: word-wrap;
+                                            color: #7a4b00;
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SectionCard {
+                            height: 102px;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 6px;
+                                Text {
+                                    text: "Filter / Scope";
+                                    color: #4c5b6b;
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Search";
+                                        width: 48px;
+                                        color: #5f6d7c;
+                                    }
+                                    LineEdit {
+                                        text <=> root.entry_filter;
+                                        enabled: !root.running;
+                                        edited(value) => {
+                                            root.filter_changed(value);
+                                        }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Status";
+                                        width: 48px;
+                                        color: #5f6d7c;
+                                    }
+                                    Button {
+                                        text: "All";
+                                        enabled: root.entry_status_filter != "all";
+                                        clicked => {
+                                            root.status_filter_changed("all");
+                                        }
+                                    }
+                                    Button {
+                                        text: "Different";
+                                        enabled: root.entry_status_filter != "different";
+                                        clicked => {
+                                            root.status_filter_changed("different");
+                                        }
+                                    }
+                                    Button {
+                                        text: "Equal";
+                                        enabled: root.entry_status_filter != "equal";
+                                        clicked => {
+                                            root.status_filter_changed("equal");
+                                        }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Rectangle {
+                                        width: 48px;
+                                    }
+                                    Button {
+                                        text: "Left-only";
+                                        enabled: root.entry_status_filter != "left-only";
+                                        clicked => {
+                                            root.status_filter_changed("left-only");
+                                        }
+                                    }
+                                    Button {
+                                        text: "Right-only";
+                                        enabled: root.entry_status_filter != "right-only";
+                                        clicked => {
+                                            root.status_filter_changed("right-only");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SectionCard {
+                            vertical-stretch: 1;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 6px;
+                                Text {
+                                    text: "Results / Navigator";
+                                    color: #4c5b6b;
+                                }
+                                Text {
+                                    text: root.filter_stats_text;
+                                    color: #6a7581;
+                                    overflow: elide;
+                                }
+                                ListView {
+                                    vertical-stretch: 1;
+                                    for row_path[index] in root.row_paths: Rectangle {
+                                        height: 50px;
+                                        border-width: 1px;
+                                        border-color: root.row_source_indices[index] == root.selected_row ? rgb(129, 176, 222) : rgb(234, 238, 243);
+                                        background: root.row_source_indices[index] == root.selected_row ? rgb(236, 245, 255)
+                                            : (root.row_can_load_diff[index] ? rgb(255, 255, 255) : rgb(248, 249, 251));
+
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            HorizontalLayout {
+                                                spacing: 6px;
+                                                Rectangle {
+                                                    width: 92px;
+                                                    height: 20px;
+                                                    border-radius: 4px;
+                                                    background: root.row_statuses[index] == "different" ? rgb(255, 226, 226)
+                                                        : (root.row_statuses[index] == "equal" ? rgb(232, 248, 234)
+                                                        : (root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only" ? rgb(255, 242, 218) : rgb(238, 242, 247)));
+                                                    Text {
+                                                        text: root.row_statuses[index];
+                                                        horizontal-alignment: center;
+                                                        vertical-alignment: center;
+                                                        color: #333;
+                                                    }
+                                                }
                                                 Text {
-                                                    text: root.row_statuses[index];
-                                                    horizontal-alignment: center;
+                                                    text: row_path;
+                                                    color: #1b3a57;
                                                     vertical-alignment: center;
-                                                    color: #333;
+                                                    overflow: elide;
                                                 }
                                             }
                                             Text {
-                                                text: row_path;
-                                                color: #1b3a57;
+                                                text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
+                                                color: root.row_can_load_diff[index] ? #555 : #777;
                                                 vertical-alignment: center;
                                                 overflow: elide;
                                             }
                                         }
-                                        Text {
-                                            text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
-                                            color: root.row_can_load_diff[index] ? #555 : #777;
-                                            vertical-alignment: center;
-                                            overflow: elide;
-                                        }
-                                    }
 
-                                    TouchArea {
-                                        clicked => {
-                                            root.row_selected(root.row_source_indices[index]);
+                                        TouchArea {
+                                            clicked => {
+                                                root.row_selected(root.row_source_indices[index]);
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    Rectangle {
-                        border-width: 1px;
-                        border-color: #d6d6d6;
-                        horizontal-stretch: 7;
-                        VerticalLayout {
-                            padding: 8px;
-                            spacing: 6px;
-                            Text {
-                                text: "Details";
-                                color: #444;
-                            }
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #d6d6d6;
-                                height: 58px;
-                                clip: true;
-                                VerticalLayout {
-                                    padding: 6px;
-                                    spacing: 2px;
-                                    Text {
-                                        text: "Selected Path";
-                                        color: #666;
-                                    }
-                                    Text {
-                                        text: root.selected_relative_path == "" ? "(none selected)" : root.selected_relative_path;
-                                        color: #222;
-                                        wrap: word-wrap;
-                                        horizontal-stretch: 1;
+                SectionCard {
+                    horizontal-stretch: 7;
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 8px;
+
+                        SectionCard {
+                            height: 40px;
+                            background: #fbfcfd;
+                            HorizontalLayout {
+                                padding: 6px;
+                                spacing: 6px;
+                                Text {
+                                    text: "Tabs";
+                                    width: 36px;
+                                    color: #6a7581;
+                                    vertical-alignment: center;
+                                }
+                                Button {
+                                    text: "Diff";
+                                    enabled: root.workspace_tab != 0;
+                                    clicked => {
+                                        root.workspace_tab = 0;
                                     }
                                 }
-                            }
-
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #d6d6d6;
-                                height: 52px;
-                                clip: true;
-                                VerticalLayout {
-                                    padding: 6px;
-                                    spacing: 2px;
-                                    Text {
-                                        text: "Diff Summary";
-                                        color: #666;
-                                    }
-                                    Text {
-                                        text: root.diff_summary_text;
-                                        color: #222;
-                                        wrap: word-wrap;
-                                        horizontal-stretch: 1;
+                                Button {
+                                    text: "Analysis";
+                                    enabled: root.workspace_tab != 1;
+                                    clicked => {
+                                        root.workspace_tab = 1;
                                     }
                                 }
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                }
                             }
+                        }
 
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #d6d6d6;
-                                height: root.diff_loading || root.diff_truncated || root.diff_warning_text != "" || root.diff_error_text != "" ? 82px : 46px;
-                                clip: true;
-                                VerticalLayout {
-                                    padding: 6px;
-                                    spacing: 2px;
-                                    Text {
-                                        text: "Diff Status";
-                                        color: #666;
-                                    }
+                        SectionCard {
+                            height: 60px;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 2px;
+                                Text {
+                                    text: root.workspace_tab == 0 ? "Diff Mode" : "Analysis Mode";
+                                    color: #4c5b6b;
+                                }
+                                Text {
+                                    visible: root.workspace_tab == 0;
+                                    text: root.selected_relative_path == "" ? "(none selected)" : root.selected_relative_path;
+                                    color: #1f3e58;
+                                    wrap: word-wrap;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    visible: root.workspace_tab == 1;
+                                    text: "Provider: " + root.analysis_provider_mode_text
+                                        + (root.analysis_remote_mode ? (root.analysis_remote_config_ready ? " (ready)" : " (config incomplete)") : " (local)");
+                                    color: #1f3e58;
+                                    wrap: word-wrap;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        SectionCard {
+                            vertical-stretch: 1;
+
+                            VerticalLayout {
+                                visible: root.workspace_tab == 0;
+                                padding: 8px;
+                                spacing: 6px;
+
+                                Text {
+                                    text: root.diff_summary_text == "" ? "Select one result row to load detailed diff." : root.diff_summary_text;
+                                    color: #2f3b46;
+                                    wrap: word-wrap;
+                                    horizontal-stretch: 1;
+                                }
+                                HorizontalLayout {
+                                    spacing: 10px;
                                     Text {
                                         visible: root.diff_loading;
                                         text: "Loading detailed diff...";
                                         color: #2f4f70;
-                                        wrap: word-wrap;
-                                        horizontal-stretch: 1;
                                     }
                                     Text {
                                         visible: root.diff_warning_text != "";
                                         text: root.diff_warning_text;
                                         color: #7a4b00;
-                                        wrap: word-wrap;
-                                        horizontal-stretch: 1;
+                                        overflow: elide;
                                     }
                                     Text {
                                         visible: root.diff_truncated;
                                         text: "Detailed diff is truncated.";
                                         color: #7a4b00;
-                                        wrap: word-wrap;
-                                        horizontal-stretch: 1;
                                     }
                                     Text {
                                         visible: root.diff_error_text != "";
                                         text: root.diff_error_text;
                                         color: #8c1d1d;
-                                        wrap: word-wrap;
-                                        horizontal-stretch: 1;
-                                    }
-                                    Text {
-                                        visible: !root.diff_loading && !root.diff_truncated && root.diff_warning_text == "" && root.diff_error_text == "";
-                                        text: "No active warning/error.";
-                                        color: #777;
+                                        overflow: elide;
                                     }
                                 }
-                            }
 
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #d6d6d6;
-                                height: root.analysis_remote_mode ? 236px : (root.analysis_loading || root.analysis_error_text != "" || root.analysis_title_text != "" ? 188px : 110px);
-                                clip: true;
-                                VerticalLayout {
-                                    padding: 6px;
-                                    spacing: 4px;
-
+                                Rectangle {
+                                    border-width: 1px;
+                                    border-color: #e5e9ef;
+                                    height: 26px;
                                     HorizontalLayout {
                                         spacing: 8px;
                                         Text {
-                                            text: "AI Analysis (" + root.analysis_provider_mode_text + ")";
-                                            color: #555;
+                                            text: "old";
+                                            width: 56px;
+                                            horizontal-alignment: right;
+                                            color: #666;
                                         }
-                                        Rectangle {
-                                            horizontal-stretch: 1;
+                                        Text {
+                                            text: "new";
+                                            width: 56px;
+                                            horizontal-alignment: right;
+                                            color: #666;
                                         }
-                                        Button {
-                                            text: root.analysis_loading ? "Analyzing..." : "Analyze";
-                                            enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running
-                                                && (!root.analysis_remote_mode || root.analysis_remote_config_ready);
-                                            clicked => {
-                                                root.analyze_clicked();
-                                            }
+                                        Text {
+                                            text: " ";
+                                            width: 20px;
                                         }
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 6px;
-                                        Button {
-                                            text: "Use Mock";
-                                            enabled: root.analysis_provider_mode_text != "Mock";
-                                            clicked => {
-                                                root.analysis_provider_mock_selected();
-                                            }
-                                        }
-                                        Button {
-                                            text: "Use OpenAI-compatible";
-                                            enabled: root.analysis_provider_mode_text != "OpenAI-compatible";
-                                            clicked => {
-                                                root.analysis_provider_openai_selected();
-                                            }
+                                        Text {
+                                            text: "content";
+                                            color: #666;
                                         }
                                     }
+                                }
 
-                                    ScrollView {
-                                        vertical-stretch: 1;
-                                        VerticalLayout {
-                                            spacing: 2px;
-                                            Rectangle {
-                                                visible: root.analysis_remote_mode;
-                                                border-width: 1px;
-                                                border-color: #d6d6d6;
-                                                height: 102px;
-                                                VerticalLayout {
-                                                    padding: 4px;
-                                                    spacing: 4px;
-                                                    HorizontalLayout {
-                                                        spacing: 6px;
-                                                        Text {
-                                                            text: "Endpoint:";
-                                                            width: 70px;
-                                                            color: #555;
-                                                        }
-                                                        LineEdit {
-                                                            text <=> root.analysis_endpoint;
-                                                            enabled: !root.analysis_loading;
-                                                            edited(value) => {
-                                                                root.analysis_endpoint_changed(value);
-                                                            }
-                                                        }
-                                                    }
-                                                    HorizontalLayout {
-                                                        spacing: 6px;
-                                                        Text {
-                                                            text: "API Key:";
-                                                            width: 70px;
-                                                            color: #555;
-                                                        }
-                                                        LineEdit {
-                                                            text <=> root.analysis_api_key;
-                                                            enabled: !root.analysis_loading;
-                                                            edited(value) => {
-                                                                root.analysis_api_key_changed(value);
-                                                            }
-                                                        }
-                                                    }
-                                                    HorizontalLayout {
-                                                        spacing: 6px;
-                                                        Text {
-                                                            text: "Model:";
-                                                            width: 70px;
-                                                            color: #555;
-                                                        }
-                                                        LineEdit {
-                                                            text <=> root.analysis_model;
-                                                            enabled: !root.analysis_loading;
-                                                            edited(value) => {
-                                                                root.analysis_model_changed(value);
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                ListView {
+                                    vertical-stretch: 1;
+                                    for row_content[index] in root.diff_contents: Rectangle {
+                                        height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
+                                        background: root.diff_row_kinds[index] == "hunk" ? rgb(238, 244, 251)
+                                            : (root.diff_row_kinds[index] == "added" ? rgb(236, 255, 241)
+                                            : (root.diff_row_kinds[index] == "removed" ? rgb(255, 241, 241) : rgb(255, 255, 255)));
+
+                                        Text {
+                                            visible: root.diff_row_kinds[index] == "hunk";
+                                            text: row_content;
+                                            color: #1c4365;
+                                            vertical-alignment: center;
+                                        }
+
+                                        HorizontalLayout {
+                                            visible: root.diff_row_kinds[index] != "hunk";
+                                            spacing: 8px;
+                                            Text {
+                                                text: root.diff_old_line_nos[index];
+                                                width: 56px;
+                                                horizontal-alignment: right;
+                                                vertical-alignment: center;
+                                                color: #6a6a6a;
                                             }
                                             Text {
-                                                visible: root.analysis_remote_mode;
-                                                text: "Remote mode: diff excerpt will be sent to the configured endpoint.";
-                                                color: #7a4b00;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
+                                                text: root.diff_new_line_nos[index];
+                                                width: 56px;
+                                                horizontal-alignment: right;
+                                                vertical-alignment: center;
+                                                color: #6a6a6a;
                                             }
                                             Text {
-                                                visible: root.analysis_remote_mode && !root.analysis_remote_config_ready;
-                                                text: "Remote config incomplete: endpoint, API key and model are required.";
-                                                color: #8c1d1d;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
+                                                text: root.diff_markers[index];
+                                                width: 20px;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                                color: root.diff_row_kinds[index] == "added" ? #1f6d39
+                                                    : (root.diff_row_kinds[index] == "removed" ? #8a1b1b : #4a4a4a);
                                             }
                                             Text {
-                                                visible: root.analysis_hint_text != "";
-                                                text: root.analysis_hint_text;
-                                                color: #777;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_loading;
-                                                text: "Running AI analysis...";
-                                                color: #2f4f70;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_error_text != "";
-                                                text: root.analysis_error_text;
-                                                color: #8c1d1d;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_title_text != "";
-                                                text: root.analysis_title_text;
-                                                color: #1f3e58;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_risk_level_text != "";
-                                                text: "Risk Level: " + root.analysis_risk_level_text;
-                                                color: #445a6a;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_rationale_text != "";
-                                                text: root.analysis_rationale_text;
-                                                color: #444;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_key_points_text != "";
-                                                text: "Key Points:\n" + root.analysis_key_points_text;
-                                                color: #444;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_review_suggestions_text != "";
-                                                text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
-                                                color: #444;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
+                                                text: row_content;
+                                                color: #222;
+                                                vertical-alignment: center;
                                             }
                                         }
                                     }
                                 }
                             }
 
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #e3e3e3;
-                                height: 26px;
+                            VerticalLayout {
+                                visible: root.workspace_tab == 1;
+                                padding: 8px;
+                                spacing: 6px;
+
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Text {
-                                        text: "old";
-                                        width: 56px;
-                                        horizontal-alignment: right;
-                                        color: #666;
+                                        text: "AI Analysis";
+                                        color: #4c5b6b;
                                     }
-                                    Text {
-                                        text: "new";
-                                        width: 56px;
-                                        horizontal-alignment: right;
-                                        color: #666;
+                                    Rectangle {
+                                        horizontal-stretch: 1;
                                     }
-                                    Text {
-                                        text: " ";
-                                        width: 20px;
-                                    }
-                                    Text {
-                                        text: "content";
-                                        color: #666;
+                                    Button {
+                                        text: root.analysis_loading ? "Analyzing..." : "Analyze";
+                                        enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running
+                                            && (!root.analysis_remote_mode || root.analysis_remote_config_ready);
+                                        clicked => {
+                                            root.analyze_clicked();
+                                        }
                                     }
                                 }
-                            }
 
-                            ListView {
-                                vertical-stretch: 1;
-                                for row_content[index] in root.diff_contents: Rectangle {
-                                    height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
-                                    background: root.diff_row_kinds[index] == "hunk" ? rgb(238, 244, 251)
-                                        : (root.diff_row_kinds[index] == "added" ? rgb(236, 255, 241)
-                                        : (root.diff_row_kinds[index] == "removed" ? rgb(255, 241, 241) : rgb(255, 255, 255)));
-
+                                HorizontalLayout {
+                                    spacing: 6px;
                                     Text {
-                                        visible: root.diff_row_kinds[index] == "hunk";
-                                        text: row_content;
-                                        color: #1c4365;
-                                        vertical-alignment: center;
+                                        text: "Provider:";
+                                        color: #5f6d7c;
                                     }
+                                    Button {
+                                        text: "Mock";
+                                        enabled: root.analysis_provider_mode_text != "Mock";
+                                        clicked => {
+                                            root.analysis_provider_mock_selected();
+                                        }
+                                    }
+                                    Button {
+                                        text: "OpenAI-compatible";
+                                        enabled: root.analysis_provider_mode_text != "OpenAI-compatible";
+                                        clicked => {
+                                            root.analysis_provider_openai_selected();
+                                        }
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                    Text {
+                                        text: "Global settings entry is in App Bar.";
+                                        color: #7a4b00;
+                                    }
+                                }
 
-                                    HorizontalLayout {
-                                        visible: root.diff_row_kinds[index] != "hunk";
-                                        spacing: 8px;
+                                Rectangle {
+                                    visible: root.analysis_remote_mode;
+                                    border-width: 1px;
+                                    border-color: #e2e7ed;
+                                    height: 112px;
+                                    clip: true;
+                                    VerticalLayout {
+                                        padding: 6px;
+                                        spacing: 4px;
                                         Text {
-                                            text: root.diff_old_line_nos[index];
-                                            width: 56px;
-                                            horizontal-alignment: right;
-                                            vertical-alignment: center;
-                                            color: #6a6a6a;
+                                            text: "Provider Config (temporary in-content editor)";
+                                            color: #6a7581;
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: "Endpoint";
+                                                width: 62px;
+                                                color: #5f6d7c;
+                                            }
+                                            LineEdit {
+                                                text <=> root.analysis_endpoint;
+                                                enabled: !root.analysis_loading;
+                                                edited(value) => {
+                                                    root.analysis_endpoint_changed(value);
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: "API Key";
+                                                width: 62px;
+                                                color: #5f6d7c;
+                                            }
+                                            LineEdit {
+                                                text <=> root.analysis_api_key;
+                                                enabled: !root.analysis_loading;
+                                                edited(value) => {
+                                                    root.analysis_api_key_changed(value);
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: "Model";
+                                                width: 62px;
+                                                color: #5f6d7c;
+                                            }
+                                            LineEdit {
+                                                text <=> root.analysis_model;
+                                                enabled: !root.analysis_loading;
+                                                edited(value) => {
+                                                    root.analysis_model_changed(value);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                ScrollView {
+                                    vertical-stretch: 1;
+                                    VerticalLayout {
+                                        spacing: 4px;
+                                        Text {
+                                            visible: root.analysis_remote_mode;
+                                            text: "Remote mode sends diff excerpts to the configured endpoint.";
+                                            color: #7a4b00;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
                                         }
                                         Text {
-                                            text: root.diff_new_line_nos[index];
-                                            width: 56px;
-                                            horizontal-alignment: right;
-                                            vertical-alignment: center;
-                                            color: #6a6a6a;
+                                            visible: root.analysis_remote_mode && !root.analysis_remote_config_ready;
+                                            text: "Remote config incomplete: endpoint, API key and model are required.";
+                                            color: #8c1d1d;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
                                         }
                                         Text {
-                                            text: root.diff_markers[index];
-                                            width: 20px;
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                            color: root.diff_row_kinds[index] == "added" ? #1f6d39
-                                                : (root.diff_row_kinds[index] == "removed" ? #8a1b1b : #4a4a4a);
+                                            visible: root.analysis_hint_text != "";
+                                            text: root.analysis_hint_text;
+                                            color: #777;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
                                         }
                                         Text {
-                                            text: row_content;
-                                            color: #222;
-                                            vertical-alignment: center;
+                                            visible: root.analysis_loading;
+                                            text: "Running AI analysis...";
+                                            color: #2f4f70;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Text {
+                                            visible: root.analysis_error_text != "";
+                                            text: root.analysis_error_text;
+                                            color: #8c1d1d;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Text {
+                                            visible: root.analysis_title_text != "";
+                                            text: root.analysis_title_text;
+                                            color: #1f3e58;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Text {
+                                            visible: root.analysis_risk_level_text != "";
+                                            text: "Risk Level: " + root.analysis_risk_level_text;
+                                            color: #445a6a;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Text {
+                                            visible: root.analysis_rationale_text != "";
+                                            text: root.analysis_rationale_text;
+                                            color: #444;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Text {
+                                            visible: root.analysis_key_points_text != "";
+                                            text: "Key Points:\n" + root.analysis_key_points_text;
+                                            color: #444;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Text {
+                                            visible: root.analysis_review_suggestions_text != "";
+                                            text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
+                                            color: #444;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
                                         }
                                     }
                                 }
@@ -662,6 +801,7 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
         window.set_left_root(state.left_root.clone().into());
         window.set_right_root(state.right_root.clone().into());
         window.set_entry_filter(state.entry_filter.clone().into());
+        window.set_entry_status_filter(state.entry_status_filter.clone().into());
         window.set_analysis_endpoint(state.analysis_openai_endpoint.clone().into());
         window.set_analysis_api_key(state.analysis_openai_api_key.clone().into());
         window.set_analysis_model(state.analysis_openai_model.clone().into());
@@ -840,6 +980,23 @@ pub fn run() -> anyhow::Result<()> {
 
         filter_bridge.dispatch(UiCommand::UpdateEntryFilter(value.to_string()));
         sync_window_state_if_changed(&window, &filter_bridge, &filter_cache, SyncMode::Passive);
+    });
+
+    let app_weak = app.as_weak();
+    let status_filter_bridge = bridge.clone();
+    let status_filter_cache = Arc::clone(&sync_cache);
+    app.on_status_filter_changed(move |value| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        status_filter_bridge.dispatch(UiCommand::UpdateEntryStatusFilter(value.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &status_filter_bridge,
+            &status_filter_cache,
+            SyncMode::Passive,
+        );
     });
 
     let app_weak = app.as_weak();

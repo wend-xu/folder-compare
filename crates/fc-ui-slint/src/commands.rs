@@ -20,6 +20,8 @@ pub enum UiCommand {
     RunCompare,
     /// Updates compare row filter text.
     UpdateEntryFilter(String),
+    /// Updates compare row status scope filter.
+    UpdateEntryStatusFilter(String),
     /// Updates selected result row.
     SelectRow(i32),
     /// Loads detailed diff for selected row.

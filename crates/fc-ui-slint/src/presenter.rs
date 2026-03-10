@@ -46,17 +46,12 @@ impl Presenter {
             UiCommand::UpdateEntryFilter(filter) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.entry_filter = filter;
-                if let Some(selected_row) = state.selected_row {
-                    if !state.is_row_visible_in_filter(selected_row) {
-                        state.selected_row = None;
-                        state.selected_relative_path = None;
-                        state.clear_diff_panel();
-                        state.analysis_available = false;
-                        state.clear_analysis_panel();
-                        state.analysis_hint =
-                            Some("Select one changed text file to analyze.".to_string());
-                    }
-                }
+                Self::reconcile_selected_row_visibility(&mut state);
+            }
+            UiCommand::UpdateEntryStatusFilter(filter) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.set_entry_status_filter(&filter);
+                Self::reconcile_selected_row_visibility(&mut state);
             }
             UiCommand::SelectRow(index) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -348,6 +343,19 @@ impl Presenter {
             }
         });
     }
+
+    fn reconcile_selected_row_visibility(state: &mut AppState) {
+        if let Some(selected_row) = state.selected_row {
+            if !state.is_row_visible_in_filter(selected_row) {
+                state.selected_row = None;
+                state.selected_relative_path = None;
+                state.clear_diff_panel();
+                state.analysis_available = false;
+                state.clear_analysis_panel();
+                state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -487,7 +495,13 @@ mod tests {
         ));
         presenter.handle_command(UiCommand::RunCompare);
         wait_until(&presenter, |state| !state.running);
-        presenter.handle_command(UiCommand::SelectRow(0));
+        let different_index = presenter
+            .state_snapshot()
+            .entry_rows
+            .iter()
+            .position(|row| row.status == "different")
+            .expect("different row should exist");
+        presenter.handle_command(UiCommand::SelectRow(different_index as i32));
         presenter.handle_command(UiCommand::LoadSelectedDiff);
         wait_until(&presenter, |state| !state.diff_loading);
         assert!(presenter.state_snapshot().selected_diff.is_some());
@@ -497,6 +511,42 @@ mod tests {
         assert_eq!(snapshot.selected_row, None);
         assert!(snapshot.selected_diff.is_none());
         assert!(snapshot.selected_relative_path.is_none());
+    }
+
+    #[test]
+    fn status_filter_hides_selected_row_and_clears_diff_panel() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("a.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("a.txt"), "right\n").expect("right file should be written");
+        fs::write(left.path().join("b.txt"), "same\n").expect("left file should be written");
+        fs::write(right.path().join("b.txt"), "same\n").expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        let different_index = presenter
+            .state_snapshot()
+            .entry_rows
+            .iter()
+            .position(|row| row.status == "different")
+            .expect("different row should exist");
+        presenter.handle_command(UiCommand::SelectRow(different_index as i32));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+        assert!(presenter.state_snapshot().selected_diff.is_some());
+
+        presenter.handle_command(UiCommand::UpdateEntryStatusFilter("equal".to_string()));
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, None);
+        assert!(snapshot.selected_diff.is_none());
+        assert!(snapshot.selected_relative_path.is_none());
+        assert_eq!(snapshot.entry_status_filter, "equal");
+        assert_eq!(snapshot.filtered_entry_rows_with_index().len(), 1);
     }
 
     #[test]
