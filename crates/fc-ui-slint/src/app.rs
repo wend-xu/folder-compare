@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 slint::slint! {
-    import { Button, LineEdit, ListView } from "std-widgets.slint";
+    import { Button, LineEdit, ListView, ScrollView } from "std-widgets.slint";
 
     export component MainWindow inherits Window {
         title: "Folder Compare";
@@ -102,13 +102,19 @@ slint::slint! {
             Rectangle {
                 border-width: 1px;
                 border-color: #d6d6d6;
-                height: root.compare_truncated ? 62px : 48px;
+                height: root.compare_truncated ? 64px : 50px;
+                clip: true;
                 VerticalLayout {
                     spacing: 2px;
+                    Text {
+                        text: "Compare Summary";
+                        color: #666;
+                    }
                     Text {
                         text: root.summary_text;
                         wrap: word-wrap;
                         color: #222;
+                        horizontal-stretch: 1;
                     }
                     Text {
                         visible: root.compare_truncated;
@@ -122,11 +128,23 @@ slint::slint! {
                 border-width: 1px;
                 border-color: #f0b64f;
                 visible: root.warnings_text != "";
-                height: root.warnings_text == "" ? 0px : 52px;
-                Text {
-                    text: root.warnings_text;
-                    wrap: word-wrap;
-                    color: #7a4b00;
+                height: root.warnings_text == "" ? 0px : 86px;
+                clip: true;
+                VerticalLayout {
+                    spacing: 2px;
+                    Text {
+                        text: "Compare Warnings";
+                        color: #7a4b00;
+                    }
+                    ScrollView {
+                        vertical-stretch: 1;
+                        Text {
+                            text: root.warnings_text;
+                            wrap: word-wrap;
+                            color: #7a4b00;
+                            horizontal-stretch: 1;
+                        }
+                    }
                 }
             }
 
@@ -135,10 +153,12 @@ slint::slint! {
                 border-color: #d36f6f;
                 visible: root.error_text != "";
                 height: root.error_text == "" ? 0px : 44px;
+                clip: true;
                 Text {
                     text: root.error_text;
                     wrap: word-wrap;
                     color: #8c1d1d;
+                    horizontal-stretch: 1;
                 }
             }
 
@@ -210,12 +230,14 @@ slint::slint! {
                                                 text: row_path;
                                                 color: #1b3a57;
                                                 vertical-alignment: center;
+                                                overflow: elide;
                                             }
                                         }
                                         Text {
                                             text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
                                             color: root.row_can_load_diff[index] ? #555 : #777;
                                             vertical-alignment: center;
+                                            overflow: elide;
                                         }
                                     }
 
@@ -243,51 +265,86 @@ slint::slint! {
                             Rectangle {
                                 border-width: 1px;
                                 border-color: #d6d6d6;
-                                height: 34px;
-                                Text {
-                                    text: root.selected_relative_path == "" ? "Path: (none selected)" : "Path: " + root.selected_relative_path;
-                                    color: #222;
-                                    vertical-alignment: center;
-                                }
-                            }
-
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #d6d6d6;
-                                height: 34px;
-                                Text {
-                                    text: root.diff_summary_text;
-                                    color: #222;
-                                    vertical-alignment: center;
-                                }
-                            }
-
-                            Rectangle {
-                                border-width: 1px;
-                                border-color: #d6d6d6;
-                                visible: root.diff_loading || root.diff_truncated || root.diff_warning_text != "" || root.diff_error_text != "";
-                                height: root.diff_loading || root.diff_truncated || root.diff_warning_text != "" || root.diff_error_text != "" ? 70px : 0px;
+                                height: 58px;
+                                clip: true;
                                 VerticalLayout {
                                     spacing: 2px;
+                                    Text {
+                                        text: "Selected Path";
+                                        color: #666;
+                                    }
+                                    Text {
+                                        text: root.selected_relative_path == "" ? "(none selected)" : root.selected_relative_path;
+                                        color: #222;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #d6d6d6;
+                                height: 52px;
+                                clip: true;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text {
+                                        text: "Diff Summary";
+                                        color: #666;
+                                    }
+                                    Text {
+                                        text: root.diff_summary_text;
+                                        color: #222;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                border-width: 1px;
+                                border-color: #d6d6d6;
+                                height: root.diff_loading || root.diff_truncated || root.diff_warning_text != "" || root.diff_error_text != "" ? 82px : 46px;
+                                clip: true;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text {
+                                        text: "Diff Status";
+                                        color: #666;
+                                    }
                                     Text {
                                         visible: root.diff_loading;
                                         text: "Loading detailed diff...";
                                         color: #2f4f70;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
                                     }
                                     Text {
                                         visible: root.diff_warning_text != "";
                                         text: root.diff_warning_text;
                                         color: #7a4b00;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
                                     }
                                     Text {
                                         visible: root.diff_truncated;
                                         text: "Detailed diff is truncated.";
                                         color: #7a4b00;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
                                     }
                                     Text {
                                         visible: root.diff_error_text != "";
                                         text: root.diff_error_text;
                                         color: #8c1d1d;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
+                                    }
+                                    Text {
+                                        visible: !root.diff_loading && !root.diff_truncated && root.diff_warning_text == "" && root.diff_error_text == "";
+                                        text: "No active warning/error.";
+                                        color: #777;
                                     }
                                 }
                             }
@@ -295,7 +352,8 @@ slint::slint! {
                             Rectangle {
                                 border-width: 1px;
                                 border-color: #d6d6d6;
-                                height: 56px;
+                                height: 64px;
+                                clip: true;
                                 VerticalLayout {
                                     spacing: 2px;
                                     Text {
@@ -305,6 +363,8 @@ slint::slint! {
                                     Text {
                                         text: "AI summary/risk panel will be inserted here.";
                                         color: #777;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
                                     }
                                 }
                             }

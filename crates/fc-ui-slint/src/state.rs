@@ -2,6 +2,11 @@
 
 use crate::view_models::{CompareEntryRowViewModel, DiffPanelViewModel};
 
+const WARNING_WRAP_COLUMNS: usize = 96;
+const PATH_DISPLAY_MAX_CHARS: usize = 140;
+const PATH_DISPLAY_HEAD_CHARS: usize = 90;
+const PATH_DISPLAY_TAIL_CHARS: usize = 45;
+
 /// In-memory UI state for compare workflow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppState {
@@ -71,11 +76,20 @@ impl AppState {
         if self.warning_lines.is_empty() {
             return String::new();
         }
-        self.warning_lines
-            .iter()
-            .map(|line| format!("• {line}"))
-            .collect::<Vec<_>>()
-            .join("\n")
+        let mut out = Vec::new();
+        for warning in &self.warning_lines {
+            for (idx, part) in wrap_ui_text(warning, WARNING_WRAP_COLUMNS)
+                .iter()
+                .enumerate()
+            {
+                if idx == 0 {
+                    out.push(format!("• {part}"));
+                } else {
+                    out.push(format!("  {part}"));
+                }
+            }
+        }
+        out.join("\n")
     }
 
     /// Returns filtered entry rows with their source index.
@@ -111,7 +125,13 @@ impl AppState {
 
     /// Returns selected relative path text for UI rendering.
     pub fn selected_relative_path_text(&self) -> String {
-        self.selected_relative_path.clone().unwrap_or_default()
+        let raw = self.selected_relative_path.clone().unwrap_or_default();
+        abbreviate_middle(
+            &raw,
+            PATH_DISPLAY_MAX_CHARS,
+            PATH_DISPLAY_HEAD_CHARS,
+            PATH_DISPLAY_TAIL_CHARS,
+        )
     }
 
     /// Returns detailed diff warning text for UI rendering.
@@ -162,6 +182,52 @@ impl AppState {
         self.diff_warning = None;
         self.diff_truncated = false;
     }
+}
+
+fn wrap_ui_text(text: &str, max_columns: usize) -> Vec<String> {
+    if text.trim().is_empty() || max_columns == 0 {
+        return vec![text.to_string()];
+    }
+
+    let mut remaining = text.trim().to_string();
+    let mut out = Vec::new();
+    while remaining.chars().count() > max_columns {
+        let mut split_byte = None;
+        let mut chars_seen = 0usize;
+        for (idx, ch) in remaining.char_indices() {
+            chars_seen += 1;
+            if chars_seen > max_columns {
+                break;
+            }
+            if ch.is_whitespace() || ch == '/' || ch == '\\' || ch == ',' || ch == ';' {
+                split_byte = Some(idx + ch.len_utf8());
+            }
+        }
+        let split_at = split_byte.unwrap_or_else(|| {
+            remaining
+                .char_indices()
+                .nth(max_columns)
+                .map(|(idx, _)| idx)
+                .unwrap_or(remaining.len())
+        });
+        let (head, tail) = remaining.split_at(split_at);
+        out.push(head.trim_end().to_string());
+        remaining = tail.trim_start().to_string();
+    }
+    if !remaining.is_empty() {
+        out.push(remaining);
+    }
+    out
+}
+
+fn abbreviate_middle(text: &str, max_chars: usize, head_chars: usize, tail_chars: usize) -> String {
+    let chars = text.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars || chars.len() <= head_chars + tail_chars + 1 {
+        return text.to_string();
+    }
+    let head = chars[..head_chars].iter().collect::<String>();
+    let tail = chars[chars.len() - tail_chars..].iter().collect::<String>();
+    format!("{head}…{tail}")
 }
 
 /// One flattened row displayed in the unified diff viewer list.
@@ -249,5 +315,31 @@ mod tests {
         };
         let _ = state.filtered_entry_rows_with_index();
         assert_eq!(state.entry_rows, rows);
+    }
+
+    #[test]
+    fn warnings_text_wraps_long_lines_for_ui() {
+        let state = AppState {
+            warning_lines: vec![
+                "large directory guard: entries=20000 total_bytes=3221225472 hard_entries=50000 hard_total_bytes=2147483648".to_string(),
+            ],
+            ..AppState::default()
+        };
+        let text = state.warnings_text();
+        assert!(text.contains("• "));
+        assert!(text.contains('\n'));
+        assert!(text.contains("entries=20000"));
+    }
+
+    #[test]
+    fn selected_relative_path_is_abbreviated_when_too_long() {
+        let long_path = format!("{}/{}", "a".repeat(120), "b".repeat(120));
+        let state = AppState {
+            selected_relative_path: Some(long_path),
+            ..AppState::default()
+        };
+        let display = state.selected_relative_path_text();
+        assert!(display.contains('…'));
+        assert!(display.len() < 200);
     }
 }
