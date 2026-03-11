@@ -74,7 +74,7 @@ slint::slint! {
         callback tapped();
 
         horizontal-stretch: 1;
-        background: self.selected ? #ebf0f7 : transparent;
+        background: self.selected ? #e5edf7 : transparent;
         opacity: self.enabled ? 1 : 0.6;
 
         Rectangle {
@@ -88,7 +88,7 @@ slint::slint! {
 
         Text {
             text: root.label;
-            color: root.selected ? #294866 : #506176;
+            color: root.selected ? #234766 : #526377;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -109,27 +109,113 @@ slint::slint! {
         min-width: 48px;
         border-radius: 6px;
         border-width: 1px;
-        border-color: root.tone == "ok"
-            ? #b6cab9
-            : (root.tone == "warn"
-                ? #d4c3a7
-                : (root.tone == "error"
-                    ? #d8b2b2
-                    : #d6dce5));
-        background: root.tone == "ok"
-            ? #f3f9f4
-            : (root.tone == "warn"
-                ? #fdf7ed
-                : (root.tone == "error"
-                    ? #fdf1f1
-                    : #f4f6f9));
+        border-color: root.tone == "different"
+            ? #c0d2e8
+            : (root.tone == "equal"
+                ? #c2d6c7
+                : (root.tone == "left"
+                    ? #dfd1bf
+                    : (root.tone == "right"
+                        ? #c9d3e8
+                        : (root.tone == "warn"
+                            ? #dfd1bf
+                            : (root.tone == "error"
+                                ? #dfc1c1
+                                : (root.tone == "info"
+                                    ? #c6d7ec
+                                    : #d5dde7))))));
+        background: root.tone == "different"
+            ? #edf4fb
+            : (root.tone == "equal"
+                ? #f1f8f3
+                : (root.tone == "left"
+                    ? #faf5ec
+                    : (root.tone == "right"
+                        ? #f3f6fc
+                        : (root.tone == "warn"
+                            ? #faf5ec
+                            : (root.tone == "error"
+                                ? #fdf2f2
+                                : (root.tone == "info"
+                                    ? #eef4fb
+                                    : #f4f6f9))))));
 
         Text {
             text: root.label;
             horizontal-alignment: center;
             vertical-alignment: center;
-            color: root.tone == "error" ? #7f2d2d : #516274;
+            color: root.tone == "different"
+                ? #255279
+                : (root.tone == "equal"
+                    ? #2f6143
+                    : (root.tone == "left"
+                        ? #76552d
+                        : (root.tone == "right"
+                            ? #435a84
+                            : (root.tone == "warn"
+                                ? #76552d
+                                : (root.tone == "error"
+                                    ? #8a2f2f
+                                    : (root.tone == "info"
+                                        ? #2e5579
+                                        : #516274))))));
             font-size: 11px;
+        }
+    }
+
+    component WorkspaceStatePanel inherits Rectangle {
+        in property <string> title;
+        in property <string> body;
+        in property <string> tone: "neutral";
+
+        border-width: 1px;
+        border-radius: 6px;
+        border-color: root.tone == "error"
+            ? #dec5c5
+            : (root.tone == "warn"
+                ? #e1d5c4
+                : (root.tone == "info"
+                    ? #c6d7ec
+                    : (root.tone == "success"
+                        ? #c4d7ca
+                        : #d7e0eb)));
+        background: root.tone == "error"
+            ? #fdf4f4
+            : (root.tone == "warn"
+                ? #fbf8f1
+                : (root.tone == "info"
+                    ? #f1f7fd
+                    : (root.tone == "success"
+                        ? #f3faf5
+                        : #f8fafd)));
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 4px;
+
+            Text {
+                text: root.title;
+                color: root.tone == "error"
+                    ? #8a2f2f
+                    : (root.tone == "warn"
+                        ? #7a5a2f
+                        : (root.tone == "info"
+                            ? #2e5579
+                            : (root.tone == "success"
+                                ? #2f6143
+                                : #4a5d70)));
+                font-size: 14px;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+
+            Text {
+                visible: root.body != "";
+                text: root.body;
+                color: #5f7083;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
         }
     }
 
@@ -192,6 +278,7 @@ slint::slint! {
         in property <string> diff_warning_text;
         in property <string> diff_error_text;
         in property <bool> diff_truncated;
+        in property <bool> diff_loaded;
         in property <[string]> diff_row_kinds;
         in property <[string]> diff_old_line_nos;
         in property <[string]> diff_new_line_nos;
@@ -199,6 +286,7 @@ slint::slint! {
         in property <[string]> diff_contents;
         in property <bool> analysis_loading;
         in property <bool> analysis_available;
+        in property <bool> analysis_has_result;
         in property <string> analysis_hint_text;
         in property <string> analysis_error_text;
         in property <string> analysis_title_text;
@@ -224,6 +312,7 @@ slint::slint! {
         in-out property <string> provider_settings_timeout;
         in-out property <bool> provider_settings_show_api_key: false;
         in-out property <int> selected_row: -1;
+        property <bool> has_selected_result: root.selected_row >= 0;
 
         callback compare_clicked();
         callback left_browse_clicked();
@@ -373,7 +462,7 @@ slint::slint! {
                         }
 
                         SectionCard {
-                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 126px : 86px;
+                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 132px : 88px;
                             VerticalLayout {
                                 padding: 9px;
                                 spacing: 4px;
@@ -386,7 +475,7 @@ slint::slint! {
                                     spacing: 6px;
                                     Text {
                                         text: root.status_text;
-                                        color: #4a5f74;
+                                        color: #455d74;
                                         overflow: elide;
                                         vertical-alignment: center;
                                     }
@@ -420,14 +509,16 @@ slint::slint! {
                                     text: root.compare_metrics_text
                                         + (root.compare_has_deferred ? " | deferred" : "")
                                         + (root.compare_has_oversized ? " | oversized" : "");
-                                    color: #5a6a7b;
+                                    color: #566a7f;
                                     overflow: elide;
                                 }
                                 Rectangle {
                                     visible: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "");
-                                    height: 36px;
-                                    border-width: 0px;
-                                    background: #f6f8fb;
+                                    height: 42px;
+                                    border-width: 1px;
+                                    border-color: #dde5ef;
+                                    border-radius: 4px;
+                                    background: #f7fafd;
                                     clip: true;
                                     VerticalLayout {
                                         padding: 5px;
@@ -435,21 +526,21 @@ slint::slint! {
                                         Text {
                                             visible: root.summary_text != "";
                                             text: root.compact_summary_text;
-                                            color: #6b7888;
+                                            color: #637285;
                                             overflow: elide;
                                             horizontal-stretch: 1;
                                         }
                                         Text {
                                             visible: root.error_text != "";
                                             text: root.error_text;
-                                            color: #8b3a3a;
+                                            color: #8a2f2f;
                                             overflow: elide;
                                             horizontal-stretch: 1;
                                         }
                                         Text {
                                             visible: root.warnings_text != "";
                                             text: root.warnings_text;
-                                            color: #86633a;
+                                            color: #7a5a2f;
                                             overflow: elide;
                                             horizontal-stretch: 1;
                                         }
@@ -601,10 +692,30 @@ slint::slint! {
                                     for row_path[index] in root.row_paths: Rectangle {
                                         height: 46px;
                                         border-width: 1px;
-                                        border-color: root.row_source_indices[index] == root.selected_row ? #9ab1cd : #e1e6ee;
+                                        border-color: root.row_source_indices[index] == root.selected_row
+                                            ? #7f9fc4
+                                            : (root.row_statuses[index] == "different"
+                                                ? #c4d5e9
+                                                : (root.row_statuses[index] == "equal"
+                                                    ? #cadccf
+                                                    : (root.row_statuses[index] == "left-only"
+                                                        ? #dfd2bf
+                                                        : (root.row_statuses[index] == "right-only"
+                                                            ? #ced7ea
+                                                            : #dfe5ee))));
                                         border-radius: 4px;
                                         background: root.row_source_indices[index] == root.selected_row ? #eaf1fb
-                                            : (root.row_can_load_diff[index] ? #fbfcfe : #f3f5f8);
+                                            : (!root.row_can_load_diff[index]
+                                                ? #f1f4f8
+                                                : (root.row_statuses[index] == "different"
+                                                    ? #f6f9fe
+                                                    : (root.row_statuses[index] == "equal"
+                                                        ? #f7fbf8
+                                                        : (root.row_statuses[index] == "left-only"
+                                                            ? #fbf8f3
+                                                            : (root.row_statuses[index] == "right-only"
+                                                                ? #f7f9fd
+                                                                : #fbfcfe)))));
 
                                         VerticalLayout {
                                             padding: 4px;
@@ -621,15 +732,19 @@ slint::slint! {
                                                                 : (root.row_statuses[index] == "right-only"
                                                                     ? "right"
                                                                     : root.row_statuses[index])));
-                                                    tone: root.row_statuses[index] == "equal"
-                                                        ? "ok"
-                                                        : ((root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only")
-                                                            ? "warn"
-                                                            : "neutral");
+                                                    tone: root.row_statuses[index] == "different"
+                                                        ? "different"
+                                                        : (root.row_statuses[index] == "equal"
+                                                            ? "equal"
+                                                            : (root.row_statuses[index] == "left-only"
+                                                                ? "left"
+                                                                : (root.row_statuses[index] == "right-only"
+                                                                    ? "right"
+                                                                    : "neutral")));
                                                 }
                                                 Text {
                                                     text: row_path;
-                                                    color: root.row_source_indices[index] == root.selected_row ? #1e466d : #2f3f50;
+                                                    color: root.row_source_indices[index] == root.selected_row ? #1f456b : #2f3f50;
                                                     vertical-alignment: center;
                                                     horizontal-stretch: 1;
                                                     overflow: elide;
@@ -637,7 +752,7 @@ slint::slint! {
                                             }
                                             Text {
                                                 text: root.row_can_load_diff[index] ? root.row_details[index] : "detailed diff unavailable";
-                                                color: root.row_can_load_diff[index] ? #6d7986 : #7a8692;
+                                                color: root.row_can_load_diff[index] ? #647486 : #738190;
                                                 vertical-alignment: center;
                                                 horizontal-stretch: 1;
                                                 overflow: elide;
@@ -659,15 +774,24 @@ slint::slint! {
                 SectionCard {
                     horizontal-stretch: 1;
                     min-width: 500px;
+                    border-color: #d2dbe7;
+                    background: #f8fbfe;
                     VerticalLayout {
-                        padding: 10px;
-                        spacing: 8px;
+                        padding: 0px;
+                        spacing: 0px;
 
-                        SectionCard {
-                            height: 36px;
-                            background: #f8fafd;
+                        Rectangle {
+                            height: 42px;
+                            background: #f6f9fd;
+                            Rectangle {
+                                x: 0px;
+                                y: parent.height - 1px;
+                                width: parent.width;
+                                height: 1px;
+                                background: #dce4ef;
+                            }
                             HorizontalLayout {
-                                padding: 4px;
+                                padding: 6px;
                                 spacing: 8px;
                                 SegmentedRail {
                                     width: 214px;
@@ -695,22 +819,35 @@ slint::slint! {
                                 Rectangle {
                                     horizontal-stretch: 1;
                                 }
+                                Text {
+                                    text: root.workspace_tab == 0 ? "File View" : "Analysis";
+                                    color: #647488;
+                                    vertical-alignment: center;
+                                }
                             }
                         }
 
-                        SectionCard {
-                            height: 58px;
+                        Rectangle {
+                            height: 70px;
+                            background: #f8fbfe;
+                            Rectangle {
+                                x: 0px;
+                                y: parent.height - 1px;
+                                width: parent.width;
+                                height: 1px;
+                                background: #dde5f0;
+                            }
                             VerticalLayout {
-                                padding: 9px;
-                                spacing: 2px;
+                                padding: 10px;
+                                spacing: 3px;
                                 Text {
-                                    text: root.workspace_tab == 0 ? "Diff Mode" : "Analysis Mode";
-                                    color: #425161;
+                                    text: root.workspace_tab == 0 ? "Diff File View" : "Analysis Workspace";
+                                    color: #43576c;
                                 }
                                 Text {
                                     visible: root.workspace_tab == 0;
-                                    text: root.selected_relative_path == "" ? "(none selected)" : root.selected_relative_path;
-                                    color: #294562;
+                                    text: root.selected_relative_path == "" ? "No file selected from Results / Navigator." : root.selected_relative_path;
+                                    color: root.selected_relative_path == "" ? #6d7d8e : #284968;
                                     wrap: word-wrap;
                                     horizontal-stretch: 1;
                                     overflow: elide;
@@ -719,7 +856,7 @@ slint::slint! {
                                     visible: root.workspace_tab == 1;
                                     text: "Provider: " + root.analysis_provider_mode_text
                                         + (root.analysis_remote_mode ? (root.analysis_remote_config_ready ? " (ready)" : " (config incomplete)") : " (local)");
-                                    color: #294562;
+                                    color: #46607a;
                                     wrap: word-wrap;
                                     horizontal-stretch: 1;
                                     overflow: elide;
@@ -727,250 +864,295 @@ slint::slint! {
                             }
                         }
 
-                        SectionCard {
+                        Rectangle {
                             vertical-stretch: 1;
-
+                            background: #fbfcfe;
                             VerticalLayout {
-                                visible: root.workspace_tab == 0;
                                 padding: 10px;
-                                spacing: 6px;
+                                spacing: 8px;
 
-                                Text {
-                                    text: root.diff_summary_text == "" ? "Select one result row to load detailed diff." : root.diff_summary_text;
-                                    color: #425364;
-                                    wrap: word-wrap;
-                                    horizontal-stretch: 1;
-                                }
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        visible: root.diff_loading;
-                                        text: "Loading detailed diff...";
-                                        color: #36516f;
-                                    }
-                                    Text {
-                                        visible: root.diff_warning_text != "";
-                                        text: root.diff_warning_text;
-                                        color: #805520;
-                                        overflow: elide;
-                                    }
-                                    Text {
-                                        visible: root.diff_truncated;
-                                        text: "Detailed diff is truncated.";
-                                        color: #7a4b00;
-                                    }
-                                    Text {
-                                        visible: root.diff_error_text != "";
-                                        text: root.diff_error_text;
-                                        color: #8a2424;
-                                        overflow: elide;
-                                    }
-                                }
+                                VerticalLayout {
+                                    visible: root.workspace_tab == 0;
+                                    spacing: 8px;
 
-                                Rectangle {
-                                    border-width: 1px;
-                                    border-color: #dce3ec;
-                                    border-radius: 4px;
-                                    background: #f8fafd;
-                                    height: 26px;
                                     HorizontalLayout {
                                         spacing: 8px;
                                         Text {
-                                            text: "old";
-                                            width: 56px;
-                                            horizontal-alignment: right;
-                                            color: #666;
+                                            text: root.diff_summary_text != "" ? root.diff_summary_text
+                                                : (root.has_selected_result ? "Detailed diff is pending for selected file." : "Select one result row to open detailed diff.");
+                                            color: root.diff_summary_text != "" ? #445a70 : #627487;
+                                            wrap: word-wrap;
+                                            horizontal-stretch: 1;
                                         }
-                                        Text {
-                                            text: "new";
-                                            width: 56px;
-                                            horizontal-alignment: right;
-                                            color: #666;
+                                        StatusPill {
+                                            visible: root.diff_loading;
+                                            label: "loading";
+                                            tone: "info";
                                         }
-                                        Text {
-                                            text: " ";
-                                            width: 20px;
+                                        StatusPill {
+                                            visible: root.diff_truncated;
+                                            label: "truncated";
+                                            tone: "warn";
                                         }
-                                        Text {
-                                            text: "content";
-                                            color: #666;
+                                        StatusPill {
+                                            visible: root.diff_warning_text != "";
+                                            label: "warning";
+                                            tone: "warn";
+                                        }
+                                        StatusPill {
+                                            visible: root.diff_error_text != "";
+                                            label: "error";
+                                            tone: "error";
+                                        }
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: !root.has_selected_result;
+                                        title: "No file selected";
+                                        body: "Pick one row from Results / Navigator to load the file-level diff.";
+                                        tone: "neutral";
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: root.has_selected_result && root.diff_loading;
+                                        title: "Loading detailed diff";
+                                        body: "Preparing hunk-level lines for this file.";
+                                        tone: "info";
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: root.has_selected_result && !root.diff_loading && !root.diff_loaded && root.diff_error_text == "";
+                                        title: "Detailed diff unavailable";
+                                        body: root.diff_warning_text != "" ? root.diff_warning_text : "This selected row does not provide text-level diff lines.";
+                                        tone: "warn";
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: root.has_selected_result && !root.diff_loading && root.diff_error_text != "";
+                                        title: "Failed to load detailed diff";
+                                        body: root.diff_error_text;
+                                        tone: "error";
+                                    }
+
+                                    Rectangle {
+                                        visible: root.diff_loaded && !root.diff_loading && root.diff_error_text == "";
+                                        vertical-stretch: 1;
+                                        border-width: 1px;
+                                        border-color: #d9e2ee;
+                                        border-radius: 5px;
+                                        background: #fdfefe;
+                                        clip: true;
+
+                                        VerticalLayout {
+                                            padding: 0px;
+                                            spacing: 0px;
+
+                                            Rectangle {
+                                                border-width: 0px;
+                                                background: #f4f8fd;
+                                                height: 28px;
+                                                HorizontalLayout {
+                                                    padding: 4px;
+                                                    spacing: 8px;
+                                                    Text {
+                                                        text: "old";
+                                                        width: 56px;
+                                                        horizontal-alignment: right;
+                                                        color: #5f7082;
+                                                    }
+                                                    Text {
+                                                        text: "new";
+                                                        width: 56px;
+                                                        horizontal-alignment: right;
+                                                        color: #5f7082;
+                                                    }
+                                                    Text {
+                                                        text: " ";
+                                                        width: 20px;
+                                                    }
+                                                    Text {
+                                                        text: "content";
+                                                        color: #5f7082;
+                                                    }
+                                                }
+                                            }
+
+                                            ListView {
+                                                vertical-stretch: 1;
+                                                for row_content[index] in root.diff_contents: Rectangle {
+                                                    height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
+                                                    background: root.diff_row_kinds[index] == "hunk" ? rgb(234, 242, 251)
+                                                        : (root.diff_row_kinds[index] == "added" ? rgb(237, 248, 241)
+                                                        : (root.diff_row_kinds[index] == "removed" ? rgb(250, 239, 239) : rgb(251, 253, 255)));
+
+                                                    Text {
+                                                        visible: root.diff_row_kinds[index] == "hunk";
+                                                        text: row_content;
+                                                        color: #2f5377;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    HorizontalLayout {
+                                                        visible: root.diff_row_kinds[index] != "hunk";
+                                                        spacing: 8px;
+                                                        Text {
+                                                            text: root.diff_old_line_nos[index];
+                                                            width: 56px;
+                                                            horizontal-alignment: right;
+                                                            vertical-alignment: center;
+                                                            color: #687788;
+                                                        }
+                                                        Text {
+                                                            text: root.diff_new_line_nos[index];
+                                                            width: 56px;
+                                                            horizontal-alignment: right;
+                                                            vertical-alignment: center;
+                                                            color: #687788;
+                                                        }
+                                                        Text {
+                                                            text: root.diff_markers[index];
+                                                            width: 20px;
+                                                            horizontal-alignment: center;
+                                                            vertical-alignment: center;
+                                                            color: root.diff_row_kinds[index] == "added" ? #2f6f49
+                                                                : (root.diff_row_kinds[index] == "removed" ? #8a2f2f : #5a6775);
+                                                        }
+                                                        Text {
+                                                            text: row_content;
+                                                            color: #2c3f52;
+                                                            vertical-alignment: center;
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
 
-                                ListView {
-                                    vertical-stretch: 1;
-                                    for row_content[index] in root.diff_contents: Rectangle {
-                                        height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
-                                        background: root.diff_row_kinds[index] == "hunk" ? rgb(238, 244, 251)
-                                            : (root.diff_row_kinds[index] == "added" ? rgb(239, 251, 242)
-                                            : (root.diff_row_kinds[index] == "removed" ? rgb(252, 240, 240) : rgb(251, 252, 253)));
-
-                                        Text {
-                                            visible: root.diff_row_kinds[index] == "hunk";
-                                            text: row_content;
-                                            color: #2f4f70;
-                                            vertical-alignment: center;
-                                        }
-
-                                        HorizontalLayout {
-                                            visible: root.diff_row_kinds[index] != "hunk";
-                                            spacing: 8px;
-                                            Text {
-                                                text: root.diff_old_line_nos[index];
-                                                width: 56px;
-                                                horizontal-alignment: right;
-                                                vertical-alignment: center;
-                                                color: #6a6a6a;
-                                            }
-                                            Text {
-                                                text: root.diff_new_line_nos[index];
-                                                width: 56px;
-                                                horizontal-alignment: right;
-                                                vertical-alignment: center;
-                                                color: #6a6a6a;
-                                            }
-                                            Text {
-                                                text: root.diff_markers[index];
-                                                width: 20px;
-                                                horizontal-alignment: center;
-                                                vertical-alignment: center;
-                                                color: root.diff_row_kinds[index] == "added" ? #1f6d39
-                                                    : (root.diff_row_kinds[index] == "removed" ? #8a1b1b : #4a4a4a);
-                                            }
-                                            Text {
-                                                text: row_content;
-                                                color: #273544;
-                                                vertical-alignment: center;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            VerticalLayout {
-                                visible: root.workspace_tab == 1;
-                                padding: 10px;
-                                spacing: 6px;
-
-                                HorizontalLayout {
+                                VerticalLayout {
+                                    visible: root.workspace_tab == 1;
                                     spacing: 8px;
-                                    Text {
-                                        text: "AI Analysis";
-                                        color: #425161;
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                    ToolButton {
-                                        label: root.analysis_loading ? "Analyzing..." : "Analyze";
-                                        primary: true;
-                                        button_min_width: 108px;
-                                        control_height: 30px;
-                                        enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running
-                                            && (!root.analysis_remote_mode || root.analysis_remote_config_ready);
-                                        tapped => {
-                                            root.analyze_clicked();
-                                        }
-                                    }
-                                }
 
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Provider:";
-                                        color: #5f6d7c;
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Text {
+                                            text: "AI Analysis";
+                                            color: #43576c;
+                                        }
+                                        Rectangle {
+                                            horizontal-stretch: 1;
+                                        }
+                                        ToolButton {
+                                            label: root.analysis_loading ? "Analyzing..." : "Analyze";
+                                            primary: true;
+                                            button_min_width: 108px;
+                                            control_height: 30px;
+                                            enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running
+                                                && (!root.analysis_remote_mode || root.analysis_remote_config_ready);
+                                            tapped => {
+                                                root.analyze_clicked();
+                                            }
+                                        }
                                     }
-                                    Text {
-                                        text: root.analysis_provider_mode_text;
-                                        color: #1f3e58;
-                                    }
-                                    Text {
-                                        text: "Timeout: " + root.analysis_timeout_text + "s";
-                                        color: #5f6d7c;
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                    Text {
-                                        text: "Use Provider Settings in App Bar to edit.";
-                                        color: #7a4b00;
-                                    }
-                                }
 
-                                ScrollView {
-                                    vertical-stretch: 1;
-                                    VerticalLayout {
-                                        spacing: 4px;
+                                    HorizontalLayout {
+                                        spacing: 6px;
                                         Text {
-                                            visible: root.analysis_remote_mode;
-                                            text: "Remote mode sends diff excerpts to the configured endpoint.";
-                                            color: #7a4b00;
-                                            wrap: word-wrap;
+                                            text: "Provider:";
+                                            color: #607184;
+                                        }
+                                        Text {
+                                            text: root.analysis_provider_mode_text;
+                                            color: #36526c;
+                                        }
+                                        StatusPill {
+                                            label: root.analysis_remote_mode
+                                                ? (root.analysis_remote_config_ready ? "remote-ready" : "remote-config")
+                                                : "local";
+                                            tone: root.analysis_remote_mode
+                                                ? (root.analysis_remote_config_ready ? "info" : "warn")
+                                                : "neutral";
+                                        }
+                                        Text {
+                                            text: "Timeout: " + root.analysis_timeout_text + "s";
+                                            color: #607184;
+                                        }
+                                        Rectangle {
                                             horizontal-stretch: 1;
                                         }
                                         Text {
-                                            visible: root.analysis_remote_mode && !root.analysis_remote_config_ready;
-                                            text: "Remote config incomplete: endpoint, API key and model are required.";
-                                            color: #8c1d1d;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
+                                            text: "Use Provider Settings in App Bar to edit.";
+                                            color: #7a5a2f;
                                         }
-                                        Text {
-                                            visible: root.analysis_hint_text != "";
-                                            text: root.analysis_hint_text;
-                                            color: #777;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Text {
-                                            visible: root.analysis_loading;
-                                            text: "Running AI analysis...";
-                                            color: #2f4f70;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Text {
-                                            visible: root.analysis_error_text != "";
-                                            text: root.analysis_error_text;
-                                            color: #8c1d1d;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Text {
-                                            visible: root.analysis_title_text != "";
-                                            text: root.analysis_title_text;
-                                            color: #1f3e58;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Text {
-                                            visible: root.analysis_risk_level_text != "";
-                                            text: "Risk Level: " + root.analysis_risk_level_text;
-                                            color: #445a6a;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Text {
-                                            visible: root.analysis_rationale_text != "";
-                                            text: root.analysis_rationale_text;
-                                            color: #444;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Text {
-                                            visible: root.analysis_key_points_text != "";
-                                            text: "Key Points:\n" + root.analysis_key_points_text;
-                                            color: #444;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Text {
-                                            visible: root.analysis_review_suggestions_text != "";
-                                            text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
-                                            color: #444;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: !root.has_selected_result;
+                                        title: "No file selected";
+                                        body: "Select one row in Results / Navigator before running analysis.";
+                                        tone: "neutral";
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: root.has_selected_result && root.analysis_loading;
+                                        title: "Analysis running";
+                                        body: "AI provider is reviewing the current diff context.";
+                                        tone: "info";
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: root.has_selected_result && !root.analysis_loading && !root.analysis_has_result && root.analysis_error_text == "";
+                                        title: "Analysis not started";
+                                        body: root.analysis_hint_text != "" ? root.analysis_hint_text : "Load detailed diff first, then click Analyze.";
+                                        tone: "neutral";
+                                    }
+
+                                    WorkspaceStatePanel {
+                                        visible: root.has_selected_result && !root.analysis_loading && root.analysis_error_text != "";
+                                        title: "Analysis failed";
+                                        body: root.analysis_error_text;
+                                        tone: "error";
+                                    }
+
+                                    ScrollView {
+                                        visible: root.has_selected_result && !root.analysis_loading && root.analysis_has_result && root.analysis_error_text == "";
+                                        vertical-stretch: 1;
+                                        VerticalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: root.analysis_title_text;
+                                                color: #2d4f6f;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_risk_level_text != "";
+                                                text: "Risk Level: " + root.analysis_risk_level_text;
+                                                color: #4c6174;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_rationale_text != "";
+                                                text: root.analysis_rationale_text;
+                                                color: #3f4f60;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_key_points_text != "";
+                                                text: "Key Points:\n" + root.analysis_key_points_text;
+                                                color: #3f4f60;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Text {
+                                                visible: root.analysis_review_suggestions_text != "";
+                                                text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
+                                                color: #3f4f60;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
                                         }
                                     }
                                 }
@@ -1218,8 +1400,10 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_diff_warning_text(state.diff_warning_text().into());
     window.set_diff_error_text(state.diff_error_message.clone().unwrap_or_default().into());
     window.set_diff_truncated(state.diff_truncated);
+    window.set_diff_loaded(state.selected_diff.is_some());
     window.set_analysis_loading(state.analysis_loading);
     window.set_analysis_available(state.analysis_available);
+    window.set_analysis_has_result(state.analysis_result.is_some());
     window.set_analysis_hint_text(state.analysis_hint_text().into());
     window.set_analysis_error_text(
         state

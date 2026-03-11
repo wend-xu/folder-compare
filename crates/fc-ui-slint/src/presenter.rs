@@ -241,20 +241,49 @@ impl Presenter {
             if state.diff_loading {
                 return;
             }
-            state.diff_loading = true;
+
+            let selected_row = state
+                .selected_row
+                .and_then(|idx| state.entry_rows.get(idx).cloned());
+            let Some(row) = selected_row else {
+                state.diff_loading = false;
+                state.diff_error_message =
+                    Some("select one compare row before loading detailed diff".to_string());
+                state.selected_diff = None;
+                state.diff_warning = None;
+                state.diff_truncated = false;
+                state.analysis_available = false;
+                state.clear_analysis_panel();
+                state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
+                state.status_text = "Detailed diff unavailable".to_string();
+                return;
+            };
+
+            state.selected_relative_path = Some(row.relative_path.clone());
             state.diff_error_message = None;
             state.selected_diff = None;
             state.diff_warning = None;
             state.diff_truncated = false;
             state.analysis_available = false;
             state.clear_analysis_panel();
+            if !row.can_load_diff {
+                let reason = row.diff_blocked_reason.clone().unwrap_or_else(|| {
+                    "selected row does not support detailed text diff".to_string()
+                });
+                state.diff_loading = false;
+                state.diff_warning = Some(reason);
+                state.analysis_hint =
+                    Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
+                state.status_text = "Detailed diff unavailable for selected row".to_string();
+                return;
+            }
+
+            state.diff_loading = true;
             state.analysis_hint = Some("Detailed diff is loading...".to_string());
             (
                 state.left_root.clone(),
                 state.right_root.clone(),
-                state
-                    .selected_row
-                    .and_then(|idx| state.entry_rows.get(idx).cloned()),
+                Some(row),
                 Arc::clone(&self.state),
             )
         };
@@ -638,7 +667,7 @@ mod tests {
     }
 
     #[test]
-    fn load_selected_diff_for_non_diffable_row_sets_diff_error_only() {
+    fn load_selected_diff_for_non_diffable_row_sets_unavailable_state() {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
         fs::write(left.path().join("left_only.txt"), "left\n")
@@ -656,8 +685,10 @@ mod tests {
         let snapshot = wait_until(&presenter, |state| !state.diff_loading);
 
         assert!(snapshot.error_message.is_none());
-        assert!(snapshot.diff_error_message.is_some());
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.diff_warning.is_some());
         assert!(snapshot.selected_diff.is_none());
+        assert_eq!(snapshot.status_text, "Detailed diff unavailable for selected row");
     }
 
     #[test]
