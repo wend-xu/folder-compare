@@ -15,9 +15,9 @@ slint::slint! {
 
     component SectionCard inherits Rectangle {
         border-width: 1px;
-        border-color: #d9dfe8;
+        border-color: #e3e8ef;
         border-radius: 8px;
-        background: #fbfcfd;
+        background: #fcfdff;
         clip: true;
     }
 
@@ -33,21 +33,21 @@ slint::slint! {
         min-width: self.button_min_width;
         height: self.control_height;
         border-width: 1px;
-        border-radius: 7px;
+        border-radius: 6px;
         opacity: self.enabled ? 1 : 0.58;
         border-color: self.primary
-            ? #2f6cb0
-            : (self.active ? #98adc8 : #c7d0db);
+            ? #2f69ad
+            : (self.active ? #c7d3e4 : #d4dbe5);
         background: self.primary
-            ? #3678c3
-            : (self.active ? #e4ecf8 : #f5f7fa);
+            ? #3a74ba
+            : (self.active ? #edf2f8 : #f8f9fb);
 
         Text {
             text: root.label;
-            color: root.primary ? #ffffff : (root.active ? #1f3f63 : #2f3c4b);
+            color: root.primary ? #ffffff : (root.active ? #27476b : #384555);
             horizontal-alignment: center;
             vertical-alignment: center;
-            font-size: 15px;
+            font-size: 14px;
         }
 
         TouchArea {
@@ -60,9 +60,9 @@ slint::slint! {
 
     component SegmentedRail inherits Rectangle {
         border-width: 1px;
-        border-color: #cad3df;
+        border-color: #d7dde7;
         border-radius: 8px;
-        background: #f3f6fa;
+        background: #f6f8fb;
         clip: true;
     }
 
@@ -74,7 +74,7 @@ slint::slint! {
         callback tapped();
 
         horizontal-stretch: 1;
-        background: self.selected ? #dfe8f5 : transparent;
+        background: self.selected ? #ebf0f7 : transparent;
         opacity: self.enabled ? 1 : 0.6;
 
         Rectangle {
@@ -83,12 +83,12 @@ slint::slint! {
             y: 5px;
             width: 1px;
             height: parent.height - 10px;
-            background: #d4dbe7;
+            background: #dde3ec;
         }
 
         Text {
             text: root.label;
-            color: root.selected ? #1f4166 : #4a5b6f;
+            color: root.selected ? #294866 : #506176;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -105,31 +105,54 @@ slint::slint! {
         in property <string> label;
         in property <string> tone: "neutral";
 
-        height: 20px;
-        min-width: 56px;
-        border-radius: 10px;
+        height: 18px;
+        min-width: 50px;
+        border-radius: 9px;
         border-width: 1px;
         border-color: root.tone == "ok"
-            ? #9fbeaa
+            ? #b6cab9
             : (root.tone == "warn"
-                ? #c9b28c
+                ? #d4c3a7
                 : (root.tone == "error"
-                    ? #d1a3a3
-                    : #c7d0db));
+                    ? #d8b2b2
+                    : #d6dce5));
         background: root.tone == "ok"
-            ? #edf7ef
+            ? #f3f9f4
             : (root.tone == "warn"
-                ? #fff5e8
+                ? #fdf7ed
                 : (root.tone == "error"
-                    ? #ffefef
-                    : #f0f3f7));
+                    ? #fdf1f1
+                    : #f4f6f9));
 
         Text {
             text: root.label;
             horizontal-alignment: center;
             vertical-alignment: center;
-            color: root.tone == "error" ? #7f2424 : #435265;
-            font-size: 13px;
+            color: root.tone == "error" ? #7f2d2d : #516274;
+            font-size: 12px;
+        }
+    }
+
+    component TextAction inherits Rectangle {
+        in property <string> label;
+        in property <bool> enabled: true;
+        callback tapped();
+
+        height: 20px;
+        background: transparent;
+        opacity: root.enabled ? 1 : 0.55;
+
+        Text {
+            text: root.label;
+            color: #6d7b8b;
+            vertical-alignment: center;
+        }
+
+        TouchArea {
+            enabled: root.enabled;
+            clicked => {
+                root.tapped();
+            }
         }
     }
 
@@ -221,16 +244,16 @@ slint::slint! {
             spacing: 8px;
 
             SectionCard {
-                height: 38px;
-                border-color: #dce2ea;
-                background: #f5f7fb;
+                height: 36px;
+                border-color: #e5e9ef;
+                background: #f7f9fc;
                 HorizontalLayout {
-                    padding: 6px;
+                    padding: 5px;
                     spacing: 8px;
                     Text {
                         text: "Folder Compare";
-                        font-size: 16px;
-                        color: #2d3a4b;
+                        font-size: 15px;
+                        color: #334252;
                         vertical-alignment: center;
                     }
                     Rectangle {
@@ -238,8 +261,8 @@ slint::slint! {
                     }
                     ToolButton {
                         label: "Provider Settings";
-                        button_min_width: 136px;
-                        control_height: 28px;
+                        button_min_width: 132px;
+                        control_height: 26px;
                         tapped => {
                             root.provider_settings_mode = root.analysis_remote_mode ? 1 : 0;
                             root.provider_settings_endpoint = root.analysis_endpoint;
@@ -268,11 +291,11 @@ slint::slint! {
                         SectionCard {
                             height: 142px;
                             VerticalLayout {
-                                padding: 10px;
+                                padding: 9px;
                                 spacing: 6px;
                                 Text {
                                     text: "Compare Inputs";
-                                    color: #374656;
+                                    color: #3b4a5b;
                                     font-size: 15px;
                                 }
                                 HorizontalLayout {
@@ -290,7 +313,7 @@ slint::slint! {
                                     ToolButton {
                                         label: "Browse";
                                         button_min_width: 74px;
-                                        control_height: 30px;
+                                        control_height: 28px;
                                         enabled: !root.running;
                                         tapped => {
                                             root.left_browse_clicked();
@@ -312,7 +335,7 @@ slint::slint! {
                                     ToolButton {
                                         label: "Browse";
                                         button_min_width: 74px;
-                                        control_height: 30px;
+                                        control_height: 28px;
                                         enabled: !root.running;
                                         tapped => {
                                             root.right_browse_clicked();
@@ -324,7 +347,7 @@ slint::slint! {
                                     ToolButton {
                                         label: root.running ? "Comparing..." : "Compare";
                                         primary: true;
-                                        button_min_width: 124px;
+                                        button_min_width: 120px;
                                         control_height: 31px;
                                         enabled: !root.running && root.left_root != "" && root.right_root != "";
                                         tapped => {
@@ -346,20 +369,20 @@ slint::slint! {
                         }
 
                         SectionCard {
-                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 146px : 92px;
+                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 126px : 86px;
                             VerticalLayout {
-                                padding: 10px;
+                                padding: 9px;
                                 spacing: 4px;
                                 Text {
                                     text: "Compare Status";
-                                    color: #374656;
+                                    color: #3b4a5b;
                                     font-size: 15px;
                                 }
                                 HorizontalLayout {
                                     spacing: 6px;
                                     Text {
                                         text: root.status_text;
-                                        color: #36516f;
+                                        color: #4a5f74;
                                         overflow: elide;
                                         vertical-alignment: center;
                                     }
@@ -370,7 +393,7 @@ slint::slint! {
                                     }
                                     StatusPill {
                                         visible: root.warnings_text != "";
-                                        label: "warnings";
+                                        label: "warning";
                                         tone: "warn";
                                     }
                                     StatusPill {
@@ -378,67 +401,53 @@ slint::slint! {
                                         label: "error";
                                         tone: "error";
                                     }
-                                    StatusPill {
-                                        visible: root.compare_has_deferred;
-                                        label: "deferred";
-                                        tone: "neutral";
-                                    }
-                                    StatusPill {
-                                        visible: root.compare_has_oversized;
-                                        label: "oversized";
-                                        tone: "neutral";
-                                    }
                                     Rectangle {
                                         horizontal-stretch: 1;
                                     }
-                                    ToolButton {
+                                    TextAction {
                                         visible: root.summary_text != "" || root.warnings_text != "" || root.error_text != "";
-                                        label: root.compare_warnings_expanded ? "Hide details" : "Details";
-                                        button_min_width: 98px;
-                                        control_height: 26px;
+                                        label: root.compare_warnings_expanded ? "hide details" : "details";
                                         tapped => {
                                             root.compare_warnings_expanded = !root.compare_warnings_expanded;
                                         }
                                     }
                                 }
                                 Text {
-                                    text: root.compare_metrics_text;
-                                    color: #425364;
+                                    text: root.compare_metrics_text
+                                        + (root.compare_has_deferred ? " | deferred" : "")
+                                        + (root.compare_has_oversized ? " | oversized" : "");
+                                    color: #5a6a7b;
                                     overflow: elide;
                                 }
                                 Rectangle {
                                     visible: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "");
-                                    height: 54px;
-                                    border-width: 1px;
-                                    border-color: #dde4ec;
-                                    border-radius: 6px;
-                                    background: #f8fafd;
+                                    height: 36px;
+                                    border-width: 0px;
+                                    background: #f6f8fb;
                                     clip: true;
                                     VerticalLayout {
-                                        padding: 4px;
-                                        spacing: 4px;
+                                        padding: 5px;
+                                        spacing: 2px;
                                         Text {
                                             visible: root.summary_text != "";
-                                            text: root.summary_text;
-                                            color: #607181;
+                                            text: root.compact_summary_text;
+                                            color: #6b7888;
                                             overflow: elide;
                                             horizontal-stretch: 1;
                                         }
                                         Text {
                                             visible: root.error_text != "";
                                             text: root.error_text;
-                                            color: #8c1d1d;
+                                            color: #8b3a3a;
                                             overflow: elide;
                                             horizontal-stretch: 1;
                                         }
-                                        ScrollView {
+                                        Text {
                                             visible: root.warnings_text != "";
-                                            Text {
-                                                text: root.warnings_text;
-                                                wrap: word-wrap;
-                                                color: #805520;
-                                                horizontal-stretch: 1;
-                                            }
+                                            text: root.warnings_text;
+                                            color: #86633a;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
                                         }
                                     }
                                 }
@@ -951,47 +960,47 @@ slint::slint! {
             y: 0px;
             width: parent.width;
             height: parent.height;
-            background: rgba(17, 24, 34, 0.30);
+            background: rgba(17, 24, 34, 0.24);
 
             TouchArea {}
 
             SectionCard {
-                width: 760px;
-                height: root.provider_settings_mode == 1 ? 500px : 360px;
+                width: 736px;
+                height: root.provider_settings_mode == 1 ? 468px : 332px;
                 x: (parent.width - self.width) / 2;
-                y: 58px;
-                border-color: #d5dce6;
-                background: #fbfcfe;
+                y: 64px;
+                border-color: #dfe5ed;
+                background: #fcfdff;
 
                 VerticalLayout {
-                    padding: 16px;
-                    spacing: 10px;
+                    padding: 18px;
+                    spacing: 12px;
 
                     Text {
                         text: "Provider Settings";
-                        color: #2a425d;
-                        font-size: 20px;
+                        color: #2f4966;
+                        font-size: 19px;
                     }
                     Text {
                         text: "Global configuration for AI analysis provider.";
-                        color: #5f6f82;
+                        color: #6a7888;
                     }
 
                     Rectangle {
                         height: 1px;
-                        background: #dde4ed;
+                        background: #e7ecf3;
                     }
 
                     HorizontalLayout {
                         spacing: 8px;
                         Text {
                             text: "Mode";
-                            width: 112px;
-                            color: #45576c;
+                            width: 104px;
+                            color: #4f6074;
                             vertical-alignment: center;
                         }
                         SegmentedRail {
-                            height: 38px;
+                            height: 34px;
                             HorizontalLayout {
                                 spacing: 0px;
                                 SegmentItem {
@@ -1018,17 +1027,17 @@ slint::slint! {
                         spacing: 8px;
                         Text {
                             text: "Timeout";
-                            width: 112px;
-                            color: #45576c;
+                            width: 104px;
+                            color: #4f6074;
                             vertical-alignment: center;
                         }
                         LineEdit {
                             text <=> root.provider_settings_timeout;
-                            width: 150px;
+                            width: 140px;
                         }
                         Text {
                             text: "seconds";
-                            color: #6a7888;
+                            color: #778595;
                             vertical-alignment: center;
                         }
                         Rectangle {
@@ -1043,8 +1052,8 @@ slint::slint! {
                             spacing: 8px;
                             Text {
                                 text: "Endpoint";
-                                width: 112px;
-                                color: #45576c;
+                                width: 104px;
+                                color: #4f6074;
                                 vertical-alignment: center;
                             }
                             LineEdit {
@@ -1056,8 +1065,8 @@ slint::slint! {
                             spacing: 8px;
                             Text {
                                 text: "API Key";
-                                width: 112px;
-                                color: #45576c;
+                                width: 104px;
+                                color: #4f6074;
                                 vertical-alignment: center;
                             }
                             LineEdit {
@@ -1067,8 +1076,8 @@ slint::slint! {
                             }
                             ToolButton {
                                 label: root.provider_settings_show_api_key ? "Hide" : "Show";
-                                button_min_width: 66px;
-                                control_height: 30px;
+                                button_min_width: 62px;
+                                control_height: 28px;
                                 tapped => {
                                     root.provider_settings_show_api_key = !root.provider_settings_show_api_key;
                                 }
@@ -1078,8 +1087,8 @@ slint::slint! {
                             spacing: 8px;
                             Text {
                                 text: "Model";
-                                width: 112px;
-                                color: #45576c;
+                                width: 104px;
+                                color: #4f6074;
                                 vertical-alignment: center;
                             }
                             LineEdit {
@@ -1099,7 +1108,7 @@ slint::slint! {
 
                     Rectangle {
                         height: 1px;
-                        background: #dde4ed;
+                        background: #e7ecf3;
                     }
 
                     HorizontalLayout {
@@ -1109,8 +1118,8 @@ slint::slint! {
                         }
                         ToolButton {
                             label: "Cancel";
-                            button_min_width: 112px;
-                            control_height: 34px;
+                            button_min_width: 108px;
+                            control_height: 32px;
                             tapped => {
                                 root.provider_settings_open = false;
                                 root.provider_settings_cancel_clicked();
@@ -1119,8 +1128,8 @@ slint::slint! {
                         ToolButton {
                             label: "Save";
                             primary: true;
-                            button_min_width: 112px;
-                            control_height: 34px;
+                            button_min_width: 108px;
+                            control_height: 32px;
                             tapped => {
                                 root.provider_settings_save_clicked();
                             }
