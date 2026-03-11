@@ -11,14 +11,126 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 slint::slint! {
-    import { Button, LineEdit, ListView, ScrollView } from "std-widgets.slint";
+    import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
 
     component SectionCard inherits Rectangle {
         border-width: 1px;
-        border-color: #e2e7ed;
-        border-radius: 6px;
-        background: #ffffff;
+        border-color: #d9dfe8;
+        border-radius: 8px;
+        background: #fbfcfd;
         clip: true;
+    }
+
+    component ToolButton inherits Rectangle {
+        in property <string> label;
+        in property <bool> primary: false;
+        in property <bool> active: false;
+        in property <bool> enabled: true;
+        in property <length> button_min_width: 72px;
+        in property <length> control_height: 30px;
+        callback tapped();
+
+        min-width: self.button_min_width;
+        height: self.control_height;
+        border-width: 1px;
+        border-radius: 7px;
+        opacity: self.enabled ? 1 : 0.58;
+        border-color: self.primary
+            ? #2f6cb0
+            : (self.active ? #98adc8 : #c7d0db);
+        background: self.primary
+            ? #3678c3
+            : (self.active ? #e4ecf8 : #f5f7fa);
+
+        Text {
+            text: root.label;
+            color: root.primary ? #ffffff : (root.active ? #1f3f63 : #2f3c4b);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            font-size: 15px;
+        }
+
+        TouchArea {
+            enabled: root.enabled;
+            clicked => {
+                root.tapped();
+            }
+        }
+    }
+
+    component SegmentedRail inherits Rectangle {
+        border-width: 1px;
+        border-color: #cad3df;
+        border-radius: 8px;
+        background: #f3f6fa;
+        clip: true;
+    }
+
+    component SegmentItem inherits Rectangle {
+        in property <string> label;
+        in property <bool> selected: false;
+        in property <bool> enabled: true;
+        in property <bool> show_divider: false;
+        callback tapped();
+
+        horizontal-stretch: 1;
+        background: self.selected ? #dfe8f5 : transparent;
+        opacity: self.enabled ? 1 : 0.6;
+
+        Rectangle {
+            visible: root.show_divider;
+            x: 0px;
+            y: 5px;
+            width: 1px;
+            height: parent.height - 10px;
+            background: #d4dbe7;
+        }
+
+        Text {
+            text: root.label;
+            color: root.selected ? #1f4166 : #4a5b6f;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        TouchArea {
+            enabled: root.enabled;
+            clicked => {
+                root.tapped();
+            }
+        }
+    }
+
+    component StatusPill inherits Rectangle {
+        in property <string> label;
+        in property <string> tone: "neutral";
+
+        height: 20px;
+        min-width: 56px;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: root.tone == "ok"
+            ? #9fbeaa
+            : (root.tone == "warn"
+                ? #c9b28c
+                : (root.tone == "error"
+                    ? #d1a3a3
+                    : #c7d0db));
+        background: root.tone == "ok"
+            ? #edf7ef
+            : (root.tone == "warn"
+                ? #fff5e8
+                : (root.tone == "error"
+                    ? #ffefef
+                    : #f0f3f7));
+
+        Text {
+            text: root.label;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: root.tone == "error" ? #7f2424 : #435265;
+            font-size: 13px;
+        }
     }
 
     export component MainWindow inherits Window {
@@ -27,6 +139,7 @@ slint::slint! {
         preferred-height: 860px;
         min-width: 900px;
         min-height: 620px;
+        background: #f2f4f7;
 
         in-out property <string> left_root;
         in-out property <string> right_root;
@@ -34,9 +147,12 @@ slint::slint! {
         in property <string> status_text;
         in property <string> summary_text;
         in property <string> compact_summary_text;
+        in property <string> compare_metrics_text;
         in property <string> warnings_text;
         in property <string> error_text;
         in property <bool> compare_truncated;
+        in property <bool> compare_has_deferred;
+        in property <bool> compare_has_oversized;
         in-out property <string> entry_filter;
         in-out property <string> entry_status_filter;
         in property <string> filter_stats_text;
@@ -81,6 +197,7 @@ slint::slint! {
         in-out property <string> provider_settings_api_key;
         in-out property <string> provider_settings_model;
         in-out property <string> provider_settings_timeout;
+        in-out property <bool> provider_settings_show_api_key: false;
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
@@ -104,29 +221,32 @@ slint::slint! {
             spacing: 8px;
 
             SectionCard {
-                height: 40px;
-                border-color: #e6ebf1;
-                background: #f8fafc;
+                height: 38px;
+                border-color: #dce2ea;
+                background: #f5f7fb;
                 HorizontalLayout {
-                    padding: 8px;
+                    padding: 6px;
                     spacing: 8px;
                     Text {
                         text: "Folder Compare";
-                        font-size: 18px;
-                        color: #1f2d3d;
+                        font-size: 16px;
+                        color: #2d3a4b;
                         vertical-alignment: center;
                     }
                     Rectangle {
                         horizontal-stretch: 1;
                     }
-                    Button {
-                        text: "Provider Settings";
-                        clicked => {
+                    ToolButton {
+                        label: "Provider Settings";
+                        button_min_width: 136px;
+                        control_height: 28px;
+                        tapped => {
                             root.provider_settings_mode = root.analysis_remote_mode ? 1 : 0;
                             root.provider_settings_endpoint = root.analysis_endpoint;
                             root.provider_settings_api_key = root.analysis_api_key;
                             root.provider_settings_model = root.analysis_model;
                             root.provider_settings_timeout = root.analysis_timeout_text;
+                            root.provider_settings_show_api_key = false;
                             root.provider_settings_open = true;
                             root.provider_settings_clicked();
                         }
@@ -148,28 +268,31 @@ slint::slint! {
                         SectionCard {
                             height: 142px;
                             VerticalLayout {
-                                padding: 8px;
+                                padding: 10px;
                                 spacing: 6px;
                                 Text {
                                     text: "Compare Inputs";
-                                    color: #4c5b6b;
+                                    color: #374656;
+                                    font-size: 15px;
                                 }
                                 HorizontalLayout {
                                     spacing: 6px;
                                     Text {
                                         text: "Left";
-                                        width: 42px;
-                                        color: #5f6d7c;
+                                        width: 46px;
+                                        color: #5d6d7e;
                                     }
                                     LineEdit {
                                         text <=> root.left_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
                                     }
-                                    Button {
-                                        text: "Browse";
+                                    ToolButton {
+                                        label: "Browse";
+                                        button_min_width: 74px;
+                                        control_height: 30px;
                                         enabled: !root.running;
-                                        clicked => {
+                                        tapped => {
                                             root.left_browse_clicked();
                                         }
                                     }
@@ -178,28 +301,33 @@ slint::slint! {
                                     spacing: 6px;
                                     Text {
                                         text: "Right";
-                                        width: 42px;
-                                        color: #5f6d7c;
+                                        width: 46px;
+                                        color: #5d6d7e;
                                     }
                                     LineEdit {
                                         text <=> root.right_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
                                     }
-                                    Button {
-                                        text: "Browse";
+                                    ToolButton {
+                                        label: "Browse";
+                                        button_min_width: 74px;
+                                        control_height: 30px;
                                         enabled: !root.running;
-                                        clicked => {
+                                        tapped => {
                                             root.right_browse_clicked();
                                         }
                                     }
                                 }
                                 HorizontalLayout {
                                     spacing: 8px;
-                                    Button {
-                                        text: root.running ? "Comparing..." : "Compare";
+                                    ToolButton {
+                                        label: root.running ? "Comparing..." : "Compare";
+                                        primary: true;
+                                        button_min_width: 124px;
+                                        control_height: 31px;
                                         enabled: !root.running && root.left_root != "" && root.right_root != "";
-                                        clicked => {
+                                        tapped => {
                                             root.compare_clicked();
                                         }
                                     }
@@ -209,66 +337,82 @@ slint::slint! {
                                             : (root.left_root == "" || root.right_root == ""
                                                 ? "Select left and right folders."
                                                 : "Ready");
-                                        color: #6a7581;
+                                        color: #6c7a89;
                                         overflow: elide;
+                                        vertical-alignment: center;
                                     }
                                 }
                             }
                         }
 
                         SectionCard {
-                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 136px : 88px;
+                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 146px : 92px;
                             VerticalLayout {
-                                padding: 8px;
-                                spacing: 3px;
+                                padding: 10px;
+                                spacing: 4px;
                                 Text {
                                     text: "Compare Status";
-                                    color: #4c5b6b;
-                                }
-                                Text {
-                                    text: root.status_text;
-                                    color: #2f4f70;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    text: root.compact_summary_text;
-                                    color: #2f3b46;
-                                    height: 18px;
-                                    overflow: elide;
+                                    color: #374656;
+                                    font-size: 15px;
                                 }
                                 HorizontalLayout {
                                     spacing: 6px;
                                     Text {
+                                        text: root.status_text;
+                                        color: #36516f;
+                                        overflow: elide;
+                                        vertical-alignment: center;
+                                    }
+                                    StatusPill {
                                         visible: root.compare_truncated;
-                                        text: "truncated";
-                                        color: #7a4b00;
+                                        label: "truncated";
+                                        tone: "warn";
                                     }
-                                    Text {
+                                    StatusPill {
                                         visible: root.warnings_text != "";
-                                        text: "warnings";
-                                        color: #7a4b00;
+                                        label: "warnings";
+                                        tone: "warn";
                                     }
-                                    Text {
+                                    StatusPill {
                                         visible: root.error_text != "";
-                                        text: "error";
-                                        color: #8c1d1d;
+                                        label: "error";
+                                        tone: "error";
+                                    }
+                                    StatusPill {
+                                        visible: root.compare_has_deferred;
+                                        label: "deferred";
+                                        tone: "neutral";
+                                    }
+                                    StatusPill {
+                                        visible: root.compare_has_oversized;
+                                        label: "oversized";
+                                        tone: "neutral";
                                     }
                                     Rectangle {
                                         horizontal-stretch: 1;
                                     }
-                                    Button {
+                                    ToolButton {
                                         visible: root.summary_text != "" || root.warnings_text != "" || root.error_text != "";
-                                        text: root.compare_warnings_expanded ? "Hide" : "Details";
-                                        clicked => {
+                                        label: root.compare_warnings_expanded ? "Hide details" : "Details";
+                                        button_min_width: 98px;
+                                        control_height: 26px;
+                                        tapped => {
                                             root.compare_warnings_expanded = !root.compare_warnings_expanded;
                                         }
                                     }
                                 }
+                                Text {
+                                    text: root.compare_metrics_text;
+                                    color: #425364;
+                                    overflow: elide;
+                                }
                                 Rectangle {
                                     visible: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "");
-                                    height: 44px;
+                                    height: 54px;
                                     border-width: 1px;
-                                    border-color: #e7ebf1;
+                                    border-color: #dde4ec;
+                                    border-radius: 6px;
+                                    background: #f8fafd;
                                     clip: true;
                                     VerticalLayout {
                                         padding: 4px;
@@ -276,7 +420,7 @@ slint::slint! {
                                         Text {
                                             visible: root.summary_text != "";
                                             text: root.summary_text;
-                                            color: #5f6d7c;
+                                            color: #607181;
                                             overflow: elide;
                                             horizontal-stretch: 1;
                                         }
@@ -292,7 +436,7 @@ slint::slint! {
                                             Text {
                                                 text: root.warnings_text;
                                                 wrap: word-wrap;
-                                                color: #7a4b00;
+                                                color: #805520;
                                                 horizontal-stretch: 1;
                                             }
                                         }
@@ -302,20 +446,21 @@ slint::slint! {
                         }
 
                         SectionCard {
-                            height: 106px;
+                            height: 108px;
                             VerticalLayout {
-                                padding: 8px;
-                                spacing: 5px;
+                                padding: 10px;
+                                spacing: 6px;
                                 Text {
                                     text: "Filter / Scope";
-                                    color: #4c5b6b;
+                                    color: #374656;
+                                    font-size: 15px;
                                 }
                                 HorizontalLayout {
                                     spacing: 6px;
                                     Text {
                                         text: "Search";
-                                        width: 44px;
-                                        color: #5f6d7c;
+                                        width: 48px;
+                                        color: #5d6d7e;
                                     }
                                     LineEdit {
                                         text <=> root.entry_filter;
@@ -326,78 +471,74 @@ slint::slint! {
                                             root.filter_changed(value);
                                         }
                                     }
-                                    Button {
-                                        text: "Clear";
+                                    Text {
+                                        text: "scope: "
+                                            + (root.entry_status_filter == "all"
+                                                ? "All"
+                                                : (root.entry_status_filter == "different"
+                                                    ? "Diff"
+                                                        : (root.entry_status_filter == "equal"
+                                                            ? "Equal"
+                                                            : (root.entry_status_filter == "left-only"
+                                                                ? "Left"
+                                                                : "Right"))));
+                                        color: #6f7e8d;
+                                        vertical-alignment: center;
+                                    }
+                                    ToolButton {
+                                        label: "Clear";
+                                        button_min_width: 62px;
+                                        control_height: 28px;
                                         visible: root.entry_filter != "";
-                                        clicked => {
+                                        tapped => {
                                             root.entry_filter = "";
                                             root.filter_changed("");
                                         }
                                     }
                                 }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Status";
-                                        width: 44px;
-                                        color: #5f6d7c;
-                                    }
-                                    Button {
-                                        text: root.entry_status_filter == "all" ? "All*" : "All";
-                                        enabled: root.entry_status_filter != "all";
-                                        clicked => {
-                                            root.status_filter_changed("all");
+                                SegmentedRail {
+                                    height: 30px;
+                                    HorizontalLayout {
+                                        spacing: 0px;
+                                        SegmentItem {
+                                            label: "All";
+                                            selected: root.entry_status_filter == "all";
+                                            show_divider: false;
+                                            tapped => {
+                                                root.status_filter_changed("all");
+                                            }
                                         }
-                                    }
-                                    Button {
-                                        text: root.entry_status_filter == "different" ? "Diff*" : "Diff";
-                                        enabled: root.entry_status_filter != "different";
-                                        clicked => {
-                                            root.status_filter_changed("different");
+                                        SegmentItem {
+                                            label: "Diff";
+                                            selected: root.entry_status_filter == "different";
+                                            show_divider: true;
+                                            tapped => {
+                                                root.status_filter_changed("different");
+                                            }
                                         }
-                                    }
-                                    Button {
-                                        text: root.entry_status_filter == "equal" ? "Equal*" : "Equal";
-                                        enabled: root.entry_status_filter != "equal";
-                                        clicked => {
-                                            root.status_filter_changed("equal");
+                                        SegmentItem {
+                                            label: "Equal";
+                                            selected: root.entry_status_filter == "equal";
+                                            show_divider: true;
+                                            tapped => {
+                                                root.status_filter_changed("equal");
+                                            }
                                         }
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                    Text {
-                                        text: "Active: "
-                                            + (root.entry_status_filter == "all"
-                                                ? "All"
-                                                : (root.entry_status_filter == "different"
-                                                    ? "Different"
-                                                    : (root.entry_status_filter == "equal"
-                                                        ? "Equal"
-                                                        : (root.entry_status_filter == "left-only"
-                                                            ? "Left-only"
-                                                            : "Right-only"))));
-                                        color: #2f4f70;
-                                        overflow: elide;
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Rectangle {
-                                        width: 44px;
-                                    }
-                                    Button {
-                                        text: root.entry_status_filter == "left-only" ? "Left-only*" : "Left-only";
-                                        enabled: root.entry_status_filter != "left-only";
-                                        clicked => {
-                                            root.status_filter_changed("left-only");
+                                        SegmentItem {
+                                            label: "Left";
+                                            selected: root.entry_status_filter == "left-only";
+                                            show_divider: true;
+                                            tapped => {
+                                                root.status_filter_changed("left-only");
+                                            }
                                         }
-                                    }
-                                    Button {
-                                        text: root.entry_status_filter == "right-only" ? "Right-only*" : "Right-only";
-                                        enabled: root.entry_status_filter != "right-only";
-                                        clicked => {
-                                            root.status_filter_changed("right-only");
+                                        SegmentItem {
+                                            label: "Right";
+                                            selected: root.entry_status_filter == "right-only";
+                                            show_divider: true;
+                                            tapped => {
+                                                root.status_filter_changed("right-only");
+                                            }
                                         }
                                     }
                                 }
@@ -407,55 +548,60 @@ slint::slint! {
                         SectionCard {
                             vertical-stretch: 1;
                             VerticalLayout {
-                                padding: 8px;
+                                padding: 10px;
                                 spacing: 6px;
                                 Text {
                                     text: "Results / Navigator";
-                                    color: #4c5b6b;
+                                    color: #374656;
+                                    font-size: 15px;
                                 }
                                 Text {
                                     text: root.filter_stats_text;
-                                    color: #6a7581;
+                                    color: #6f7e8d;
                                     overflow: elide;
                                 }
                                 ListView {
                                     vertical-stretch: 1;
                                     for row_path[index] in root.row_paths: Rectangle {
-                                        height: 50px;
+                                        height: 46px;
                                         border-width: 1px;
-                                        border-color: root.row_source_indices[index] == root.selected_row ? rgb(129, 176, 222) : rgb(234, 238, 243);
-                                        background: root.row_source_indices[index] == root.selected_row ? rgb(236, 245, 255)
-                                            : (root.row_can_load_diff[index] ? rgb(255, 255, 255) : rgb(248, 249, 251));
+                                        border-color: root.row_source_indices[index] == root.selected_row ? #9ab1cd : #e1e6ee;
+                                        border-radius: 6px;
+                                        background: root.row_source_indices[index] == root.selected_row ? #eaf1fb
+                                            : (root.row_can_load_diff[index] ? #fbfcfe : #f3f5f8);
 
                                         VerticalLayout {
+                                            padding: 4px;
                                             spacing: 2px;
                                             HorizontalLayout {
-                                                spacing: 6px;
-                                                Rectangle {
-                                                    width: 92px;
-                                                    height: 20px;
-                                                    border-radius: 4px;
-                                                    background: root.row_statuses[index] == "different" ? rgb(255, 226, 226)
-                                                        : (root.row_statuses[index] == "equal" ? rgb(232, 248, 234)
-                                                        : (root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only" ? rgb(255, 242, 218) : rgb(238, 242, 247)));
-                                                    Text {
-                                                        text: root.row_statuses[index];
-                                                        horizontal-alignment: center;
-                                                        vertical-alignment: center;
-                                                        color: #333;
-                                                    }
+                                                spacing: 7px;
+                                                StatusPill {
+                                                    label: root.row_statuses[index] == "different"
+                                                        ? "diff"
+                                                        : (root.row_statuses[index] == "equal"
+                                                            ? "equal"
+                                                            : (root.row_statuses[index] == "left-only"
+                                                                ? "left"
+                                                                : (root.row_statuses[index] == "right-only"
+                                                                    ? "right"
+                                                                    : root.row_statuses[index])));
+                                                    tone: root.row_statuses[index] == "equal"
+                                                        ? "ok"
+                                                        : ((root.row_statuses[index] == "left-only" || root.row_statuses[index] == "right-only")
+                                                            ? "warn"
+                                                            : "neutral");
                                                 }
                                                 Text {
                                                     text: row_path;
-                                                    color: #1b3a57;
+                                                    color: root.row_source_indices[index] == root.selected_row ? #1e466d : #2f3f50;
                                                     vertical-alignment: center;
                                                     horizontal-stretch: 1;
                                                     overflow: elide;
                                                 }
                                             }
                                             Text {
-                                                text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
-                                                color: root.row_can_load_diff[index] ? #555 : #777;
+                                                text: root.row_can_load_diff[index] ? root.row_details[index] : "detailed diff unavailable";
+                                                color: root.row_can_load_diff[index] ? #6d7986 : #7a8692;
                                                 vertical-alignment: center;
                                                 horizontal-stretch: 1;
                                                 overflow: elide;
@@ -478,33 +624,36 @@ slint::slint! {
                     horizontal-stretch: 1;
                     min-width: 500px;
                     VerticalLayout {
-                        padding: 8px;
+                        padding: 10px;
                         spacing: 8px;
 
                         SectionCard {
-                            height: 40px;
-                            background: #fbfcfd;
+                            height: 36px;
+                            background: #f8fafd;
                             HorizontalLayout {
-                                padding: 6px;
-                                spacing: 6px;
-                                Text {
-                                    text: "Tabs";
-                                    width: 36px;
-                                    color: #6a7581;
-                                    vertical-alignment: center;
-                                }
-                                Button {
-                                    text: "Diff";
-                                    enabled: root.workspace_tab != 0;
-                                    clicked => {
-                                        root.workspace_tab = 0;
-                                    }
-                                }
-                                Button {
-                                    text: "Analysis";
-                                    enabled: root.workspace_tab != 1;
-                                    clicked => {
-                                        root.workspace_tab = 1;
+                                padding: 4px;
+                                spacing: 8px;
+                                SegmentedRail {
+                                    width: 214px;
+                                    height: 28px;
+                                    HorizontalLayout {
+                                        spacing: 0px;
+                                        SegmentItem {
+                                            label: "Diff";
+                                            selected: root.workspace_tab == 0;
+                                            show_divider: false;
+                                            tapped => {
+                                                root.workspace_tab = 0;
+                                            }
+                                        }
+                                        SegmentItem {
+                                            label: "Analysis";
+                                            selected: root.workspace_tab == 1;
+                                            show_divider: true;
+                                            tapped => {
+                                                root.workspace_tab = 1;
+                                            }
+                                        }
                                     }
                                 }
                                 Rectangle {
@@ -514,18 +663,18 @@ slint::slint! {
                         }
 
                         SectionCard {
-                            height: 60px;
+                            height: 58px;
                             VerticalLayout {
-                                padding: 8px;
+                                padding: 9px;
                                 spacing: 2px;
                                 Text {
                                     text: root.workspace_tab == 0 ? "Diff Mode" : "Analysis Mode";
-                                    color: #4c5b6b;
+                                    color: #425161;
                                 }
                                 Text {
                                     visible: root.workspace_tab == 0;
                                     text: root.selected_relative_path == "" ? "(none selected)" : root.selected_relative_path;
-                                    color: #1f3e58;
+                                    color: #294562;
                                     wrap: word-wrap;
                                     horizontal-stretch: 1;
                                     overflow: elide;
@@ -534,7 +683,7 @@ slint::slint! {
                                     visible: root.workspace_tab == 1;
                                     text: "Provider: " + root.analysis_provider_mode_text
                                         + (root.analysis_remote_mode ? (root.analysis_remote_config_ready ? " (ready)" : " (config incomplete)") : " (local)");
-                                    color: #1f3e58;
+                                    color: #294562;
                                     wrap: word-wrap;
                                     horizontal-stretch: 1;
                                     overflow: elide;
@@ -547,12 +696,12 @@ slint::slint! {
 
                             VerticalLayout {
                                 visible: root.workspace_tab == 0;
-                                padding: 8px;
+                                padding: 10px;
                                 spacing: 6px;
 
                                 Text {
                                     text: root.diff_summary_text == "" ? "Select one result row to load detailed diff." : root.diff_summary_text;
-                                    color: #2f3b46;
+                                    color: #425364;
                                     wrap: word-wrap;
                                     horizontal-stretch: 1;
                                 }
@@ -561,12 +710,12 @@ slint::slint! {
                                     Text {
                                         visible: root.diff_loading;
                                         text: "Loading detailed diff...";
-                                        color: #2f4f70;
+                                        color: #36516f;
                                     }
                                     Text {
                                         visible: root.diff_warning_text != "";
                                         text: root.diff_warning_text;
-                                        color: #7a4b00;
+                                        color: #805520;
                                         overflow: elide;
                                     }
                                     Text {
@@ -577,14 +726,16 @@ slint::slint! {
                                     Text {
                                         visible: root.diff_error_text != "";
                                         text: root.diff_error_text;
-                                        color: #8c1d1d;
+                                        color: #8a2424;
                                         overflow: elide;
                                     }
                                 }
 
                                 Rectangle {
                                     border-width: 1px;
-                                    border-color: #e5e9ef;
+                                    border-color: #dce3ec;
+                                    border-radius: 4px;
+                                    background: #f8fafd;
                                     height: 26px;
                                     HorizontalLayout {
                                         spacing: 8px;
@@ -616,13 +767,13 @@ slint::slint! {
                                     for row_content[index] in root.diff_contents: Rectangle {
                                         height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
                                         background: root.diff_row_kinds[index] == "hunk" ? rgb(238, 244, 251)
-                                            : (root.diff_row_kinds[index] == "added" ? rgb(236, 255, 241)
-                                            : (root.diff_row_kinds[index] == "removed" ? rgb(255, 241, 241) : rgb(255, 255, 255)));
+                                            : (root.diff_row_kinds[index] == "added" ? rgb(239, 251, 242)
+                                            : (root.diff_row_kinds[index] == "removed" ? rgb(252, 240, 240) : rgb(251, 252, 253)));
 
                                         Text {
                                             visible: root.diff_row_kinds[index] == "hunk";
                                             text: row_content;
-                                            color: #1c4365;
+                                            color: #2f4f70;
                                             vertical-alignment: center;
                                         }
 
@@ -653,7 +804,7 @@ slint::slint! {
                                             }
                                             Text {
                                                 text: row_content;
-                                                color: #222;
+                                                color: #273544;
                                                 vertical-alignment: center;
                                             }
                                         }
@@ -663,23 +814,26 @@ slint::slint! {
 
                             VerticalLayout {
                                 visible: root.workspace_tab == 1;
-                                padding: 8px;
+                                padding: 10px;
                                 spacing: 6px;
 
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Text {
                                         text: "AI Analysis";
-                                        color: #4c5b6b;
+                                        color: #425161;
                                     }
                                     Rectangle {
                                         horizontal-stretch: 1;
                                     }
-                                    Button {
-                                        text: root.analysis_loading ? "Analyzing..." : "Analyze";
+                                    ToolButton {
+                                        label: root.analysis_loading ? "Analyzing..." : "Analyze";
+                                        primary: true;
+                                        button_min_width: 108px;
+                                        control_height: 30px;
                                         enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running
                                             && (!root.analysis_remote_mode || root.analysis_remote_config_ready);
-                                        clicked => {
+                                        tapped => {
                                             root.analyze_clicked();
                                         }
                                     }
@@ -792,154 +946,189 @@ slint::slint! {
         }
 
         Rectangle {
-                visible: root.provider_settings_open;
-                x: 0px;
-                y: 0px;
-                width: parent.width;
-                height: parent.height;
-                background: rgba(0, 0, 0, 0.22);
+            visible: root.provider_settings_open;
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            background: rgba(17, 24, 34, 0.30);
 
-                TouchArea {}
+            TouchArea {}
 
-                SectionCard {
-                    width: 560px;
-                    height: root.provider_settings_mode == 1 ? 298px : 212px;
-                    x: (parent.width - self.width) / 2;
-                    y: 74px;
-                    border-color: #d9e0e8;
-                    background: #ffffff;
+            SectionCard {
+                width: 760px;
+                height: root.provider_settings_mode == 1 ? 500px : 360px;
+                x: (parent.width - self.width) / 2;
+                y: 58px;
+                border-color: #d5dce6;
+                background: #fbfcfe;
 
-                    VerticalLayout {
-                        padding: 10px;
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 10px;
+
+                    Text {
+                        text: "Provider Settings";
+                        color: #2a425d;
+                        font-size: 20px;
+                    }
+                    Text {
+                        text: "Global configuration for AI analysis provider.";
+                        color: #5f6f82;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #dde4ed;
+                    }
+
+                    HorizontalLayout {
                         spacing: 8px;
-
                         Text {
-                            text: "Provider Settings";
-                            color: #334455;
-                            font-size: 16px;
+                            text: "Mode";
+                            width: 112px;
+                            color: #45576c;
+                            vertical-alignment: center;
                         }
-                        Text {
-                            text: "Global configuration for AI analysis provider.";
-                            color: #6a7581;
-                        }
-
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "Mode";
-                                width: 70px;
-                                color: #5f6d7c;
-                            }
-                            Button {
-                                text: "Mock";
-                                enabled: root.provider_settings_mode != 0;
-                                clicked => {
-                                    root.provider_settings_mode = 0;
+                        SegmentedRail {
+                            height: 38px;
+                            HorizontalLayout {
+                                spacing: 0px;
+                                SegmentItem {
+                                    label: "Mock";
+                                    selected: root.provider_settings_mode == 0;
+                                    show_divider: false;
+                                    tapped => {
+                                        root.provider_settings_mode = 0;
+                                    }
                                 }
-                            }
-                            Button {
-                                text: "OpenAI-compatible";
-                                enabled: root.provider_settings_mode != 1;
-                                clicked => {
-                                    root.provider_settings_mode = 1;
+                                SegmentItem {
+                                    label: "OpenAI-compatible";
+                                    selected: root.provider_settings_mode == 1;
+                                    show_divider: true;
+                                    tapped => {
+                                        root.provider_settings_mode = 1;
+                                    }
                                 }
                             }
                         }
+                    }
 
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "Timeout";
-                                width: 70px;
-                                color: #5f6d7c;
-                            }
-                            LineEdit {
-                                text <=> root.provider_settings_timeout;
-                            }
-                            Text {
-                                text: "seconds";
-                                color: #6a7581;
-                            }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Timeout";
+                            width: 112px;
+                            color: #45576c;
+                            vertical-alignment: center;
                         }
-
+                        LineEdit {
+                            text <=> root.provider_settings_timeout;
+                            width: 150px;
+                        }
+                        Text {
+                            text: "seconds";
+                            color: #6a7888;
+                            vertical-alignment: center;
+                        }
                         Rectangle {
-                            visible: root.provider_settings_mode == 1;
-                            border-width: 1px;
-                            border-color: #e5e9ef;
-                            height: 106px;
-                            clip: true;
-                            VerticalLayout {
-                                padding: 6px;
-                                spacing: 5px;
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Endpoint";
-                                        width: 70px;
-                                        color: #5f6d7c;
-                                    }
-                                    LineEdit {
-                                        text <=> root.provider_settings_endpoint;
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "API Key";
-                                        width: 70px;
-                                        color: #5f6d7c;
-                                    }
-                                    LineEdit {
-                                        text <=> root.provider_settings_api_key;
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Model";
-                                        width: 70px;
-                                        color: #5f6d7c;
-                                    }
-                                    LineEdit {
-                                        text <=> root.provider_settings_model;
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-                            }
-                        }
-
-                        Text {
-                            visible: root.provider_settings_error_text != "";
-                            text: root.provider_settings_error_text;
-                            color: #8c1d1d;
-                            wrap: word-wrap;
                             horizontal-stretch: 1;
                         }
+                    }
 
+                    VerticalLayout {
+                        visible: root.provider_settings_mode == 1;
+                        spacing: 8px;
                         HorizontalLayout {
                             spacing: 8px;
-                            Rectangle {
+                            Text {
+                                text: "Endpoint";
+                                width: 112px;
+                                color: #45576c;
+                                vertical-alignment: center;
+                            }
+                            LineEdit {
+                                text <=> root.provider_settings_endpoint;
                                 horizontal-stretch: 1;
                             }
-                            Button {
-                                text: "Cancel";
-                                clicked => {
-                                    root.provider_settings_open = false;
-                                    root.provider_settings_cancel_clicked();
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: "API Key";
+                                width: 112px;
+                                color: #45576c;
+                                vertical-alignment: center;
+                            }
+                            LineEdit {
+                                text <=> root.provider_settings_api_key;
+                                input-type: root.provider_settings_show_api_key ? InputType.text : InputType.password;
+                                horizontal-stretch: 1;
+                            }
+                            ToolButton {
+                                label: root.provider_settings_show_api_key ? "Hide" : "Show";
+                                button_min_width: 66px;
+                                control_height: 30px;
+                                tapped => {
+                                    root.provider_settings_show_api_key = !root.provider_settings_show_api_key;
                                 }
                             }
-                            Button {
-                                text: "Save";
-                                clicked => {
-                                    root.provider_settings_save_clicked();
-                                }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: "Model";
+                                width: 112px;
+                                color: #45576c;
+                                vertical-alignment: center;
+                            }
+                            LineEdit {
+                                text <=> root.provider_settings_model;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+
+                    Text {
+                        visible: root.provider_settings_error_text != "";
+                        text: root.provider_settings_error_text;
+                        color: #8c1d1d;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #dde4ed;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                        ToolButton {
+                            label: "Cancel";
+                            button_min_width: 112px;
+                            control_height: 34px;
+                            tapped => {
+                                root.provider_settings_open = false;
+                                root.provider_settings_cancel_clicked();
+                            }
+                        }
+                        ToolButton {
+                            label: "Save";
+                            primary: true;
+                            button_min_width: 112px;
+                            control_height: 34px;
+                            tapped => {
+                                root.provider_settings_save_clicked();
                             }
                         }
                     }
                 }
             }
+        }
     }
 }
 
@@ -969,9 +1158,12 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_status_text(state.status_text.clone().into());
     window.set_summary_text(state.summary_text.clone().into());
     window.set_compact_summary_text(state.compact_summary_text().into());
+    window.set_compare_metrics_text(state.compare_metrics_text().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
     window.set_compare_truncated(state.truncated);
+    window.set_compare_has_deferred(state.compare_has_deferred());
+    window.set_compare_has_oversized(state.compare_has_oversized());
     window.set_filter_stats_text(state.filter_stats_text().into());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());

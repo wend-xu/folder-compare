@@ -218,6 +218,31 @@ impl AppState {
         parts.join(" | ")
     }
 
+    /// Returns key compare metrics in short desktop-friendly format.
+    pub fn compare_metrics_text(&self) -> String {
+        if self.summary_text.trim().is_empty() {
+            return "total 0 | changed 0 | left 0 | right 0".to_string();
+        }
+        let total = summary_metric(&self.summary_text, "total=").unwrap_or_else(|| "0".to_string());
+        let changed =
+            summary_metric(&self.summary_text, "different=").unwrap_or_else(|| "0".to_string());
+        let left =
+            summary_metric(&self.summary_text, "left_only=").unwrap_or_else(|| "0".to_string());
+        let right =
+            summary_metric(&self.summary_text, "right_only=").unwrap_or_else(|| "0".to_string());
+        format!("total {total} | changed {changed} | left {left} | right {right}")
+    }
+
+    /// Returns true when compare summary indicates deferred detail entries.
+    pub fn compare_has_deferred(&self) -> bool {
+        summary_metric_usize(&self.summary_text, "deferred=").unwrap_or(0) > 0
+    }
+
+    /// Returns true when compare summary indicates oversized text entries.
+    pub fn compare_has_oversized(&self) -> bool {
+        summary_metric_usize(&self.summary_text, "oversized_text=").unwrap_or(0) > 0
+    }
+
     /// Returns selected relative path text for UI rendering.
     pub fn selected_relative_path_text(&self) -> String {
         let raw = self.selected_relative_path.clone().unwrap_or_default();
@@ -451,6 +476,10 @@ fn summary_metric(summary_text: &str, key: &str) -> Option<String> {
         .map(|value| value.trim_matches('|').to_string())
 }
 
+fn summary_metric_usize(summary_text: &str, key: &str) -> Option<usize> {
+    summary_metric(summary_text, key).and_then(|value| value.parse::<usize>().ok())
+}
+
 /// One flattened row displayed in the unified diff viewer list.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DiffViewerRow {
@@ -594,6 +623,28 @@ mod tests {
         assert!(text.contains("deferred 3"));
         assert!(text.contains("oversized 2"));
         assert!(text.contains("truncated"));
+    }
+
+    #[test]
+    fn compare_metrics_text_formats_core_counts() {
+        let state = AppState {
+            summary_text: "mode=normal total=42 equal=35 different=4 left_only=2 right_only=1 pending=0 skipped=0 deferred=0 oversized_text=0".to_string(),
+            ..AppState::default()
+        };
+        assert_eq!(
+            state.compare_metrics_text(),
+            "total 42 | changed 4 | left 2 | right 1"
+        );
+    }
+
+    #[test]
+    fn compare_flags_reflect_summary_metrics() {
+        let state = AppState {
+            summary_text: "mode=normal total=6 equal=2 different=1 left_only=1 right_only=2 pending=0 skipped=0 deferred=2 oversized_text=1".to_string(),
+            ..AppState::default()
+        };
+        assert!(state.compare_has_deferred());
+        assert!(state.compare_has_oversized());
     }
 
     #[test]
