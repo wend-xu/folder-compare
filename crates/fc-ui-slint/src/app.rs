@@ -306,6 +306,7 @@ slint::slint! {
                                         text: "Left";
                                         width: root.sidebar_form_label_width;
                                         color: #5d6d7e;
+                                        vertical-alignment: center;
                                     }
                                     LineEdit {
                                         text <=> root.left_root;
@@ -328,6 +329,7 @@ slint::slint! {
                                         text: "Right";
                                         width: root.sidebar_form_label_width;
                                         color: #5d6d7e;
+                                        vertical-alignment: center;
                                     }
                                     LineEdit {
                                         text <=> root.right_root;
@@ -472,6 +474,7 @@ slint::slint! {
                                         text: "Search";
                                         width: root.sidebar_form_label_width;
                                         color: #5d6d7e;
+                                        vertical-alignment: center;
                                     }
                                     LineEdit {
                                         text <=> root.entry_filter;
@@ -486,7 +489,7 @@ slint::slint! {
                                         label: "Clear";
                                         button_min_width: root.sidebar_action_button_width;
                                         control_height: 28px;
-                                        visible: root.entry_filter != "";
+                                        enabled: root.entry_filter != "";
                                         tapped => {
                                             root.entry_filter = "";
                                             root.filter_changed("");
@@ -499,6 +502,7 @@ slint::slint! {
                                         text: "Status";
                                         width: root.sidebar_form_label_width;
                                         color: #5d6d7e;
+                                        vertical-alignment: center;
                                     }
                                     SegmentedRail {
                                         height: 28px;
@@ -568,8 +572,10 @@ slint::slint! {
                                                         : (root.entry_status_filter == "left-only"
                                                             ? "Left"
                                                             : "Right"))));
+                                        width: 84px;
                                         color: #6f7e8d;
                                         vertical-alignment: center;
+                                        horizontal-alignment: right;
                                     }
                                 }
                             }
@@ -987,7 +993,7 @@ slint::slint! {
 
             SectionCard {
                 width: 700px;
-                height: root.provider_settings_mode == 1 ? 430px : 304px;
+                height: root.provider_settings_mode == 1 ? 430px : 338px;
                 x: (parent.width - self.width) / 2;
                 y: 70px;
                 border-color: #dfe5ed;
@@ -1091,7 +1097,6 @@ slint::slint! {
                                 width: 104px;
                                 color: #4f6074;
                                 vertical-alignment: center;
-                                horizontal-alignment:center;
                             }
                             LineEdit {
                                 text <=> root.provider_settings_api_key;
