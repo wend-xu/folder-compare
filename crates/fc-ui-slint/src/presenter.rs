@@ -295,6 +295,11 @@ impl Presenter {
             let result = selected_row
                 .ok_or_else(|| "select one compare row before loading detailed diff".to_string())
                 .and_then(|row| {
+                    if row.status == "left-only" || row.status == "right-only" {
+                        let preview_vm =
+                            bridge::map_single_side_file_preview(&left_root, &right_root, &row);
+                        return Ok((row, preview_vm));
+                    }
                     let relative_path = row.relative_path.clone();
                     bridge::build_text_diff_request(&left_root, &right_root, &row)
                         .and_then(run_text_diff)
@@ -670,8 +675,8 @@ mod tests {
     fn load_selected_diff_for_non_diffable_row_sets_unavailable_state() {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
-        fs::write(left.path().join("left_only.txt"), "left\n")
-            .expect("left file should be written");
+        fs::create_dir(left.path().join("left_only_dir"))
+            .expect("left-only directory should be created");
 
         let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
         presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
@@ -689,6 +694,34 @@ mod tests {
         assert!(snapshot.diff_warning.is_some());
         assert!(snapshot.selected_diff.is_none());
         assert_eq!(snapshot.status_text, "Detailed diff unavailable for selected row");
+    }
+
+    #[test]
+    fn load_selected_diff_for_left_only_file_opens_single_side_preview() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("left_only.txt"), "line-1\nline-2\n")
+            .expect("left file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        let snapshot = wait_until(&presenter, |state| !state.diff_loading);
+
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.selected_diff.is_some());
+        assert!(snapshot
+            .selected_diff
+            .as_ref()
+            .map(|value| value.summary_text.contains("left-only preview"))
+            .unwrap_or(false));
+        assert_eq!(snapshot.analysis_available, false);
     }
 
     #[test]

@@ -693,28 +693,36 @@ slint::slint! {
                                         height: 46px;
                                         border-width: 1px;
                                         border-color: root.row_source_indices[index] == root.selected_row
-                                            ? #7f9fc4
+                                            ? #678bb8
                                             : (root.row_statuses[index] == "different"
-                                                ? #decab1
+                                                ? #dbc3a7
                                                 : (root.row_statuses[index] == "equal"
                                                     ? #cadccf
                                                     : (root.row_statuses[index] == "left-only"
-                                                        ? #dbcfbe
+                                                        ? #d9c9b5
                                                         : (root.row_statuses[index] == "right-only"
-                                                            ? #d8cee2
+                                                            ? #d5c8df
                                                             : #dfe5ee))));
                                         border-radius: 4px;
-                                        background: root.row_source_indices[index] == root.selected_row ? #eaf1fb
+                                        background: root.row_source_indices[index] == root.selected_row ? #e2ecfa
                                             : (!root.row_can_load_diff[index]
-                                                ? #f1f4f8
+                                                ? (root.row_statuses[index] == "different"
+                                                    ? #f8f1e8
+                                                    : (root.row_statuses[index] == "equal"
+                                                        ? #f2f7f3
+                                                        : (root.row_statuses[index] == "left-only"
+                                                            ? #f8f3ea
+                                                            : (root.row_statuses[index] == "right-only"
+                                                                ? #f5f1f9
+                                                                : #f4f6f9))))
                                                 : (root.row_statuses[index] == "different"
-                                                    ? #fcf6ee
+                                                    ? #fcf4ea
                                                     : (root.row_statuses[index] == "equal"
                                                         ? #f7fbf8
                                                         : (root.row_statuses[index] == "left-only"
-                                                            ? #fbf7f0
+                                                            ? #fbf6ee
                                                             : (root.row_statuses[index] == "right-only"
-                                                                ? #f8f5fb
+                                                                ? #f8f3fb
                                                                 : #fbfcfe)))));
 
                                         VerticalLayout {
@@ -744,7 +752,7 @@ slint::slint! {
                                                 }
                                                 Text {
                                                     text: row_path;
-                                                    color: root.row_source_indices[index] == root.selected_row ? #1f456b : #2f3f50;
+                                                    color: root.row_source_indices[index] == root.selected_row ? #1a3f67 : #2f3f50;
                                                     vertical-alignment: center;
                                                     horizontal-stretch: 1;
                                                     overflow: elide;
@@ -1113,43 +1121,52 @@ slint::slint! {
                                         tone: "error";
                                     }
 
-                                    if root.has_selected_result && !root.analysis_loading && root.analysis_has_result && root.analysis_error_text == "" : ScrollView {
+                                    if root.has_selected_result && !root.analysis_loading && root.analysis_has_result && root.analysis_error_text == "" : Rectangle {
                                         vertical-stretch: 1;
-                                        VerticalLayout {
-                                            spacing: 6px;
-                                            Text {
-                                                text: root.analysis_title_text;
-                                                color: #2d4f6f;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_risk_level_text != "";
-                                                text: "Risk Level: " + root.analysis_risk_level_text;
-                                                color: #4c6174;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_rationale_text != "";
-                                                text: root.analysis_rationale_text;
-                                                color: #3f4f60;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_key_points_text != "";
-                                                text: "Key Points:\n" + root.analysis_key_points_text;
-                                                color: #3f4f60;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
-                                            }
-                                            Text {
-                                                visible: root.analysis_review_suggestions_text != "";
-                                                text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
-                                                color: #3f4f60;
-                                                wrap: word-wrap;
-                                                horizontal-stretch: 1;
+                                        border-width: 1px;
+                                        border-color: #d8e1ec;
+                                        border-radius: 6px;
+                                        background: #f8fafd;
+                                        clip: true;
+                                        ScrollView {
+                                            vertical-stretch: 1;
+                                            VerticalLayout {
+                                                padding: 10px;
+                                                spacing: 6px;
+                                                Text {
+                                                    text: root.analysis_title_text;
+                                                    color: #2d4f6f;
+                                                    wrap: word-wrap;
+                                                    horizontal-stretch: 1;
+                                                }
+                                                Text {
+                                                    visible: root.analysis_risk_level_text != "";
+                                                    text: "Risk Level: " + root.analysis_risk_level_text;
+                                                    color: #4c6174;
+                                                    wrap: word-wrap;
+                                                    horizontal-stretch: 1;
+                                                }
+                                                Text {
+                                                    visible: root.analysis_rationale_text != "";
+                                                    text: root.analysis_rationale_text;
+                                                    color: #3f4f60;
+                                                    wrap: word-wrap;
+                                                    horizontal-stretch: 1;
+                                                }
+                                                Text {
+                                                    visible: root.analysis_key_points_text != "";
+                                                    text: "Key Points:\n" + root.analysis_key_points_text;
+                                                    color: #3f4f60;
+                                                    wrap: word-wrap;
+                                                    horizontal-stretch: 1;
+                                                }
+                                                Text {
+                                                    visible: root.analysis_review_suggestions_text != "";
+                                                    text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
+                                                    color: #3f4f60;
+                                                    wrap: word-wrap;
+                                                    horizontal-stretch: 1;
+                                                }
                                             }
                                         }
                                     }
@@ -1570,6 +1587,9 @@ pub fn run() -> anyhow::Result<()> {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
+        if window.get_selected_row() == index && (window.get_diff_loaded() || window.get_diff_loading()) {
+            return;
+        }
 
         row_bridge.dispatch(UiCommand::SelectRow(index));
         row_bridge.dispatch(UiCommand::LoadSelectedDiff);

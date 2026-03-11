@@ -15,7 +15,11 @@ use fc_core::{
     EntryKind, EntryStatus, TextDetailDeferredReason, TextDiffOptions, TextDiffRequest,
     TextDiffResult, TextDiffSummary,
 };
+use std::fs;
 use std::path::PathBuf;
+
+const SINGLE_SIDE_PREVIEW_MAX_BYTES: usize = 512 * 1024;
+const SINGLE_SIDE_PREVIEW_MAX_LINES: usize = 1600;
 
 /// Thin bridge for wiring command dispatch.
 #[derive(Clone)]
@@ -173,6 +177,154 @@ pub fn map_text_diff_result(relative_path: &str, result: TextDiffResult) -> Diff
         hunks,
         warning: result.warning,
         truncated: result.truncated,
+    }
+}
+
+/// Builds one single-side text preview panel for left-only/right-only file entries.
+pub fn map_single_side_file_preview(
+    left_root: &str,
+    right_root: &str,
+    row: &CompareEntryRowViewModel,
+) -> DiffPanelViewModel {
+    let (side_label, marker_kind, target_path) = match row.status.as_str() {
+        "left-only" => (
+            "left-only",
+            "Removed",
+            PathBuf::from(left_root.trim()).join(&row.relative_path),
+        ),
+        "right-only" => (
+            "right-only",
+            "Added",
+            PathBuf::from(right_root.trim()).join(&row.relative_path),
+        ),
+        _ => {
+            return build_single_side_unavailable_panel(
+                row.relative_path.as_str(),
+                "single-side preview is only available for left-only/right-only entries",
+            );
+        }
+    };
+
+    let Ok(bytes) = fs::read(&target_path) else {
+        return build_single_side_unavailable_panel(
+            row.relative_path.as_str(),
+            format!("cannot read file for {side_label} preview: {}", target_path.display())
+                .as_str(),
+        );
+    };
+    if bytes.contains(&0u8) {
+        return build_single_side_unavailable_panel(
+            row.relative_path.as_str(),
+            format!(
+                "{side_label} preview unavailable: binary content is not supported in this viewer"
+            )
+            .as_str(),
+        );
+    }
+
+    let mut warning = None;
+    let mut truncated = false;
+    let preview_bytes = if bytes.len() > SINGLE_SIDE_PREVIEW_MAX_BYTES {
+        truncated = true;
+        warning = Some(format!(
+            "{side_label} preview truncated to {} KB",
+            SINGLE_SIDE_PREVIEW_MAX_BYTES / 1024
+        ));
+        &bytes[..SINGLE_SIDE_PREVIEW_MAX_BYTES]
+    } else {
+        &bytes[..]
+    };
+
+    let text = match std::str::from_utf8(preview_bytes) {
+        Ok(value) => value.to_string(),
+        Err(_) => {
+            return build_single_side_unavailable_panel(
+                row.relative_path.as_str(),
+                format!(
+                    "{side_label} preview unavailable: text preview currently supports UTF-8 files only"
+                )
+                .as_str(),
+            );
+        }
+    };
+
+    let mut lines = text.lines().collect::<Vec<_>>();
+    if lines.len() > SINGLE_SIDE_PREVIEW_MAX_LINES {
+        lines.truncate(SINGLE_SIDE_PREVIEW_MAX_LINES);
+        truncated = true;
+        warning = Some(format!(
+            "{side_label} preview truncated to {} lines",
+            SINGLE_SIDE_PREVIEW_MAX_LINES
+        ));
+    }
+
+    let line_view_models = lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| DiffLineViewModel {
+            old_line_no: if marker_kind == "Removed" {
+                Some(index + 1)
+            } else {
+                None
+            },
+            new_line_no: if marker_kind == "Added" {
+                Some(index + 1)
+            } else {
+                None
+            },
+            kind: marker_kind.to_string(),
+            content: (*line).to_string(),
+        })
+        .collect::<Vec<_>>();
+
+    let old_len = if marker_kind == "Removed" {
+        line_view_models.len()
+    } else {
+        0
+    };
+    let new_len = if marker_kind == "Added" {
+        line_view_models.len()
+    } else {
+        0
+    };
+
+    DiffPanelViewModel {
+        relative_path: row.relative_path.clone(),
+        summary_text: format!(
+            "{side_label} preview lines={}{}",
+            line_view_models.len(),
+            if truncated { " (truncated)" } else { "" }
+        ),
+        hunks: vec![DiffHunkViewModel {
+            old_start: 1,
+            old_len,
+            new_start: 1,
+            new_len,
+            lines: line_view_models,
+        }],
+        warning,
+        truncated,
+    }
+}
+
+fn build_single_side_unavailable_panel(relative_path: &str, reason: &str) -> DiffPanelViewModel {
+    DiffPanelViewModel {
+        relative_path: relative_path.to_string(),
+        summary_text: "single-side preview unavailable".to_string(),
+        hunks: vec![DiffHunkViewModel {
+            old_start: 1,
+            old_len: 1,
+            new_start: 1,
+            new_len: 1,
+            lines: vec![DiffLineViewModel {
+                old_line_no: None,
+                new_line_no: None,
+                kind: "Context".to_string(),
+                content: format!("[preview unavailable] {reason}"),
+            }],
+        }],
+        warning: Some(reason.to_string()),
+        truncated: false,
     }
 }
 
@@ -365,18 +517,16 @@ fn detailed_diff_blocked_reason(entry: &CompareEntry) -> Option<String> {
     }
 
     match entry.status {
-        EntryStatus::LeftOnly => {
-            return Some("detailed diff requires files that exist on both sides".to_string());
-        }
-        EntryStatus::RightOnly => {
-            return Some("detailed diff requires files that exist on both sides".to_string());
-        }
+        EntryStatus::LeftOnly | EntryStatus::RightOnly => {}
         EntryStatus::Skipped => {
             return Some(
                 "entry was skipped during compare and cannot load detailed diff".to_string(),
             );
         }
         EntryStatus::Equal | EntryStatus::Different | EntryStatus::Pending => {}
+    }
+    if matches!(entry.status, EntryStatus::LeftOnly | EntryStatus::RightOnly) {
+        return None;
     }
 
     match &entry.detail {
@@ -746,10 +896,8 @@ mod tests {
             detail: "left only".to_string(),
             entry_kind: "file".to_string(),
             detail_kind: "none".to_string(),
-            can_load_diff: false,
-            diff_blocked_reason: Some(
-                "detailed diff requires files that exist on both sides".into(),
-            ),
+            can_load_diff: true,
+            diff_blocked_reason: None,
             can_load_analysis: false,
             analysis_blocked_reason: Some(
                 "AI analysis is only available for changed file entries".to_string(),
@@ -820,7 +968,7 @@ mod tests {
     }
 
     #[test]
-    fn map_compare_report_marks_left_only_as_not_diffable() {
+    fn map_compare_report_marks_left_only_as_previewable_but_not_analyzable() {
         let report = CompareReport::from_entries(
             vec![CompareEntry::new(
                 "only-left.txt",
@@ -833,9 +981,68 @@ mod tests {
 
         let vm = map_compare_report(report);
         assert_eq!(vm.entry_rows.len(), 1);
-        assert!(!vm.entry_rows[0].can_load_diff);
-        assert!(vm.entry_rows[0].diff_blocked_reason.is_some());
+        assert!(vm.entry_rows[0].can_load_diff);
+        assert!(vm.entry_rows[0].diff_blocked_reason.is_none());
         assert!(!vm.entry_rows[0].can_load_analysis);
         assert!(vm.entry_rows[0].analysis_blocked_reason.is_some());
+    }
+
+    #[test]
+    fn map_single_side_file_preview_projects_left_only_text_lines() {
+        let left = tempdir().expect("left temp dir should be created");
+        let right = tempdir().expect("right temp dir should be created");
+        std::fs::write(left.path().join("only-left.txt"), "alpha\nbeta\n")
+            .expect("left file should be written");
+        let row = CompareEntryRowViewModel {
+            relative_path: "only-left.txt".to_string(),
+            status: "left-only".to_string(),
+            detail: "left only".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "none".to_string(),
+            can_load_diff: true,
+            diff_blocked_reason: None,
+            can_load_analysis: false,
+            analysis_blocked_reason: Some("blocked".to_string()),
+        };
+
+        let vm = map_single_side_file_preview(
+            left.path().to_string_lossy().as_ref(),
+            right.path().to_string_lossy().as_ref(),
+            &row,
+        );
+        assert!(vm.summary_text.contains("left-only preview"));
+        assert_eq!(vm.hunks.len(), 1);
+        assert_eq!(vm.hunks[0].lines.len(), 2);
+        assert_eq!(vm.hunks[0].lines[0].kind, "Removed");
+        assert_eq!(vm.hunks[0].lines[0].old_line_no, Some(1));
+        assert_eq!(vm.hunks[0].lines[0].new_line_no, None);
+    }
+
+    #[test]
+    fn map_single_side_file_preview_returns_explainer_for_binary_files() {
+        let left = tempdir().expect("left temp dir should be created");
+        let right = tempdir().expect("right temp dir should be created");
+        std::fs::write(left.path().join("only-left.bin"), [0u8, 159u8, 146u8, 150u8])
+            .expect("left binary should be written");
+        let row = CompareEntryRowViewModel {
+            relative_path: "only-left.bin".to_string(),
+            status: "left-only".to_string(),
+            detail: "left only".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "none".to_string(),
+            can_load_diff: true,
+            diff_blocked_reason: None,
+            can_load_analysis: false,
+            analysis_blocked_reason: Some("blocked".to_string()),
+        };
+
+        let vm = map_single_side_file_preview(
+            left.path().to_string_lossy().as_ref(),
+            right.path().to_string_lossy().as_ref(),
+            &row,
+        );
+        assert!(vm.summary_text.contains("unavailable"));
+        assert!(vm.warning.is_some());
+        assert_eq!(vm.hunks.len(), 1);
     }
 }
