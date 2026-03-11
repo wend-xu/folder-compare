@@ -20,6 +20,8 @@ pub enum UiCommand {
     RunCompare,
     /// Updates compare row filter text.
     UpdateEntryFilter(String),
+    /// Updates compare row status scope filter.
+    UpdateEntryStatusFilter(String),
     /// Updates selected result row.
     SelectRow(i32),
     /// Loads detailed diff for selected row.
@@ -36,6 +38,16 @@ pub enum UiCommand {
     UpdateAiApiKey(String),
     /// Updates OpenAI-compatible model input.
     UpdateAiModel(String),
+    /// Saves provider settings using dialog draft values.
+    SaveProviderSettings {
+        provider_kind: AiProviderKind,
+        endpoint: String,
+        api_key: String,
+        model: String,
+        timeout_secs_text: String,
+    },
+    /// Clears provider settings validation/persistence error.
+    ClearProviderSettingsError,
 }
 
 /// Executes one compare request against `fc-core`.

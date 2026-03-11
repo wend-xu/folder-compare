@@ -42,20 +42,37 @@ impl UiBridge {
 
 /// Builds a compare request from raw UI path inputs.
 pub fn build_compare_request(left_root: &str, right_root: &str) -> Result<CompareRequest, String> {
-    let left = left_root.trim();
-    let right = right_root.trim();
-    if left.is_empty() {
-        return Err("left root path is required".to_string());
-    }
-    if right.is_empty() {
-        return Err("right root path is required".to_string());
+    let left = validate_compare_root("Left", left_root)?;
+    let right = validate_compare_root("Right", right_root)?;
+
+    Ok(CompareRequest::new(left, right, CompareOptions::default()))
+}
+
+fn validate_compare_root(label: &str, raw_path: &str) -> Result<PathBuf, String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} path is empty. Select a folder first."));
     }
 
-    Ok(CompareRequest::new(
-        PathBuf::from(left),
-        PathBuf::from(right),
-        CompareOptions::default(),
-    ))
+    let path = PathBuf::from(trimmed);
+    if !path.exists() {
+        return Err(format!("{label} path does not exist: {}", path.display()));
+    }
+
+    let metadata = std::fs::metadata(&path).map_err(|err| {
+        format!(
+            "{label} path cannot be accessed: {} ({err})",
+            path.display()
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err(format!("{label} path must be a folder: {}", path.display()));
+    }
+
+    std::fs::read_dir(&path)
+        .map_err(|err| format!("{label} folder cannot be read: {} ({err})", path.display()))?;
+
+    Ok(path)
 }
 
 /// Maps core compare report into UI-facing view model.
@@ -493,12 +510,44 @@ mod tests {
     use super::*;
     use fc_core::{DiffHunk, DiffLine, TextDiffSummary};
     use std::path::PathBuf;
+    use tempfile::{tempdir, NamedTempFile};
 
     #[test]
     fn build_compare_request_validates_required_paths() {
-        assert!(build_compare_request("", "/tmp").is_err());
-        assert!(build_compare_request("/tmp", "").is_err());
-        assert!(build_compare_request("/tmp/a", "/tmp/b").is_ok());
+        let left = tempdir().expect("left temp dir should be created");
+        let right = tempdir().expect("right temp dir should be created");
+
+        assert!(build_compare_request("", right.path().to_string_lossy().as_ref()).is_err());
+        assert!(build_compare_request(left.path().to_string_lossy().as_ref(), "").is_err());
+        assert!(build_compare_request(
+            left.path().to_string_lossy().as_ref(),
+            right.path().to_string_lossy().as_ref()
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn build_compare_request_rejects_missing_or_non_directory_paths() {
+        let left_missing = tempdir()
+            .expect("left temp dir should be created")
+            .path()
+            .join("missing");
+        let right_dir = tempdir().expect("right temp dir should be created");
+        let file = NamedTempFile::new().expect("temp file should be created");
+
+        let missing_err = build_compare_request(
+            left_missing.to_string_lossy().as_ref(),
+            right_dir.path().to_string_lossy().as_ref(),
+        )
+        .expect_err("missing folder should return error");
+        assert!(missing_err.contains("does not exist"));
+
+        let file_err = build_compare_request(
+            file.path().to_string_lossy().as_ref(),
+            right_dir.path().to_string_lossy().as_ref(),
+        )
+        .expect_err("file path should return error");
+        assert!(file_err.contains("must be a folder"));
     }
 
     #[test]

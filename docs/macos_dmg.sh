@@ -5,7 +5,7 @@ set -euo pipefail
 BIN_NAME="fc-ui-slint"                       # release 下可执行文件名
 APP_NAME="FolderCompare"                     # 应用名
 BUNDLE_ID="cn.wendx.foldercompare"
-VERSION="0.1.12"
+VERSION="0.2.14"
 TARGET_DIR="target/aarch64-apple-darwin/release"
 DIST_DIR="dist"
 APP_PATH="$DIST_DIR/$APP_NAME.app"

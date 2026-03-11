@@ -5,7 +5,9 @@
 - 目录对比（summary）
 - 文本详细 diff（hunk/line）
 - AI 分析面板（支持 Mock 与 OpenAI-compatible 远程 provider）
-  ![display](./docs/assets/display_0_1_12/display.gif)
+
+![display](./docs/assets/display_0_2_14/display_01.gif)
+![display2](./docs/assets/display_0_2_14/display_02.gif)
 
 ## 1. Workspace 结构
 
@@ -21,7 +23,7 @@
   - Slint 桌面 UI
   - compare + detailed diff + analysis 闭环
 
-## 2. 已完成阶段（Phase 1-12）
+## 2. 已完成阶段（Phase 1-14.2）
 
 - Phase 1-7：workspace、core 主能力、文本 diff、大目录/大文件保护
 - Phase 8：`fc-ai` 最小可用化（Analyzer + Mock）
@@ -29,21 +31,31 @@
 - Phase 10.5-10.8：UI 可用性/布局/同步修复
 - Phase 11：UI 集成 `fc-ai` mock provider
 - Phase 12：OpenAI-compatible 真实 provider + UI provider 配置切换
+- Phase 13 / 13.1：主窗口 IA 重构为 `App Bar + Sidebar + Workspace`
+- Phase 13.1 fix-1：Sidebar 宽度稳定性修复 + Compare Status 紧凑摘要化
+- Phase 14：`Provider Settings` 全局弹窗 + Save/Cancel + 配置持久化
+- Phase 14.1：Browse 文件夹选择、路径输入反馈、Filter 交互闭环
+- Phase 14.2 fix-1~fix-3：视觉收敛、组件对齐、状态控件与 modal 节奏统一
 
 ## 3. 当前能力总览
 
+- 主窗口信息架构
+  - 顶部轻量 App Bar（`Folder Compare` + `Provider Settings` 入口）
+  - Sidebar 四段：`Compare Inputs` / `Compare Status` / `Filter / Scope` / `Results / Navigator`
+  - Workspace：`Diff` / `Analysis` tabs + 轻量 mode header + content
 - Compare 主闭环
-  - 路径输入
-  - summary / warnings / truncated / error
-  - 结果筛选与选择
-- Detailed Diff 面板
-  - 统一视图（hunk + line）
-  - diff loading / warning / truncated / error 独立展示
-- AI Analysis 面板
-  - provider mode 切换（Mock / OpenAI-compatible）
-  - OpenAI-compatible 最小配置（endpoint / api key / model）
-  - analysis loading / error / result 独立展示
-  - 远程提示：会发送 diff excerpt 到配置 endpoint
+  - Left/Right 路径输入 + Browse 文件夹选择
+  - compare 前空路径/不存在/非目录/不可访问的轻量反馈
+  - summary / warnings / truncated / error 分层展示
+- Results / Diff / Analysis
+  - 结果筛选（search + status scope）与导航选择
+  - Detailed Diff 统一视图（hunk + line）及 loading/warning/error/truncated 状态
+  - Analysis 视图回归“分析动作 + 结果展示”（不再承载 provider 完整配置表单）
+- Provider Settings（全局）
+  - App Bar 打开 modal，支持 Mock / OpenAI-compatible
+  - 配置字段：`Timeout / Endpoint / API Key / Model`
+  - API Key 密码输入语义 + Show/Hide
+  - 保存后持久化，重启可恢复
 
 ## 4. 运行方式
 
@@ -60,12 +72,23 @@ cargo run -p fc-ui-slint
 
 ### 基础流程
 
-1. 输入 Left/Right 目录
+1. 输入或 Browse 选择 Left/Right 目录
 2. 点击 Compare
 3. 选择结果行查看 Detailed Diff
-4. 在 Analysis 区选择 provider 并点击 Analyze
+4. 如需配置 provider：在 App Bar 打开 `Provider Settings` 并保存
+5. 切换到 Analysis 并点击 Analyze
 
 ## 5. OpenAI-compatible 说明
+
+### 配置入口与持久化
+
+- 配置入口：App Bar -> `Provider Settings`
+- 持久化文件名：`provider_settings.toml`
+- 配置目录优先级：
+  - `FOLDER_COMPARE_CONFIG_DIR`（环境变量覆盖）
+  - macOS：`~/Library/Application Support/folder-compare`
+  - Windows：`%APPDATA%/folder-compare`
+  - Linux：`$XDG_CONFIG_HOME/folder-compare` 或 `~/.config/folder-compare`
 
 ### 必填配置
 
@@ -111,15 +134,16 @@ cargo test --workspace
 
 ## 8. 当前未实现（刻意留白）
 
-- 高级设置面板（持久化 profile、密钥安全存储）
+- 密钥安全存储（Keychain / Credential Manager / Secret Service）
+- 多 profile / 多 provider 配置管理
 - 响应缓存与 token/cost tracking
 - 多 provider 插件化扩展
 - 目录树 / 双栏目录比较高级视图
 
-## 9. 后续主线（参考路线）
+## 9. 后续主线（参考路线，Phase 15+）
 
-- Phase 13：UI 信息架构重构（Sidebar + Workspace）
-- Phase 14：Provider Settings 与配置持久化
+- Phase 13：已完成（UI 信息架构重构）
+- Phase 14：已完成（Provider Settings 与配置持久化）
 - Phase 15：File View 深化（Diff / Analysis Workspace）
 - Phase 16：结果视图增强（状态筛选 / 排序 / 更强过滤）
 - Phase 17：目录树 / 层级视图
