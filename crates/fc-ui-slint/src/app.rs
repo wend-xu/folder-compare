@@ -110,30 +110,30 @@ slint::slint! {
         border-radius: 6px;
         border-width: 1px;
         border-color: root.tone == "different"
-            ? #c0d2e8
+            ? #e0c8ae
             : (root.tone == "equal"
                 ? #c2d6c7
                 : (root.tone == "left"
-                    ? #dfd1bf
+                    ? #dccfbe
                     : (root.tone == "right"
-                        ? #c9d3e8
+                        ? #d6cce0
                         : (root.tone == "warn"
-                            ? #dfd1bf
+                            ? #dfcfb9
                             : (root.tone == "error"
                                 ? #dfc1c1
                                 : (root.tone == "info"
                                     ? #c6d7ec
                                     : #d5dde7))))));
         background: root.tone == "different"
-            ? #edf4fb
+            ? #fbf3e9
             : (root.tone == "equal"
                 ? #f1f8f3
                 : (root.tone == "left"
-                    ? #faf5ec
+                    ? #faf6ef
                     : (root.tone == "right"
-                        ? #f3f6fc
+                        ? #f7f3fa
                         : (root.tone == "warn"
-                            ? #faf5ec
+                            ? #fbf7ef
                             : (root.tone == "error"
                                 ? #fdf2f2
                                 : (root.tone == "info"
@@ -145,15 +145,15 @@ slint::slint! {
             horizontal-alignment: center;
             vertical-alignment: center;
             color: root.tone == "different"
-                ? #255279
+                ? #7d5124
                 : (root.tone == "equal"
                     ? #2f6143
                     : (root.tone == "left"
-                        ? #76552d
+                        ? #72593c
                         : (root.tone == "right"
-                            ? #435a84
+                            ? #66557a
                             : (root.tone == "warn"
-                                ? #76552d
+                                ? #7a5a2f
                                 : (root.tone == "error"
                                     ? #8a2f2f
                                     : (root.tone == "info"
@@ -695,26 +695,26 @@ slint::slint! {
                                         border-color: root.row_source_indices[index] == root.selected_row
                                             ? #7f9fc4
                                             : (root.row_statuses[index] == "different"
-                                                ? #c4d5e9
+                                                ? #decab1
                                                 : (root.row_statuses[index] == "equal"
                                                     ? #cadccf
                                                     : (root.row_statuses[index] == "left-only"
-                                                        ? #dfd2bf
+                                                        ? #dbcfbe
                                                         : (root.row_statuses[index] == "right-only"
-                                                            ? #ced7ea
+                                                            ? #d8cee2
                                                             : #dfe5ee))));
                                         border-radius: 4px;
                                         background: root.row_source_indices[index] == root.selected_row ? #eaf1fb
                                             : (!root.row_can_load_diff[index]
                                                 ? #f1f4f8
                                                 : (root.row_statuses[index] == "different"
-                                                    ? #f6f9fe
+                                                    ? #fcf6ee
                                                     : (root.row_statuses[index] == "equal"
                                                         ? #f7fbf8
                                                         : (root.row_statuses[index] == "left-only"
-                                                            ? #fbf8f3
+                                                            ? #fbf7f0
                                                             : (root.row_statuses[index] == "right-only"
-                                                                ? #f7f9fd
+                                                                ? #f8f5fb
                                                                 : #fbfcfe)))));
 
                                         VerticalLayout {
@@ -871,8 +871,8 @@ slint::slint! {
                                 padding: 10px;
                                 spacing: 8px;
 
-                                VerticalLayout {
-                                    visible: root.workspace_tab == 0;
+                                if root.workspace_tab == 0 : VerticalLayout {
+                                    vertical-stretch: 1;
                                     spacing: 8px;
 
                                     HorizontalLayout {
@@ -906,36 +906,35 @@ slint::slint! {
                                         }
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: !root.has_selected_result;
+                                    if !root.has_selected_result : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "No file selected";
                                         body: "Pick one row from Results / Navigator to load the file-level diff.";
                                         tone: "neutral";
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: root.has_selected_result && root.diff_loading;
+                                    if root.has_selected_result && root.diff_loading : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "Loading detailed diff";
                                         body: "Preparing hunk-level lines for this file.";
                                         tone: "info";
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: root.has_selected_result && !root.diff_loading && !root.diff_loaded && root.diff_error_text == "";
+                                    if root.has_selected_result && !root.diff_loading && !root.diff_loaded && root.diff_error_text == "" : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "Detailed diff unavailable";
                                         body: root.diff_warning_text != "" ? root.diff_warning_text : "This selected row does not provide text-level diff lines.";
                                         tone: "warn";
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: root.has_selected_result && !root.diff_loading && root.diff_error_text != "";
+                                    if root.has_selected_result && !root.diff_loading && root.diff_error_text != "" : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "Failed to load detailed diff";
                                         body: root.diff_error_text;
                                         tone: "error";
                                     }
 
-                                    Rectangle {
-                                        visible: root.diff_loaded && !root.diff_loading && root.diff_error_text == "";
+                                    if root.diff_loaded && !root.diff_loading && root.diff_error_text == "" : Rectangle {
                                         vertical-stretch: 1;
                                         border-width: 1px;
                                         border-color: #d9e2ee;
@@ -1029,8 +1028,8 @@ slint::slint! {
                                     }
                                 }
 
-                                VerticalLayout {
-                                    visible: root.workspace_tab == 1;
+                                if root.workspace_tab == 1 : VerticalLayout {
+                                    vertical-stretch: 1;
                                     spacing: 8px;
 
                                     HorizontalLayout {
@@ -1086,36 +1085,35 @@ slint::slint! {
                                         }
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: !root.has_selected_result;
+                                    if !root.has_selected_result : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "No file selected";
                                         body: "Select one row in Results / Navigator before running analysis.";
                                         tone: "neutral";
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: root.has_selected_result && root.analysis_loading;
+                                    if root.has_selected_result && root.analysis_loading : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "Analysis running";
                                         body: "AI provider is reviewing the current diff context.";
                                         tone: "info";
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: root.has_selected_result && !root.analysis_loading && !root.analysis_has_result && root.analysis_error_text == "";
+                                    if root.has_selected_result && !root.analysis_loading && !root.analysis_has_result && root.analysis_error_text == "" : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "Analysis not started";
                                         body: root.analysis_hint_text != "" ? root.analysis_hint_text : "Load detailed diff first, then click Analyze.";
                                         tone: "neutral";
                                     }
 
-                                    WorkspaceStatePanel {
-                                        visible: root.has_selected_result && !root.analysis_loading && root.analysis_error_text != "";
+                                    if root.has_selected_result && !root.analysis_loading && root.analysis_error_text != "" : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
                                         title: "Analysis failed";
                                         body: root.analysis_error_text;
                                         tone: "error";
                                     }
 
-                                    ScrollView {
-                                        visible: root.has_selected_result && !root.analysis_loading && root.analysis_has_result && root.analysis_error_text == "";
+                                    if root.has_selected_result && !root.analysis_loading && root.analysis_has_result && root.analysis_error_text == "" : ScrollView {
                                         vertical-stretch: 1;
                                         VerticalLayout {
                                             spacing: 6px;
