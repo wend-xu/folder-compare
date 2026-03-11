@@ -31,6 +31,7 @@ slint::slint! {
         in property <bool> running;
         in property <string> status_text;
         in property <string> summary_text;
+        in property <string> compact_summary_text;
         in property <string> warnings_text;
         in property <string> error_text;
         in property <bool> compare_truncated;
@@ -119,8 +120,9 @@ slint::slint! {
                 spacing: 10px;
 
                 Rectangle {
-                    horizontal-stretch: 3;
-                    min-width: 320px;
+                    horizontal-stretch: 0;
+                    min-width: 360px;
+                    max-width: 360px;
                     VerticalLayout {
                         spacing: 8px;
 
@@ -143,6 +145,7 @@ slint::slint! {
                                     LineEdit {
                                         text <=> root.left_root;
                                         enabled: !root.running;
+                                        horizontal-stretch: 1;
                                     }
                                     Button {
                                         text: "Browse";
@@ -159,6 +162,7 @@ slint::slint! {
                                     LineEdit {
                                         text <=> root.right_root;
                                         enabled: !root.running;
+                                        horizontal-stretch: 1;
                                     }
                                     Button {
                                         text: "Browse";
@@ -183,7 +187,7 @@ slint::slint! {
                         }
 
                         SectionCard {
-                            height: root.compare_warnings_expanded && root.warnings_text != "" ? 136px : 88px;
+                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 136px : 88px;
                             VerticalLayout {
                                 padding: 8px;
                                 spacing: 3px;
@@ -197,56 +201,70 @@ slint::slint! {
                                     overflow: elide;
                                 }
                                 Text {
-                                    text: root.summary_text == "" ? "No compare summary yet." : root.summary_text;
+                                    text: root.compact_summary_text;
                                     color: #2f3b46;
-                                    wrap: word-wrap;
-                                    height: 30px;
-                                    horizontal-stretch: 1;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    visible: root.compare_truncated;
-                                    text: "Compare result is truncated.";
-                                    color: #7a4b00;
-                                    overflow: elide;
-                                }
-                                Text {
-                                    visible: root.error_text != "";
-                                    text: root.error_text;
-                                    color: #8c1d1d;
-                                    wrap: word-wrap;
-                                    height: 20px;
+                                    height: 18px;
                                     overflow: elide;
                                 }
                                 HorizontalLayout {
-                                    visible: root.warnings_text != "";
                                     spacing: 6px;
                                     Text {
-                                        text: "Warnings";
+                                        visible: root.compare_truncated;
+                                        text: "truncated";
                                         color: #7a4b00;
+                                    }
+                                    Text {
+                                        visible: root.warnings_text != "";
+                                        text: "warnings";
+                                        color: #7a4b00;
+                                    }
+                                    Text {
+                                        visible: root.error_text != "";
+                                        text: "error";
+                                        color: #8c1d1d;
                                     }
                                     Rectangle {
                                         horizontal-stretch: 1;
                                     }
                                     Button {
-                                        text: root.compare_warnings_expanded ? "Hide" : "Show";
+                                        visible: root.summary_text != "" || root.warnings_text != "" || root.error_text != "";
+                                        text: root.compare_warnings_expanded ? "Hide" : "Details";
                                         clicked => {
                                             root.compare_warnings_expanded = !root.compare_warnings_expanded;
                                         }
                                     }
                                 }
                                 Rectangle {
-                                    visible: root.compare_warnings_expanded && root.warnings_text != "";
+                                    visible: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "");
                                     height: 44px;
                                     border-width: 1px;
-                                    border-color: #f0d8ac;
+                                    border-color: #e7ebf1;
                                     clip: true;
-                                    ScrollView {
+                                    VerticalLayout {
+                                        padding: 4px;
+                                        spacing: 4px;
                                         Text {
-                                            text: root.warnings_text;
-                                            wrap: word-wrap;
-                                            color: #7a4b00;
+                                            visible: root.summary_text != "";
+                                            text: root.summary_text;
+                                            color: #5f6d7c;
+                                            overflow: elide;
                                             horizontal-stretch: 1;
+                                        }
+                                        Text {
+                                            visible: root.error_text != "";
+                                            text: root.error_text;
+                                            color: #8c1d1d;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                        }
+                                        ScrollView {
+                                            visible: root.warnings_text != "";
+                                            Text {
+                                                text: root.warnings_text;
+                                                wrap: word-wrap;
+                                                color: #7a4b00;
+                                                horizontal-stretch: 1;
+                                            }
                                         }
                                     }
                                 }
@@ -374,6 +392,7 @@ slint::slint! {
                                                     text: row_path;
                                                     color: #1b3a57;
                                                     vertical-alignment: center;
+                                                    horizontal-stretch: 1;
                                                     overflow: elide;
                                                 }
                                             }
@@ -381,6 +400,7 @@ slint::slint! {
                                                 text: root.row_can_load_diff[index] ? root.row_details[index] : root.row_details[index] + " | detailed diff unavailable";
                                                 color: root.row_can_load_diff[index] ? #555 : #777;
                                                 vertical-alignment: center;
+                                                horizontal-stretch: 1;
                                                 overflow: elide;
                                             }
                                         }
@@ -398,7 +418,8 @@ slint::slint! {
                 }
 
                 SectionCard {
-                    horizontal-stretch: 7;
+                    horizontal-stretch: 1;
+                    min-width: 500px;
                     VerticalLayout {
                         padding: 8px;
                         spacing: 8px;
@@ -810,6 +831,7 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_running(state.running);
     window.set_status_text(state.status_text.clone().into());
     window.set_summary_text(state.summary_text.clone().into());
+    window.set_compact_summary_text(state.compact_summary_text().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
     window.set_compare_truncated(state.truncated);

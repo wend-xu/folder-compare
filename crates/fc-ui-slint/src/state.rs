@@ -173,6 +173,42 @@ impl AppState {
         format!("Filtered: {visible}/{total} ({})", scopes.join(", "))
     }
 
+    /// Returns compact compare summary text for sidebar status section.
+    pub fn compact_summary_text(&self) -> String {
+        if self.summary_text.trim().is_empty() {
+            return "No compare summary yet.".to_string();
+        }
+        let mut parts = Vec::new();
+        if let Some(value) = summary_metric(&self.summary_text, "mode=") {
+            parts.push(format!("mode {value}"));
+        }
+        if let Some(value) = summary_metric(&self.summary_text, "total=") {
+            parts.push(format!("total {value}"));
+        }
+        if let Some(value) = summary_metric(&self.summary_text, "different=") {
+            parts.push(format!("diff {value}"));
+        }
+        if let Some(value) = summary_metric(&self.summary_text, "left_only=") {
+            parts.push(format!("left {value}"));
+        }
+        if let Some(value) = summary_metric(&self.summary_text, "right_only=") {
+            parts.push(format!("right {value}"));
+        }
+        if let Some(value) = summary_metric(&self.summary_text, "deferred=") {
+            parts.push(format!("deferred {value}"));
+        }
+        if let Some(value) = summary_metric(&self.summary_text, "oversized_text=") {
+            parts.push(format!("oversized {value}"));
+        }
+        if self.truncated {
+            parts.push("truncated".to_string());
+        }
+        if parts.is_empty() {
+            return abbreviate_middle(&self.summary_text, 96, 56, 36);
+        }
+        parts.join(" | ")
+    }
+
     /// Returns selected relative path text for UI rendering.
     pub fn selected_relative_path_text(&self) -> String {
         let raw = self.selected_relative_path.clone().unwrap_or_default();
@@ -386,6 +422,13 @@ fn status_filter_matches(status: &str, filter: &str) -> bool {
     filter == "all" || status.eq_ignore_ascii_case(filter)
 }
 
+fn summary_metric(summary_text: &str, key: &str) -> Option<String> {
+    summary_text
+        .split_whitespace()
+        .find_map(|part| part.trim_matches('|').strip_prefix(key))
+        .map(|value| value.trim_matches('|').to_string())
+}
+
 /// One flattened row displayed in the unified diff viewer list.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DiffViewerRow {
@@ -494,6 +537,24 @@ mod tests {
         let mut state = AppState::default();
         state.set_entry_status_filter("unexpected-status");
         assert_eq!(state.entry_status_filter, "all");
+    }
+
+    #[test]
+    fn compact_summary_text_extracts_key_metrics() {
+        let state = AppState {
+            summary_text: "mode=normal total=120 equal=100 different=8 left_only=7 right_only=5 pending=0 skipped=0 deferred=3 oversized_text=2".to_string(),
+            truncated: true,
+            ..AppState::default()
+        };
+        let text = state.compact_summary_text();
+        assert!(text.contains("mode normal"));
+        assert!(text.contains("total 120"));
+        assert!(text.contains("diff 8"));
+        assert!(text.contains("left 7"));
+        assert!(text.contains("right 5"));
+        assert!(text.contains("deferred 3"));
+        assert!(text.contains("oversized 2"));
+        assert!(text.contains("truncated"));
     }
 
     #[test]
