@@ -16,7 +16,7 @@ slint::slint! {
     component SectionCard inherits Rectangle {
         border-width: 1px;
         border-color: #e3e8ef;
-        border-radius: 8px;
+        border-radius: 6px;
         background: #fcfdff;
         clip: true;
     }
@@ -33,7 +33,7 @@ slint::slint! {
         min-width: self.button_min_width;
         height: self.control_height;
         border-width: 1px;
-        border-radius: 6px;
+        border-radius: 4px;
         opacity: self.enabled ? 1 : 0.58;
         border-color: self.primary
             ? #2f69ad
@@ -61,7 +61,7 @@ slint::slint! {
     component SegmentedRail inherits Rectangle {
         border-width: 1px;
         border-color: #d7dde7;
-        border-radius: 8px;
+        border-radius: 5px;
         background: #f6f8fb;
         clip: true;
     }
@@ -105,9 +105,9 @@ slint::slint! {
         in property <string> label;
         in property <string> tone: "neutral";
 
-        height: 18px;
-        min-width: 50px;
-        border-radius: 9px;
+        height: 17px;
+        min-width: 48px;
+        border-radius: 6px;
         border-width: 1px;
         border-color: root.tone == "ok"
             ? #b6cab9
@@ -129,7 +129,7 @@ slint::slint! {
             horizontal-alignment: center;
             vertical-alignment: center;
             color: root.tone == "error" ? #7f2d2d : #516274;
-            font-size: 12px;
+            font-size: 11px;
         }
     }
 
@@ -163,6 +163,8 @@ slint::slint! {
         min-width: 900px;
         min-height: 620px;
         background: #f2f4f7;
+        in property <length> sidebar_form_label_width: 52px;
+        in property <length> sidebar_action_button_width: 72px;
 
         in-out property <string> left_root;
         in-out property <string> right_root;
@@ -302,7 +304,7 @@ slint::slint! {
                                     spacing: 6px;
                                     Text {
                                         text: "Left";
-                                        width: 46px;
+                                        width: root.sidebar_form_label_width;
                                         color: #5d6d7e;
                                     }
                                     LineEdit {
@@ -312,7 +314,7 @@ slint::slint! {
                                     }
                                     ToolButton {
                                         label: "Browse";
-                                        button_min_width: 74px;
+                                        button_min_width: root.sidebar_action_button_width;
                                         control_height: 28px;
                                         enabled: !root.running;
                                         tapped => {
@@ -324,7 +326,7 @@ slint::slint! {
                                     spacing: 6px;
                                     Text {
                                         text: "Right";
-                                        width: 46px;
+                                        width: root.sidebar_form_label_width;
                                         color: #5d6d7e;
                                     }
                                     LineEdit {
@@ -334,7 +336,7 @@ slint::slint! {
                                     }
                                     ToolButton {
                                         label: "Browse";
-                                        button_min_width: 74px;
+                                        button_min_width: root.sidebar_action_button_width;
                                         control_height: 28px;
                                         enabled: !root.running;
                                         tapped => {
@@ -406,7 +408,7 @@ slint::slint! {
                                     }
                                     TextAction {
                                         visible: root.summary_text != "" || root.warnings_text != "" || root.error_text != "";
-                                        label: root.compare_warnings_expanded ? "hide details" : "details";
+                                        label: root.compare_warnings_expanded ? "Hide details" : "Details";
                                         tapped => {
                                             root.compare_warnings_expanded = !root.compare_warnings_expanded;
                                         }
@@ -468,7 +470,7 @@ slint::slint! {
                                     spacing: 6px;
                                     Text {
                                         text: "Search";
-                                        width: 48px;
+                                        width: root.sidebar_form_label_width;
                                         color: #5d6d7e;
                                     }
                                     LineEdit {
@@ -480,23 +482,9 @@ slint::slint! {
                                             root.filter_changed(value);
                                         }
                                     }
-                                    Text {
-                                        text: "scope: "
-                                            + (root.entry_status_filter == "all"
-                                                ? "All"
-                                                : (root.entry_status_filter == "different"
-                                                    ? "Diff"
-                                                        : (root.entry_status_filter == "equal"
-                                                            ? "Equal"
-                                                            : (root.entry_status_filter == "left-only"
-                                                                ? "Left"
-                                                                : "Right"))));
-                                        color: #6f7e8d;
-                                        vertical-alignment: center;
-                                    }
                                     ToolButton {
                                         label: "Clear";
-                                        button_min_width: 62px;
+                                        button_min_width: root.sidebar_action_button_width;
                                         control_height: 28px;
                                         visible: root.entry_filter != "";
                                         tapped => {
@@ -505,50 +493,83 @@ slint::slint! {
                                         }
                                     }
                                 }
-                                SegmentedRail {
-                                    height: 30px;
-                                    HorizontalLayout {
-                                        spacing: 0px;
-                                        SegmentItem {
-                                            label: "All";
-                                            selected: root.entry_status_filter == "all";
-                                            show_divider: false;
-                                            tapped => {
-                                                root.status_filter_changed("all");
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Status";
+                                        width: root.sidebar_form_label_width;
+                                        color: #5d6d7e;
+                                    }
+                                    SegmentedRail {
+                                        height: 28px;
+                                        horizontal-stretch: 1;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "All";
+                                                selected: root.entry_status_filter == "all";
+                                                show_divider: false;
+                                                enabled: root.entry_status_filter != "all";
+                                                tapped => {
+                                                    root.entry_status_filter = "all";
+                                                    root.status_filter_changed("all");
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Diff";
+                                                selected: root.entry_status_filter == "different";
+                                                show_divider: true;
+                                                enabled: root.entry_status_filter != "different";
+                                                tapped => {
+                                                    root.entry_status_filter = "different";
+                                                    root.status_filter_changed("different");
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Equal";
+                                                selected: root.entry_status_filter == "equal";
+                                                show_divider: true;
+                                                enabled: root.entry_status_filter != "equal";
+                                                tapped => {
+                                                    root.entry_status_filter = "equal";
+                                                    root.status_filter_changed("equal");
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Left";
+                                                selected: root.entry_status_filter == "left-only";
+                                                show_divider: true;
+                                                enabled: root.entry_status_filter != "left-only";
+                                                tapped => {
+                                                    root.entry_status_filter = "left-only";
+                                                    root.status_filter_changed("left-only");
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Right";
+                                                selected: root.entry_status_filter == "right-only";
+                                                show_divider: true;
+                                                enabled: root.entry_status_filter != "right-only";
+                                                tapped => {
+                                                    root.entry_status_filter = "right-only";
+                                                    root.status_filter_changed("right-only");
+                                                }
                                             }
                                         }
-                                        SegmentItem {
-                                            label: "Diff";
-                                            selected: root.entry_status_filter == "different";
-                                            show_divider: true;
-                                            tapped => {
-                                                root.status_filter_changed("different");
-                                            }
-                                        }
-                                        SegmentItem {
-                                            label: "Equal";
-                                            selected: root.entry_status_filter == "equal";
-                                            show_divider: true;
-                                            tapped => {
-                                                root.status_filter_changed("equal");
-                                            }
-                                        }
-                                        SegmentItem {
-                                            label: "Left";
-                                            selected: root.entry_status_filter == "left-only";
-                                            show_divider: true;
-                                            tapped => {
-                                                root.status_filter_changed("left-only");
-                                            }
-                                        }
-                                        SegmentItem {
-                                            label: "Right";
-                                            selected: root.entry_status_filter == "right-only";
-                                            show_divider: true;
-                                            tapped => {
-                                                root.status_filter_changed("right-only");
-                                            }
-                                        }
+                                    }
+                                    Text {
+                                        text: "scope: "
+                                            + (root.entry_status_filter == "all"
+                                                ? "All"
+                                                : (root.entry_status_filter == "different"
+                                                    ? "Diff"
+                                                    : (root.entry_status_filter == "equal"
+                                                        ? "Equal"
+                                                        : (root.entry_status_filter == "left-only"
+                                                            ? "Left"
+                                                            : "Right"))));
+                                        color: #6f7e8d;
+                                        vertical-alignment: center;
                                     }
                                 }
                             }
@@ -575,7 +596,7 @@ slint::slint! {
                                         height: 46px;
                                         border-width: 1px;
                                         border-color: root.row_source_indices[index] == root.selected_row ? #9ab1cd : #e1e6ee;
-                                        border-radius: 6px;
+                                        border-radius: 4px;
                                         background: root.row_source_indices[index] == root.selected_row ? #eaf1fb
                                             : (root.row_can_load_diff[index] ? #fbfcfe : #f3f5f8);
 
@@ -965,21 +986,21 @@ slint::slint! {
             TouchArea {}
 
             SectionCard {
-                width: 736px;
-                height: root.provider_settings_mode == 1 ? 468px : 332px;
+                width: 700px;
+                height: root.provider_settings_mode == 1 ? 430px : 304px;
                 x: (parent.width - self.width) / 2;
-                y: 64px;
+                y: 70px;
                 border-color: #dfe5ed;
                 background: #fcfdff;
 
                 VerticalLayout {
-                    padding: 18px;
-                    spacing: 12px;
+                    padding: 14px;
+                    spacing: 8px;
 
                     Text {
                         text: "Provider Settings";
                         color: #2f4966;
-                        font-size: 19px;
+                        font-size: 18px;
                     }
                     Text {
                         text: "Global configuration for AI analysis provider.";
@@ -992,7 +1013,7 @@ slint::slint! {
                     }
 
                     HorizontalLayout {
-                        spacing: 8px;
+                        spacing: 6px;
                         Text {
                             text: "Mode";
                             width: 104px;
@@ -1000,7 +1021,7 @@ slint::slint! {
                             vertical-alignment: center;
                         }
                         SegmentedRail {
-                            height: 34px;
+                            height: 30px;
                             HorizontalLayout {
                                 spacing: 0px;
                                 SegmentItem {
@@ -1024,7 +1045,7 @@ slint::slint! {
                     }
 
                     HorizontalLayout {
-                        spacing: 8px;
+                        spacing: 6px;
                         Text {
                             text: "Timeout";
                             width: 104px;
@@ -1034,6 +1055,7 @@ slint::slint! {
                         LineEdit {
                             text <=> root.provider_settings_timeout;
                             width: 140px;
+                            height: 28px;
                         }
                         Text {
                             text: "seconds";
@@ -1047,9 +1069,9 @@ slint::slint! {
 
                     VerticalLayout {
                         visible: root.provider_settings_mode == 1;
-                        spacing: 8px;
+                        spacing: 6px;
                         HorizontalLayout {
-                            spacing: 8px;
+                            spacing: 6px;
                             Text {
                                 text: "Endpoint";
                                 width: 104px;
@@ -1059,32 +1081,35 @@ slint::slint! {
                             LineEdit {
                                 text <=> root.provider_settings_endpoint;
                                 horizontal-stretch: 1;
+                                height: 28px;
                             }
                         }
                         HorizontalLayout {
-                            spacing: 8px;
+                            spacing: 6px;
                             Text {
                                 text: "API Key";
                                 width: 104px;
                                 color: #4f6074;
                                 vertical-alignment: center;
+                                horizontal-alignment:center;
                             }
                             LineEdit {
                                 text <=> root.provider_settings_api_key;
                                 input-type: root.provider_settings_show_api_key ? InputType.text : InputType.password;
                                 horizontal-stretch: 1;
+                                height: 28px;
                             }
                             ToolButton {
                                 label: root.provider_settings_show_api_key ? "Hide" : "Show";
                                 button_min_width: 62px;
-                                control_height: 28px;
+                                control_height: 27px;
                                 tapped => {
                                     root.provider_settings_show_api_key = !root.provider_settings_show_api_key;
                                 }
                             }
                         }
                         HorizontalLayout {
-                            spacing: 8px;
+                            spacing: 6px;
                             Text {
                                 text: "Model";
                                 width: 104px;
@@ -1094,6 +1119,7 @@ slint::slint! {
                             LineEdit {
                                 text <=> root.provider_settings_model;
                                 horizontal-stretch: 1;
+                                height: 28px;
                             }
                         }
                     }
@@ -1119,7 +1145,7 @@ slint::slint! {
                         ToolButton {
                             label: "Cancel";
                             button_min_width: 108px;
-                            control_height: 32px;
+                            control_height: 30px;
                             tapped => {
                                 root.provider_settings_open = false;
                                 root.provider_settings_cancel_clicked();
@@ -1129,7 +1155,7 @@ slint::slint! {
                             label: "Save";
                             primary: true;
                             button_min_width: 108px;
-                            control_height: 32px;
+                            control_height: 30px;
                             tapped => {
                                 root.provider_settings_save_clicked();
                             }
