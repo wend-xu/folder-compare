@@ -3,6 +3,7 @@
 mod app;
 mod bridge;
 mod commands;
+mod folder_picker;
 mod presenter;
 mod settings;
 mod state;

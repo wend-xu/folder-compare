@@ -166,17 +166,20 @@ impl AppState {
         let total = self.entry_rows.len();
         let query = self.entry_filter.trim();
         let status_scope = normalize_status_filter_token(&self.entry_status_filter);
-        if query.is_empty() && status_scope == "all" {
-            return format!("Showing all entries: {total}");
-        }
-        let mut scopes = Vec::new();
-        if !query.is_empty() {
-            scopes.push(format!("query: {query}"));
-        }
-        if status_scope != "all" {
-            scopes.push(format!("status: {status_scope}"));
-        }
-        format!("Filtered: {visible}/{total} ({})", scopes.join(", "))
+        let query_text = if query.is_empty() {
+            "—".to_string()
+        } else {
+            abbreviate_middle(query, 28, 16, 8)
+        };
+        let status_text = match status_scope.as_str() {
+            "all" => "All",
+            "different" => "Different",
+            "equal" => "Equal",
+            "left-only" => "Left-only",
+            "right-only" => "Right-only",
+            _ => "All",
+        };
+        format!("Visible {visible}/{total} | Search: {query_text} | Status: {status_text}")
     }
 
     /// Returns compact compare summary text for sidebar status section.
@@ -556,6 +559,23 @@ mod tests {
         let mut state = AppState::default();
         state.set_entry_status_filter("unexpected-status");
         assert_eq!(state.entry_status_filter, "all");
+    }
+
+    #[test]
+    fn filter_stats_text_is_consistent_across_scopes() {
+        let mut state = AppState {
+            entry_rows: sample_rows(),
+            ..AppState::default()
+        };
+        assert_eq!(
+            state.filter_stats_text(),
+            "Visible 2/2 | Search: — | Status: All"
+        );
+
+        state.entry_filter = "logo".to_string();
+        state.set_entry_status_filter("different");
+        let text = state.filter_stats_text();
+        assert!(text.starts_with("Visible 1/2 | Search: logo | Status: Different"));
     }
 
     #[test]

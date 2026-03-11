@@ -2,6 +2,7 @@
 
 use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
+use crate::folder_picker;
 use crate::presenter::Presenter;
 use crate::state::AppState;
 use fc_ai::AiProviderKind;
@@ -83,6 +84,8 @@ slint::slint! {
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
+        callback left_browse_clicked();
+        callback right_browse_clicked();
         callback filter_changed(string);
         callback status_filter_changed(string);
         callback row_selected(int);
@@ -165,7 +168,10 @@ slint::slint! {
                                     }
                                     Button {
                                         text: "Browse";
-                                        enabled: false;
+                                        enabled: !root.running;
+                                        clicked => {
+                                            root.left_browse_clicked();
+                                        }
                                     }
                                 }
                                 HorizontalLayout {
@@ -182,21 +188,29 @@ slint::slint! {
                                     }
                                     Button {
                                         text: "Browse";
-                                        enabled: false;
+                                        enabled: !root.running;
+                                        clicked => {
+                                            root.right_browse_clicked();
+                                        }
                                     }
                                 }
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Button {
                                         text: root.running ? "Comparing..." : "Compare";
-                                        enabled: !root.running;
+                                        enabled: !root.running && root.left_root != "" && root.right_root != "";
                                         clicked => {
                                             root.compare_clicked();
                                         }
                                     }
                                     Text {
-                                        text: root.running ? "Running compare..." : "Ready";
+                                        text: root.running
+                                            ? "Running compare..."
+                                            : (root.left_root == "" || root.right_root == ""
+                                                ? "Select left and right folders."
+                                                : "Ready");
                                         color: #6a7581;
+                                        overflow: elide;
                                     }
                                 }
                             }
@@ -288,10 +302,10 @@ slint::slint! {
                         }
 
                         SectionCard {
-                            height: 102px;
+                            height: 106px;
                             VerticalLayout {
                                 padding: 8px;
-                                spacing: 6px;
+                                spacing: 5px;
                                 Text {
                                     text: "Filter / Scope";
                                     color: #4c5b6b;
@@ -300,14 +314,24 @@ slint::slint! {
                                     spacing: 6px;
                                     Text {
                                         text: "Search";
-                                        width: 48px;
+                                        width: 44px;
                                         color: #5f6d7c;
                                     }
                                     LineEdit {
                                         text <=> root.entry_filter;
+                                        horizontal-stretch: 1;
                                         enabled: !root.running;
+                                        placeholder-text: "path or detail";
                                         edited(value) => {
                                             root.filter_changed(value);
+                                        }
+                                    }
+                                    Button {
+                                        text: "Clear";
+                                        visible: root.entry_filter != "";
+                                        clicked => {
+                                            root.entry_filter = "";
+                                            root.filter_changed("");
                                         }
                                     }
                                 }
@@ -315,45 +339,62 @@ slint::slint! {
                                     spacing: 6px;
                                     Text {
                                         text: "Status";
-                                        width: 48px;
+                                        width: 44px;
                                         color: #5f6d7c;
                                     }
                                     Button {
-                                        text: "All";
+                                        text: root.entry_status_filter == "all" ? "All*" : "All";
                                         enabled: root.entry_status_filter != "all";
                                         clicked => {
                                             root.status_filter_changed("all");
                                         }
                                     }
                                     Button {
-                                        text: "Different";
+                                        text: root.entry_status_filter == "different" ? "Diff*" : "Diff";
                                         enabled: root.entry_status_filter != "different";
                                         clicked => {
                                             root.status_filter_changed("different");
                                         }
                                     }
                                     Button {
-                                        text: "Equal";
+                                        text: root.entry_status_filter == "equal" ? "Equal*" : "Equal";
                                         enabled: root.entry_status_filter != "equal";
                                         clicked => {
                                             root.status_filter_changed("equal");
                                         }
                                     }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                    Text {
+                                        text: "Active: "
+                                            + (root.entry_status_filter == "all"
+                                                ? "All"
+                                                : (root.entry_status_filter == "different"
+                                                    ? "Different"
+                                                    : (root.entry_status_filter == "equal"
+                                                        ? "Equal"
+                                                        : (root.entry_status_filter == "left-only"
+                                                            ? "Left-only"
+                                                            : "Right-only"))));
+                                        color: #2f4f70;
+                                        overflow: elide;
+                                    }
                                 }
                                 HorizontalLayout {
                                     spacing: 6px;
                                     Rectangle {
-                                        width: 48px;
+                                        width: 44px;
                                     }
                                     Button {
-                                        text: "Left-only";
+                                        text: root.entry_status_filter == "left-only" ? "Left-only*" : "Left-only";
                                         enabled: root.entry_status_filter != "left-only";
                                         clicked => {
                                             root.status_filter_changed("left-only");
                                         }
                                     }
                                     Button {
-                                        text: "Right-only";
+                                        text: root.entry_status_filter == "right-only" ? "Right-only*" : "Right-only";
                                         enabled: root.entry_status_filter != "right-only";
                                         clicked => {
                                             root.status_filter_changed("right-only");
@@ -1078,6 +1119,34 @@ pub fn run() -> anyhow::Result<()> {
         ));
         compare_bridge.dispatch(UiCommand::RunCompare);
         sync_window_state_if_changed(&window, &compare_bridge, &compare_cache, SyncMode::Passive);
+    });
+
+    let app_weak = app.as_weak();
+    app.on_left_browse_clicked(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        if window.get_running() {
+            return;
+        }
+        let Some(path) = folder_picker::pick_folder() else {
+            return;
+        };
+        window.set_left_root(path.to_string_lossy().to_string().into());
+    });
+
+    let app_weak = app.as_weak();
+    app.on_right_browse_clicked(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        if window.get_running() {
+            return;
+        }
+        let Some(path) = folder_picker::pick_folder() else {
+            return;
+        };
+        window.set_right_root(path.to_string_lossy().to_string().into());
     });
 
     let app_weak = app.as_weak();
