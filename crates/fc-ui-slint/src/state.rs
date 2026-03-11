@@ -65,6 +65,10 @@ pub struct AppState {
     pub analysis_openai_api_key: String,
     /// OpenAI-compatible model input.
     pub analysis_openai_model: String,
+    /// OpenAI-compatible request timeout input in seconds.
+    pub analysis_request_timeout_secs: u64,
+    /// Provider settings dialog error message.
+    pub provider_settings_error_message: Option<String>,
 }
 
 impl Default for AppState {
@@ -97,6 +101,8 @@ impl Default for AppState {
             analysis_openai_endpoint: String::new(),
             analysis_openai_api_key: String::new(),
             analysis_openai_model: "gpt-4o-mini".to_string(),
+            analysis_request_timeout_secs: 30,
+            provider_settings_error_message: None,
         }
     }
 }
@@ -341,6 +347,18 @@ impl AppState {
             && !self.analysis_openai_model.trim().is_empty()
     }
 
+    /// Returns request timeout text for UI rendering.
+    pub fn analysis_timeout_text(&self) -> String {
+        self.analysis_request_timeout_secs.to_string()
+    }
+
+    /// Returns provider settings error text for UI rendering.
+    pub fn provider_settings_error_text(&self) -> String {
+        self.provider_settings_error_message
+            .clone()
+            .unwrap_or_default()
+    }
+
     /// Builds one AI config snapshot from current UI state.
     pub fn analysis_ai_config(&self) -> AiConfig {
         let mut config = AiConfig::default();
@@ -348,6 +366,7 @@ impl AppState {
         config.openai_endpoint = normalize_optional_text(&self.analysis_openai_endpoint);
         config.openai_api_key = normalize_optional_text(&self.analysis_openai_api_key);
         config.openai_model = normalize_optional_text(&self.analysis_openai_model);
+        config.request_timeout_secs = self.analysis_request_timeout_secs.max(1);
         config
     }
 }
@@ -636,6 +655,7 @@ mod tests {
             analysis_openai_endpoint: " http://localhost:11434/v1 ".to_string(),
             analysis_openai_api_key: " sk-test ".to_string(),
             analysis_openai_model: " qwen2.5-coder ".to_string(),
+            analysis_request_timeout_secs: 42,
             ..AppState::default()
         };
         let config = state.analysis_ai_config();
@@ -646,5 +666,6 @@ mod tests {
         );
         assert_eq!(config.openai_api_key.as_deref(), Some("sk-test"));
         assert_eq!(config.openai_model.as_deref(), Some("qwen2.5-coder"));
+        assert_eq!(config.request_timeout_secs, 42);
     }
 }

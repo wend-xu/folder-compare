@@ -4,6 +4,7 @@ use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
 use crate::presenter::Presenter;
 use crate::state::AppState;
+use fc_ai::AiProviderKind;
 use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -69,8 +70,16 @@ slint::slint! {
         in-out property <string> analysis_endpoint;
         in-out property <string> analysis_api_key;
         in-out property <string> analysis_model;
+        in property <string> analysis_timeout_text;
+        in property <string> provider_settings_error_text;
         in-out property <int> workspace_tab: 0;
         in-out property <bool> compare_warnings_expanded: false;
+        in-out property <bool> provider_settings_open: false;
+        in-out property <int> provider_settings_mode: 0;
+        in-out property <string> provider_settings_endpoint;
+        in-out property <string> provider_settings_api_key;
+        in-out property <string> provider_settings_model;
+        in-out property <string> provider_settings_timeout;
         in-out property <int> selected_row: -1;
 
         callback compare_clicked();
@@ -84,6 +93,8 @@ slint::slint! {
         callback analysis_api_key_changed(string);
         callback analysis_model_changed(string);
         callback provider_settings_clicked();
+        callback provider_settings_save_clicked();
+        callback provider_settings_cancel_clicked();
 
         VerticalLayout {
             padding: 10px;
@@ -108,7 +119,12 @@ slint::slint! {
                     Button {
                         text: "Provider Settings";
                         clicked => {
-                            root.workspace_tab = 1;
+                            root.provider_settings_mode = root.analysis_remote_mode ? 1 : 0;
+                            root.provider_settings_endpoint = root.analysis_endpoint;
+                            root.provider_settings_api_key = root.analysis_api_key;
+                            root.provider_settings_model = root.analysis_model;
+                            root.provider_settings_timeout = root.analysis_timeout_text;
+                            root.provider_settings_open = true;
                             root.provider_settings_clicked();
                         }
                     }
@@ -634,87 +650,20 @@ slint::slint! {
                                         text: "Provider:";
                                         color: #5f6d7c;
                                     }
-                                    Button {
-                                        text: "Mock";
-                                        enabled: root.analysis_provider_mode_text != "Mock";
-                                        clicked => {
-                                            root.analysis_provider_mock_selected();
-                                        }
+                                    Text {
+                                        text: root.analysis_provider_mode_text;
+                                        color: #1f3e58;
                                     }
-                                    Button {
-                                        text: "OpenAI-compatible";
-                                        enabled: root.analysis_provider_mode_text != "OpenAI-compatible";
-                                        clicked => {
-                                            root.analysis_provider_openai_selected();
-                                        }
+                                    Text {
+                                        text: "Timeout: " + root.analysis_timeout_text + "s";
+                                        color: #5f6d7c;
                                     }
                                     Rectangle {
                                         horizontal-stretch: 1;
                                     }
                                     Text {
-                                        text: "Global settings entry is in App Bar.";
+                                        text: "Use Provider Settings in App Bar to edit.";
                                         color: #7a4b00;
-                                    }
-                                }
-
-                                Rectangle {
-                                    visible: root.analysis_remote_mode;
-                                    border-width: 1px;
-                                    border-color: #e2e7ed;
-                                    height: 112px;
-                                    clip: true;
-                                    VerticalLayout {
-                                        padding: 6px;
-                                        spacing: 4px;
-                                        Text {
-                                            text: "Provider Config (temporary in-content editor)";
-                                            color: #6a7581;
-                                        }
-                                        HorizontalLayout {
-                                            spacing: 6px;
-                                            Text {
-                                                text: "Endpoint";
-                                                width: 62px;
-                                                color: #5f6d7c;
-                                            }
-                                            LineEdit {
-                                                text <=> root.analysis_endpoint;
-                                                enabled: !root.analysis_loading;
-                                                edited(value) => {
-                                                    root.analysis_endpoint_changed(value);
-                                                }
-                                            }
-                                        }
-                                        HorizontalLayout {
-                                            spacing: 6px;
-                                            Text {
-                                                text: "API Key";
-                                                width: 62px;
-                                                color: #5f6d7c;
-                                            }
-                                            LineEdit {
-                                                text <=> root.analysis_api_key;
-                                                enabled: !root.analysis_loading;
-                                                edited(value) => {
-                                                    root.analysis_api_key_changed(value);
-                                                }
-                                            }
-                                        }
-                                        HorizontalLayout {
-                                            spacing: 6px;
-                                            Text {
-                                                text: "Model";
-                                                width: 62px;
-                                                color: #5f6d7c;
-                                            }
-                                            LineEdit {
-                                                text <=> root.analysis_model;
-                                                enabled: !root.analysis_loading;
-                                                edited(value) => {
-                                                    root.analysis_model_changed(value);
-                                                }
-                                            }
-                                        }
                                     }
                                 }
 
@@ -800,6 +749,156 @@ slint::slint! {
                 }
             }
         }
+
+        Rectangle {
+                visible: root.provider_settings_open;
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                background: rgba(0, 0, 0, 0.22);
+
+                TouchArea {}
+
+                SectionCard {
+                    width: 560px;
+                    height: root.provider_settings_mode == 1 ? 298px : 212px;
+                    x: (parent.width - self.width) / 2;
+                    y: 74px;
+                    border-color: #d9e0e8;
+                    background: #ffffff;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 8px;
+
+                        Text {
+                            text: "Provider Settings";
+                            color: #334455;
+                            font-size: 16px;
+                        }
+                        Text {
+                            text: "Global configuration for AI analysis provider.";
+                            color: #6a7581;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Mode";
+                                width: 70px;
+                                color: #5f6d7c;
+                            }
+                            Button {
+                                text: "Mock";
+                                enabled: root.provider_settings_mode != 0;
+                                clicked => {
+                                    root.provider_settings_mode = 0;
+                                }
+                            }
+                            Button {
+                                text: "OpenAI-compatible";
+                                enabled: root.provider_settings_mode != 1;
+                                clicked => {
+                                    root.provider_settings_mode = 1;
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: "Timeout";
+                                width: 70px;
+                                color: #5f6d7c;
+                            }
+                            LineEdit {
+                                text <=> root.provider_settings_timeout;
+                            }
+                            Text {
+                                text: "seconds";
+                                color: #6a7581;
+                            }
+                        }
+
+                        Rectangle {
+                            visible: root.provider_settings_mode == 1;
+                            border-width: 1px;
+                            border-color: #e5e9ef;
+                            height: 106px;
+                            clip: true;
+                            VerticalLayout {
+                                padding: 6px;
+                                spacing: 5px;
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Endpoint";
+                                        width: 70px;
+                                        color: #5f6d7c;
+                                    }
+                                    LineEdit {
+                                        text <=> root.provider_settings_endpoint;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "API Key";
+                                        width: 70px;
+                                        color: #5f6d7c;
+                                    }
+                                    LineEdit {
+                                        text <=> root.provider_settings_api_key;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Model";
+                                        width: 70px;
+                                        color: #5f6d7c;
+                                    }
+                                    LineEdit {
+                                        text <=> root.provider_settings_model;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            visible: root.provider_settings_error_text != "";
+                            text: root.provider_settings_error_text;
+                            color: #8c1d1d;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Rectangle {
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Cancel";
+                                clicked => {
+                                    root.provider_settings_open = false;
+                                    root.provider_settings_cancel_clicked();
+                                }
+                            }
+                            Button {
+                                text: "Save";
+                                clicked => {
+                                    root.provider_settings_save_clicked();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
     }
 }
 
@@ -823,9 +922,6 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
         window.set_right_root(state.right_root.clone().into());
         window.set_entry_filter(state.entry_filter.clone().into());
         window.set_entry_status_filter(state.entry_status_filter.clone().into());
-        window.set_analysis_endpoint(state.analysis_openai_endpoint.clone().into());
-        window.set_analysis_api_key(state.analysis_openai_api_key.clone().into());
-        window.set_analysis_model(state.analysis_openai_model.clone().into());
     }
 
     window.set_running(state.running);
@@ -867,6 +963,11 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_analysis_provider_mode_text(state.analysis_provider_mode_text().into());
     window.set_analysis_remote_mode(state.analysis_remote_mode());
     window.set_analysis_remote_config_ready(state.analysis_remote_config_ready());
+    window.set_analysis_endpoint(state.analysis_openai_endpoint.clone().into());
+    window.set_analysis_api_key(state.analysis_openai_api_key.clone().into());
+    window.set_analysis_model(state.analysis_openai_model.clone().into());
+    window.set_analysis_timeout_text(state.analysis_timeout_text().into());
+    window.set_provider_settings_error_text(state.provider_settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     let filtered_rows = state.filtered_entry_rows_with_index();
     let row_statuses = filtered_rows
@@ -1019,6 +1120,71 @@ pub fn run() -> anyhow::Result<()> {
             &status_filter_cache,
             SyncMode::Passive,
         );
+    });
+
+    let app_weak = app.as_weak();
+    let provider_settings_bridge = bridge.clone();
+    let provider_settings_cache = Arc::clone(&sync_cache);
+    app.on_provider_settings_clicked(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        provider_settings_bridge.dispatch(UiCommand::ClearProviderSettingsError);
+        sync_window_state_if_changed(
+            &window,
+            &provider_settings_bridge,
+            &provider_settings_cache,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let provider_settings_cancel_bridge = bridge.clone();
+    let provider_settings_cancel_cache = Arc::clone(&sync_cache);
+    app.on_provider_settings_cancel_clicked(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        provider_settings_cancel_bridge.dispatch(UiCommand::ClearProviderSettingsError);
+        sync_window_state_if_changed(
+            &window,
+            &provider_settings_cancel_bridge,
+            &provider_settings_cancel_cache,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let provider_settings_save_bridge = bridge.clone();
+    let provider_settings_save_cache = Arc::clone(&sync_cache);
+    app.on_provider_settings_save_clicked(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        let provider_kind = if window.get_provider_settings_mode() == 1 {
+            AiProviderKind::OpenAiCompatible
+        } else {
+            AiProviderKind::Mock
+        };
+        provider_settings_save_bridge.dispatch(UiCommand::SaveProviderSettings {
+            provider_kind,
+            endpoint: window.get_provider_settings_endpoint().to_string(),
+            api_key: window.get_provider_settings_api_key().to_string(),
+            model: window.get_provider_settings_model().to_string(),
+            timeout_secs_text: window.get_provider_settings_timeout().to_string(),
+        });
+        sync_window_state_if_changed(
+            &window,
+            &provider_settings_save_bridge,
+            &provider_settings_save_cache,
+            SyncMode::Passive,
+        );
+        if window.get_provider_settings_error_text().is_empty() {
+            window.set_provider_settings_open(false);
+        }
     });
 
     let app_weak = app.as_weak();

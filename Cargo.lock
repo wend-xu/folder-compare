@@ -1278,10 +1278,12 @@ dependencies = [
  "anyhow",
  "fc-ai",
  "fc-core",
+ "serde",
  "slint",
  "slint-build",
  "smol_str 0.3.2",
  "tempfile",
+ "toml",
  "tracing",
 ]
 

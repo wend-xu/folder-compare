@@ -3,6 +3,7 @@
 use crate::bridge;
 use crate::commands::UiCommand;
 use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
+use crate::settings::{self, ProviderSettings};
 use crate::state::AppState;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -33,6 +34,22 @@ impl Presenter {
             UiCommand::Initialize => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.status_text = "Ready".to_string();
+                match settings::load_provider_settings() {
+                    Ok(Some(saved)) => {
+                        state.analysis_provider_kind = saved.provider_kind;
+                        state.analysis_openai_endpoint = saved.openai_endpoint;
+                        state.analysis_openai_api_key = saved.openai_api_key;
+                        state.analysis_openai_model = saved.openai_model;
+                        state.analysis_request_timeout_secs = saved.timeout_secs.max(1);
+                        state.provider_settings_error_message = None;
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        state.provider_settings_error_message =
+                            Some(format!("Failed to load provider settings: {err}"));
+                        state.status_text = "Provider settings load failed".to_string();
+                    }
+                }
             }
             UiCommand::UpdateLeftRoot(path) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -106,6 +123,60 @@ impl Presenter {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.analysis_openai_model = value;
                 state.analysis_error_message = None;
+            }
+            UiCommand::SaveProviderSettings {
+                provider_kind,
+                endpoint,
+                api_key,
+                model,
+                timeout_secs_text,
+            } => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                let timeout_secs = match parse_timeout_secs(&timeout_secs_text) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        state.provider_settings_error_message = Some(err);
+                        return;
+                    }
+                };
+
+                state.analysis_provider_kind = provider_kind;
+                state.analysis_openai_endpoint = endpoint.trim().to_string();
+                state.analysis_openai_api_key = api_key.trim().to_string();
+                state.analysis_openai_model = model.trim().to_string();
+                state.analysis_request_timeout_secs = timeout_secs;
+                state.clear_analysis_panel();
+                state.analysis_hint = Some(match provider_kind {
+                    fc_ai::AiProviderKind::Mock => {
+                        "Using mock provider. No remote request will be sent.".to_string()
+                    }
+                    fc_ai::AiProviderKind::OpenAiCompatible => {
+                        "Using remote provider. Configure endpoint/api key/model.".to_string()
+                    }
+                });
+
+                let settings = ProviderSettings {
+                    provider_kind,
+                    openai_endpoint: state.analysis_openai_endpoint.clone(),
+                    openai_api_key: state.analysis_openai_api_key.clone(),
+                    openai_model: state.analysis_openai_model.clone(),
+                    timeout_secs: state.analysis_request_timeout_secs,
+                };
+                match settings::save_provider_settings(&settings) {
+                    Ok(_) => {
+                        state.provider_settings_error_message = None;
+                        state.status_text = "Provider settings saved".to_string();
+                    }
+                    Err(err) => {
+                        state.provider_settings_error_message =
+                            Some(format!("Failed to save provider settings: {err}"));
+                        state.status_text = "Provider settings save failed".to_string();
+                    }
+                }
+            }
+            UiCommand::ClearProviderSettingsError => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.provider_settings_error_message = None;
             }
         }
     }
@@ -358,12 +429,29 @@ impl Presenter {
     }
 }
 
+fn parse_timeout_secs(raw: &str) -> Result<u64, String> {
+    let text = raw.trim();
+    if text.is_empty() {
+        return Err("Timeout is required and must be a positive integer.".to_string());
+    }
+    let parsed = text
+        .parse::<u64>()
+        .map_err(|_| "Timeout must be a positive integer (seconds).".to_string())?;
+    if parsed == 0 {
+        return Err("Timeout must be greater than 0.".to_string());
+    }
+    Ok(parsed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::{Mutex, OnceLock};
     use std::thread;
     use std::time::Duration;
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn wait_until<F>(presenter: &Presenter, predicate: F) -> AppState
     where
@@ -886,5 +974,54 @@ mod tests {
         ));
         let snapshot = wait_until(&presenter, |state| !state.diff_loading);
         assert_eq!(snapshot.right_root, "/tmp/user-typing-right");
+    }
+
+    #[test]
+    fn save_provider_settings_with_invalid_timeout_sets_error() {
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::SaveProviderSettings {
+            provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
+            endpoint: "https://api.example.com/v1".to_string(),
+            api_key: "sk-test".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            timeout_secs_text: "0".to_string(),
+        });
+        let snapshot = presenter.state_snapshot();
+        assert!(snapshot.provider_settings_error_message.is_some());
+    }
+
+    #[test]
+    fn initialize_loads_provider_settings_from_disk() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should not be poisoned");
+        let temp = tempfile::tempdir().expect("temp dir should be created");
+        std::env::set_var("FOLDER_COMPARE_CONFIG_DIR", temp.path());
+        crate::settings::save_provider_settings(&ProviderSettings {
+            provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
+            openai_endpoint: "https://api.example.com/v1".to_string(),
+            openai_api_key: "sk-test".to_string(),
+            openai_model: "gpt-4o-mini".to_string(),
+            timeout_secs: 55,
+        })
+        .expect("settings should be saved");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::Initialize);
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(
+            snapshot.analysis_provider_kind,
+            fc_ai::AiProviderKind::OpenAiCompatible
+        );
+        assert_eq!(
+            snapshot.analysis_openai_endpoint,
+            "https://api.example.com/v1"
+        );
+        assert_eq!(snapshot.analysis_openai_api_key, "sk-test");
+        assert_eq!(snapshot.analysis_openai_model, "gpt-4o-mini");
+        assert_eq!(snapshot.analysis_request_timeout_secs, 55);
+
+        std::env::remove_var("FOLDER_COMPARE_CONFIG_DIR");
     }
 }

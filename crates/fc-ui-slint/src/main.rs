@@ -4,6 +4,7 @@ mod app;
 mod bridge;
 mod commands;
 mod presenter;
+mod settings;
 mod state;
 mod view_models;
 
