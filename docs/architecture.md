@@ -96,148 +96,135 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` interaction/layout maturity after Phase 12
+## `fc-ui-slint` current architecture snapshot (Phase 15.0 fix-5)
 
-- Main window now supports:
-  - left/right directory path input;
-  - compare trigger button;
-  - compare status, summary, warning, and error display;
-  - compact compare summary/warning/error/truncated area with lower vertical overhead;
-  - scrollable compare result list with stable row selection state;
-  - lightweight compare row filtering by path/detail text;
-  - structured list row rendering (`status`, `relative_path`, `detail`) instead of one raw line;
-  - detailed diff panel driven by `fc-core::diff_text_file`, including:
-    - selected path display;
-    - scrollable unified-style viewer rows (`old_line_no/new_line_no/marker/content`);
-    - visual separation for hunk headers and added/removed/context rows;
-    - diff warning and diff truncated semantics;
-    - diff-level error display isolated from compare-level errors.
-- AI analysis panel now runs through `fc-ai` mock pipeline:
-  - `Analyze` action from selected diff row;
-  - bridge mapping from selected row + detailed diff to `AnalyzeDiffRequest` (`RiskReview`);
-  - `Analyzer + MockAiProvider` invocation in presenter command flow;
-  - analysis result card fields (`title`, `risk_level`, `rationale`, `key_points`, `review_suggestions`);
-  - independent analysis loading/error/result state, separated from compare/diff states.
-- AI provider mode and remote config are now exposed in UI with minimal settings:
-  - provider mode switch (`Mock` / `OpenAI-compatible`);
-  - OpenAI-compatible inputs (`endpoint`, `api key`, `model`);
-  - analysis command dispatch chooses provider by `AiConfig.provider_kind`;
-  - remote mode warns that diff excerpt is sent to configured endpoint;
-  - remote mode requires complete config before analysis can start.
-- Text/layout stability improvements for large-directory output:
-  - compare warnings now use wrapped text with UI-side line splitting and a scrollable warning block to avoid overflow beyond container bounds;
-  - selected path display now uses safe middle-ellipsis abbreviation for very long values;
-  - result list `path/detail` lines use safe elide to avoid row layout breakage.
-- Right-side details area now follows a clearer Phase 11-ready hierarchy:
-  - selected path;
-  - diff summary;
-  - diff status block (loading/warning/truncated/error);
-  - AI analysis panel (mock provider) between status and diff viewer;
-  - detailed unified diff viewer as the primary lower section.
-- Interaction/runtime improvements:
-  - compare and detailed diff execution moved to background worker threads with a short startup defer so loading state can render first;
-  - periodic UI snapshot refresh keeps view state synchronized while background work is running;
-  - timer-driven refresh now uses a passive sync mode that updates display-only state and does not overwrite editable inputs (`left_root/right_root/filter`) while typing;
-  - full input synchronization is limited to initialization/explicit submission paths, preventing cursor/content reset during user editing;
-  - passive refresh now applies change-detection before syncing UI, so unchanged snapshots do not rebuild list models each timer tick;
-  - detailed diff list no longer gets repeatedly rebound during idle timer cycles, preventing scroll position from being dragged back to top after release;
-  - compare list and detailed diff panel now have independent scroll areas in a split layout;
-  - window uses preferred/min size constraints and stretches key regions with resize.
-- UI orchestration boundaries:
-  - `commands`: user actions and compare execution trigger;
-  - `presenter`: compare workflow plus filtering and selected-row detailed diff orchestration (including background task state transitions);
-  - `bridge`: request construction and `CompareReport`/`TextDiffResult` to UI view-model mapping;
-  - `state/view_models`: lightweight, UI-facing data and filter/viewer projection helpers.
-- `fc-core` integration now includes:
-  - `compare_dirs` for summary list;
-  - `diff_text_file` for selected-row detailed diff.
+### IA and layout contract
 
-## Architecture evolution (Phase 13.1 -> 15.0 fix-5)
-
-This period moved `fc-ui-slint` from “feature accumulation” to a contract-driven desktop workspace architecture.  
-The same IA was preserved end-to-end, but each layer (layout, state flow, semantics, preview behavior, runtime sync) was progressively hardened.
-
-### 1) Information architecture and layout contract
-
-- IA stayed stable as:
+- IA remains fixed as:
   - `App Bar`;
   - `Sidebar` (`Compare Inputs / Compare Status / Filter / Scope / Results / Navigator`);
-  - `Workspace` (`Diff / Analysis` tabs, header, content).
-- Layout behavior was tightened in two steps:
-  - 14.x established sidebar width/overflow discipline and desktop-density component rhythm;
-  - 15.0 unified Workspace into one continuous shell (`Tabs -> Header -> Content`) with conditional mode branches so only one mode participates in layout at a time.
-- Result: main work area keeps stable height allocation across empty/loading/error/success states instead of fragmenting into independent boxes.
+  - `Workspace` (`Diff / Analysis` tabs + header + content).
+- Workspace now behaves as one continuous shell (`Tabs -> Header -> Content`) with conditional mode branches, so only one mode participates in layout at a time.
+- Sidebar width and overflow are constrained for desktop density; long text is handled by elide/wrap rules instead of intrinsic-width pushback.
 
-### 2) Input/filter/status workflow contract
+### Compare workflow contract
 
-- Compare entry workflow is complete and state-driven:
-  - left/right path input + native browse + validation (`empty/missing/not-directory/unreadable`);
-  - search + segmented status scope (`All / Diff / Equal / Left / Right`) with lockstep visual state.
-- Compare Status is intentionally summary-first:
+- Compare entry flow is state-driven:
+  - left/right path input + native folder browse;
+  - validation (`empty/missing/not-directory/unreadable`);
+  - compare trigger and summary-first status update.
+- Filter flow is state-driven:
+  - text search + segmented status scope (`All / Diff / Equal / Left / Right`);
+  - segmented visual state stays in lockstep with filter state.
+- Compare Status remains summary-first by design:
   - primary status + compact pills + key metrics;
-  - details are weak/expandable instead of becoming a second heavy details pane.
+  - details stay lightweight/expandable, not a second heavy pane.
 
-### 3) Provider settings and persistence contract
+### File View state and preview contract
 
-- Provider configuration moved to a global modal boundary:
-  - entry from `App Bar -> Provider Settings`;
-  - explicit `Save / Cancel` lifecycle;
-  - Analysis content no longer embeds full provider form.
-- Persistence contract is localized in UI layer:
-  - `settings.rs` owns load/save;
-  - initialize-time hydration in presenter;
-  - file-based persistence (`provider_settings.toml`) with `FOLDER_COMPARE_CONFIG_DIR` override.
-- Provider config model is now complete for current scope:
+- Diff mode state machine:
+  - `no selection -> loading -> unavailable -> failed -> renderable`.
+- Analysis mode state machine:
+  - `no selection -> not started -> loading -> failed -> result`.
+- `WorkspaceStatePanel` is the shared container for non-renderable states in both tabs.
+- Single-side preview is first-class:
+  - `left-only`, `right-only`, and `equal` all enter preview path;
+  - equal preview is not blocked by detailed-diff eligibility;
+  - preview rows are neutral-context rendering with side-aware line numbers.
+- `can_load_diff = false` maps to explicit `unavailable` state (not generic failure).
+
+### Provider settings and persistence contract
+
+- Provider settings are edited in a global modal (`App Bar -> Provider Settings`), not embedded in Analysis content.
+- Persistence is owned by `settings.rs`, loaded at presenter initialize-time, and written to `provider_settings.toml` (with `FOLDER_COMPARE_CONFIG_DIR` override).
+- Provider config model in scope:
   - `Mock` / `OpenAI-compatible`;
   - endpoint / api key / model / timeout;
   - API key visibility toggle semantics.
 
-### 4) File View state and preview contract
+### Runtime synchronization contract
 
-- File View now follows one explicit state machine:
-  - Diff: `no selection -> loading -> unavailable -> failed -> renderable`;
-  - Analysis: `no selection -> not started -> loading -> failed -> result`.
-- `WorkspaceStatePanel` became the shared state container so state transitions no longer change container grammar.
-- Single-side preview is first-class:
-  - `left-only`, `right-only`, and `equal` all enter File View preview path;
-  - equal preview is not blocked by detailed-diff eligibility;
-  - preview rows are rendered as neutral context with side-aware line numbering.
-- Diff load behavior is clarified:
-  - `can_load_diff = false` maps to explicit `unavailable` state;
-  - repeated click on the same loaded/loading row is short-circuited.
+- Compare/diff/analysis work runs in background workers; UI uses periodic snapshot synchronization while work is active.
+- Rebinding and refresh are bounded:
+  - result/diff models rebuild only when relevant source state changes;
+  - timer refresh is constrained by busy-state transitions;
+  - row delegate local state reduces repeated indexed binding evaluation;
+  - header stats avoid cloning filtered rows only for count computation.
 
-### 5) Semantic and runtime synchronization contract
-
-- Semantic color system is now role-based:
-  - `different/equal/left-only/right-only` carry status semantics;
-  - blue is reserved for selected/focus/active interaction;
-  - unavailable uses neutral hierarchy (not blue-gray).
-- Runtime sync path was incrementally hardened for scroll/interaction stability:
-  - list models rebuild only on relevant source-state changes;
-  - timer refresh stays polling-based but is constrained by busy-state transitions;
-  - row delegate state is localized to reduce repeated indexed binding evaluation;
-  - header stats avoid cloning filtered rows only to compute counts.
-
-### 6) Guardrails kept through this evolution
+### Boundaries and non-goals in this phase
 
 - No IA reset.
 - No Compare View/tree-mode expansion.
 - No AI schema/provider capability expansion beyond UI-state orchestration.
 - No deep Compare Status details expansion beyond summary-first intent.
 
-## Still deferred after Phase 15.0 fix-5
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.0 fix-5)
 
-- secure secret storage integration (Keychain/Credential Manager/Secret Service) is not implemented.
-- provider profile management (multiple saved provider presets) is not implemented.
-- response caching and token/cost tracking are not implemented.
-- multi-provider plugin orchestration is not implemented.
-- tree-based directory explorer and compare-view dual-mode workspace are not implemented.
+- 13.1 -> 14.2:
+  - stabilized IA and desktop-density visual grammar;
+  - finished Compare Inputs/Filter/Status interaction baseline;
+  - moved provider settings into modal flow and introduced persistence boundary.
+- 15.0 -> fix-5:
+  - unified Workspace shell and explicit Diff/Analysis state grammar;
+  - completed semantic status-color contract for Results;
+  - promoted single-side/equal preview to first-class File View path;
+  - hardened runtime refresh to reduce unnecessary model churn during interaction.
 
-## Next implementation priority
+## Deferred architecture decisions (after Phase 15.0 fix-5)
 
-Post-15.0 priority should move to Phase 15.1 depth without breaking current IA:
+- `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
+  - trigger: before remote provider is treated as production-default.
+- `P1` Provider profile management (multiple saved provider presets):
+  - trigger: when teams need rapid context/provider switching.
+- `P2` Response caching + token/cost tracking:
+  - trigger: when remote analysis usage and cost visibility become operational concerns.
+- `P2` Multi-provider plugin orchestration:
+  - trigger: when provider fallback/routing becomes a reliability requirement.
+- `P3` Tree explorer / compare-view dual-mode workspace:
+  - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-1. refine File View information rhythm (`path/summary/state pills/content`) and visual stability under all state transitions;
-2. improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree compare mode yet;
-3. keep analysis panel in unified workspace rhythm while improving result readability/layout density;
-4. continue provider hardening roadmap (secure secrets, diagnostics, reliability controls) outside core compare logic.
+## Next implementation priority (Phase 15.1 entry)
+
+1. Refine File View information rhythm (`path/summary/state pills/content`) with stable transitions.
+   - acceptance: all Diff/Analysis states switch without layout jump or duplicated panels.
+2. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
+   - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
+3. Improve Analysis result readability while preserving workspace grammar.
+   - acceptance: result card hierarchy is scannable and consistent with Diff tab visual rhythm.
+4. Continue provider hardening without crossing core boundaries.
+   - acceptance: reliability controls evolve in UI/`fc-ai` layers with no new coupling into `fc-core`.
+
+## Documentation update contract (mandatory)
+
+### Update triggers
+
+Update this file in the same PR whenever any of the following changes:
+
+- UI IA or workspace layout contract;
+- Diff/Analysis state machine or preview eligibility contract;
+- provider settings boundary/persistence model;
+- runtime synchronization strategy that can affect responsiveness/stability;
+- deferred architecture decisions or priority order.
+
+### Required sections to touch per trigger
+
+- Always update `fc-ui-slint current architecture snapshot`.
+- Update `evolution highlights` only when the change introduces a new architectural step.
+- Update `deferred architecture decisions` when priority/trigger/status changes.
+- Update `next implementation priority` when acceptance targets change.
+
+### Writing rules
+
+- Record architecture facts and boundaries, not implementation diary details.
+- Each update must state:
+  - what changed;
+  - why the boundary/contract changed;
+  - what intentionally did not change.
+- Keep incremental updates concise (target: 8-20 lines per PR unless major refactor).
+
+### Review checklist (Definition of Done)
+
+- The changed code paths and this document describe the same contracts.
+- New behavior is reflected in `current architecture snapshot`.
+- Deferred/priority items remain ordered and have explicit triggers.
+- No obsolete phase wording remains after contract changes.
