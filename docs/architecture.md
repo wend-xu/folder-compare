@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-14.2)
+# Folder Compare Architecture (Phase 1-15.0 fix-5)
 
 ## Crate responsibilities
 
@@ -221,7 +221,56 @@ Tracked phase commits in this range:
   - tighten radii and spacing toward desktop-tool density;
   - stabilize input-row alignment and modal rhythm across provider modes.
 
-## Still deferred after Phase 14.2
+## Phase 15.0 -> 15.0 fix-5 architecture evolution (from git log + session trace)
+
+Commit range:
+
+- start: `57e6e6326bc9b23a2e626eb16df0c4db9980afb6` (`Phase 15.0：语义配色与 Workspace 一体化起步`)
+- end: `3a723c473e033efdd6046a0127e07a60417c2b0a` (`Phase 15.0 fix-4 ... + Phase 15.0 fix-5 ...`)
+
+Tracked phase commits in this range:
+
+- `57e6e63` `Phase 15.0：语义配色与 Workspace 一体化起步`
+- `2b60af3` `Phase 15.0 fix-1：Workspace 布局修复与语义配色校正`
+- `9fdd3e3` `Phase 15.0 fix-2 Results 语义色收敛 + File View 行为补完 + Analysis 成功态统一`
+- `83d72c8` `Phase 15.0 fix-3：Results 语义色定稿 + 预览模式收敛 + 性能回退排查`
+- `3a723c4` `Phase 15.0 fix-4 状态色定稿 + equal 预览打通 + 滚动卡顿归因 Phase 15.0 fix-5 Results 状态色定稿 + 滚动卡顿进一步归因`
+
+### `fc-ui-slint` architecture maturity after Phase 15.0 fix-5
+
+- Workspace shell is now structurally unified while preserving IA:
+  - `Tabs -> Header -> Content` is kept as one continuous workspace flow;
+  - Diff/Analysis mode branches are conditionally rendered to avoid dual-branch layout contention;
+  - main content area consistently consumes remaining height across empty/loading/error/success states.
+- File View state machine is explicit and shared:
+  - Diff mode states are normalized as `no selection -> loading -> unavailable -> failed -> renderable`;
+  - Analysis mode states are normalized as `no selection -> not started -> loading -> failed -> result`;
+  - `WorkspaceStatePanel` is used as the common visual/state container.
+- Results/Navigator semantics are now contract-level, not ad-hoc styling:
+  - semantic status coloring is fixed for `different`, `equal`, `left-only`, `right-only`;
+  - interaction blue is reserved for selected/focus/active only;
+  - unavailable rows are treated as a separate neutral state (not blue-gray), with downgraded text hierarchy.
+- Single-side preview pipeline is unified and promoted to first-class capability:
+  - `left-only`, `right-only`, and `equal` rows can all enter File View preview path;
+  - equal preview is no longer blocked by detailed-diff eligibility checks;
+  - preview rows are rendered with neutral context styling plus side-aware line numbers.
+- Diff/analysis orchestration behavior is clearer:
+  - `can_load_diff = false` is represented as explicit `unavailable` rather than generic load failure;
+  - repeated click on the same already-loaded/loading row is short-circuited to avoid duplicate load chains.
+- UI-side refresh and scrolling safeguards were added incrementally:
+  - compare/diff list models rebuild only when relevant source state changes;
+  - timer refresh remains polling-based but is constrained to busy-state transitions, reducing unnecessary full snapshots;
+  - row delegate state is localized to reduce repeated indexed binding evaluation;
+  - lightweight header stats computation avoids cloning filtered rows only for count purposes.
+
+### Scope and boundaries kept during Phase 15.0
+
+- No IA reset: Sidebar remains `Compare Inputs / Compare Status / Filter / Scope / Results / Navigator`.
+- No Compare View/tree-mode expansion in this phase.
+- No AI schema/provider capability expansion beyond UI integration and state-flow unification.
+- No deep expansion of Compare Status details; it stays summary-first.
+
+## Still deferred after Phase 15.0 fix-5
 
 - secure secret storage integration (Keychain/Credential Manager/Secret Service) is not implemented.
 - provider profile management (multiple saved provider presets) is not implemented.
@@ -231,9 +280,9 @@ Tracked phase commits in this range:
 
 ## Next implementation priority
 
-Phase 15+ should focus on workspace depth and operability:
+Post-15.0 priority should move to Phase 15.1 depth without breaking current IA:
 
-1. file-view depth for diff/analysis interaction (Phase 15 baseline);
-2. results-view enhancements (sorting, richer filtering, navigation efficiency);
-3. optional advanced compare views (tree/hierarchical and compare-view/file-view dual mode);
-4. provider hardening (secure secrets, diagnostics, reliability controls).
+1. refine File View information rhythm (`path/summary/state pills/content`) and visual stability under all state transitions;
+2. improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree compare mode yet;
+3. keep analysis panel in unified workspace rhythm while improving result readability/layout density;
+4. continue provider hardening roadmap (secure secrets, diagnostics, reliability controls) outside core compare logic.
