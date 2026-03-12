@@ -2,11 +2,29 @@
 
 use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
 use fc_ai::{AiConfig, AiProviderKind};
+use std::path::Path;
 
 const WARNING_WRAP_COLUMNS: usize = 96;
 const PATH_DISPLAY_MAX_CHARS: usize = 140;
 const PATH_DISPLAY_HEAD_CHARS: usize = 90;
 const PATH_DISPLAY_TAIL_CHARS: usize = 45;
+
+/// Diff tab shell state for unified status rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffShellState {
+    /// No row selected in Results / Navigator.
+    NoSelection,
+    /// Diff or preview loading is in progress.
+    Loading,
+    /// Detailed diff payload is ready.
+    DetailedReady,
+    /// Preview payload is ready.
+    PreviewReady,
+    /// Selection is valid but this viewer cannot render content.
+    Unavailable,
+    /// Loading failed due to runtime error.
+    Error,
+}
 
 /// In-memory UI state for compare workflow.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +126,287 @@ impl Default for AppState {
 }
 
 impl AppState {
+    fn selected_entry_row(&self) -> Option<&CompareEntryRowViewModel> {
+        self.selected_row.and_then(|idx| self.entry_rows.get(idx))
+    }
+
+    fn selected_row_status_token(&self) -> &str {
+        self.selected_entry_row()
+            .map(|row| row.status.as_str())
+            .unwrap_or("")
+    }
+
+    fn selected_file_type_hint(&self) -> Option<String> {
+        let entry = self.selected_entry_row()?;
+        if entry.entry_kind != "file" {
+            return Some(format!("Entry: {}", entry.entry_kind));
+        }
+
+        let relative_path = self
+            .selected_relative_path
+            .as_deref()
+            .unwrap_or_default()
+            .trim();
+        if relative_path.is_empty() {
+            return Some("Type: file".to_string());
+        }
+        let ext = Path::new(relative_path)
+            .extension()
+            .and_then(|value| value.to_str());
+        match ext.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(value) => Some(format!("Type: .{}", value.to_ascii_lowercase())),
+            None => Some("Type: file".to_string()),
+        }
+    }
+
+    fn diff_payload_unavailable_message(&self) -> Option<String> {
+        let diff = self.selected_diff.as_ref()?;
+        let line_message = diff
+            .hunks
+            .first()
+            .and_then(|hunk| hunk.lines.first())
+            .map(|line| line.content.trim().to_string())
+            .filter(|content| content.starts_with("[preview unavailable]"));
+        if line_message.is_some() {
+            return line_message;
+        }
+        let summary = diff.summary_text.trim();
+        if summary.to_ascii_lowercase().contains("unavailable") {
+            return Some(summary.to_string());
+        }
+        None
+    }
+
+    fn diff_status_technical_reason(&self) -> Option<String> {
+        let warning = self
+            .diff_warning
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if warning.is_some() {
+            return warning;
+        }
+
+        let payload_message = self.diff_payload_unavailable_message();
+        if payload_message.is_some() {
+            return payload_message;
+        }
+
+        self.diff_error_message
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    }
+
+    /// Returns true when selected row is expected to be rendered in preview mode.
+    pub fn diff_is_preview_mode(&self) -> bool {
+        matches!(
+            self.selected_row_status_token(),
+            "left-only" | "right-only" | "equal"
+        )
+    }
+
+    /// Returns file context mode label for Diff header.
+    pub fn diff_mode_label(&self) -> String {
+        if self.diff_is_preview_mode() {
+            "Preview".to_string()
+        } else {
+            "Detailed Diff".to_string()
+        }
+    }
+
+    /// Returns style tone for diff mode pill.
+    pub fn diff_mode_tone(&self) -> String {
+        if self.diff_is_preview_mode() {
+            "info".to_string()
+        } else {
+            "neutral".to_string()
+        }
+    }
+
+    /// Returns result status label for selected row.
+    pub fn diff_result_status_label(&self) -> String {
+        match self.selected_row_status_token() {
+            "different" => "Changed".to_string(),
+            "left-only" => "Left Only".to_string(),
+            "right-only" => "Right Only".to_string(),
+            "equal" => "Equal".to_string(),
+            "pending" => "Pending".to_string(),
+            "skipped" => "Unavailable".to_string(),
+            _ => "Unavailable".to_string(),
+        }
+    }
+
+    /// Returns style tone for selected row status.
+    pub fn diff_result_status_tone(&self) -> String {
+        match self.selected_row_status_token() {
+            "different" => "different".to_string(),
+            "left-only" => "left".to_string(),
+            "right-only" => "right".to_string(),
+            "equal" => "equal".to_string(),
+            "pending" => "info".to_string(),
+            "skipped" => "warn".to_string(),
+            _ => "neutral".to_string(),
+        }
+    }
+
+    /// Returns normalized Diff shell state for state panel and top header.
+    pub fn diff_shell_state(&self) -> DiffShellState {
+        if self.selected_row.is_none() {
+            return DiffShellState::NoSelection;
+        }
+        if self.diff_loading {
+            return DiffShellState::Loading;
+        }
+        if self
+            .diff_error_message
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return DiffShellState::Error;
+        }
+        if self.selected_diff.is_none() {
+            return DiffShellState::Unavailable;
+        }
+        if self.diff_payload_unavailable_message().is_some() {
+            return DiffShellState::Unavailable;
+        }
+        if self.diff_is_preview_mode() {
+            return DiffShellState::PreviewReady;
+        }
+        DiffShellState::DetailedReady
+    }
+
+    /// Returns short state badge text for Diff shell.
+    pub fn diff_shell_state_label(&self) -> String {
+        match self.diff_shell_state() {
+            DiffShellState::NoSelection => "No Selection".to_string(),
+            DiffShellState::Loading => "Loading".to_string(),
+            DiffShellState::DetailedReady => "Detailed Ready".to_string(),
+            DiffShellState::PreviewReady => "Preview Ready".to_string(),
+            DiffShellState::Unavailable => "Unavailable".to_string(),
+            DiffShellState::Error => "Load Failed".to_string(),
+        }
+    }
+
+    /// Returns stable token for diff shell state branching in UI layer.
+    pub fn diff_shell_state_token(&self) -> String {
+        match self.diff_shell_state() {
+            DiffShellState::NoSelection => "no-selection".to_string(),
+            DiffShellState::Loading => "loading".to_string(),
+            DiffShellState::DetailedReady => "detailed-ready".to_string(),
+            DiffShellState::PreviewReady => "preview-ready".to_string(),
+            DiffShellState::Unavailable => "unavailable".to_string(),
+            DiffShellState::Error => "error".to_string(),
+        }
+    }
+
+    /// Returns state tone for Diff shell badge.
+    pub fn diff_shell_state_tone(&self) -> String {
+        match self.diff_shell_state() {
+            DiffShellState::NoSelection => "neutral".to_string(),
+            DiffShellState::Loading => "info".to_string(),
+            DiffShellState::DetailedReady => "success".to_string(),
+            DiffShellState::PreviewReady => "info".to_string(),
+            DiffShellState::Unavailable => "warn".to_string(),
+            DiffShellState::Error => "error".to_string(),
+        }
+    }
+
+    /// Returns compact second-layer summary text for Diff header.
+    pub fn diff_context_summary_text(&self) -> String {
+        let diff_summary = self
+            .selected_diff
+            .as_ref()
+            .map(|diff| diff.summary_text.trim())
+            .filter(|text| !text.is_empty());
+        if let Some(summary) = diff_summary {
+            return summary.to_string();
+        }
+
+        match self.diff_shell_state() {
+            DiffShellState::NoSelection => {
+                "Select one row from Results / Navigator to start.".to_string()
+            }
+            DiffShellState::Loading => {
+                if self.diff_is_preview_mode() {
+                    "Preparing preview content...".to_string()
+                } else {
+                    "Preparing hunk-level diff content...".to_string()
+                }
+            }
+            DiffShellState::DetailedReady => "Detailed diff is ready.".to_string(),
+            DiffShellState::PreviewReady => "Preview content is ready.".to_string(),
+            DiffShellState::Unavailable => {
+                if self.diff_is_preview_mode() {
+                    "Preview content is unavailable for this selection.".to_string()
+                } else {
+                    "Detailed diff is unavailable for this selection.".to_string()
+                }
+            }
+            DiffShellState::Error => {
+                if self.diff_is_preview_mode() {
+                    "Failed to load preview content.".to_string()
+                } else {
+                    "Failed to load detailed diff content.".to_string()
+                }
+            }
+        }
+    }
+
+    /// Returns third-layer weak context text for Diff header.
+    pub fn diff_context_hint_text(&self) -> String {
+        if self.selected_row.is_none() {
+            return String::new();
+        }
+
+        let mut parts = Vec::new();
+        if let Some(type_hint) = self.selected_file_type_hint() {
+            parts.push(type_hint);
+        }
+
+        if self.diff_is_preview_mode() {
+            let preview_reason = match self.selected_row_status_token() {
+                "left-only" => "Preview source: left side only",
+                "right-only" => "Preview source: right side only",
+                "equal" => "Preview source: shared equal content",
+                _ => "Preview source: selected row",
+            };
+            parts.push(preview_reason.to_string());
+        }
+
+        if self.diff_truncated {
+            parts.push("Content is truncated for readability.".to_string());
+        }
+
+        if let Some(reason) = self.diff_status_technical_reason() {
+            parts.push(abbreviate_middle(reason.trim(), 148, 104, 36));
+        }
+
+        parts.join(" | ")
+    }
+
+    /// Returns left column label for diff table.
+    pub fn diff_left_column_label(&self) -> String {
+        match self.selected_row_status_token() {
+            "right-only" => "-".to_string(),
+            "left-only" | "equal" => "left".to_string(),
+            _ => "old".to_string(),
+        }
+    }
+
+    /// Returns right column label for diff table.
+    pub fn diff_right_column_label(&self) -> String {
+        match self.selected_row_status_token() {
+            "left-only" => "-".to_string(),
+            "right-only" | "equal" => "right".to_string(),
+            _ => "new".to_string(),
+        }
+    }
+
     /// Returns warning lines rendered as a multiline string.
     pub fn warnings_text(&self) -> String {
         if self.warning_lines.is_empty() {
@@ -263,10 +562,7 @@ impl AppState {
 
     /// Returns selected compare row status token for UI rendering.
     pub fn selected_row_status_text(&self) -> String {
-        self.selected_row
-            .and_then(|idx| self.entry_rows.get(idx))
-            .map(|row| row.status.clone())
-            .unwrap_or_default()
+        self.selected_row_status_token().to_string()
     }
 
     /// Returns detailed diff warning text for UI rendering.
@@ -551,6 +847,27 @@ mod tests {
         ]
     }
 
+    fn sample_preview_panel(summary: &str, content: &str) -> DiffPanelViewModel {
+        DiffPanelViewModel {
+            relative_path: "assets/preview.js".to_string(),
+            summary_text: summary.to_string(),
+            hunks: vec![crate::view_models::DiffHunkViewModel {
+                old_start: 1,
+                old_len: 1,
+                new_start: 1,
+                new_len: 0,
+                lines: vec![crate::view_models::DiffLineViewModel {
+                    old_line_no: Some(1),
+                    new_line_no: None,
+                    kind: "Context".to_string(),
+                    content: content.to_string(),
+                }],
+            }],
+            warning: None,
+            truncated: false,
+        }
+    }
+
     #[test]
     fn empty_filter_returns_all_rows() {
         let state = AppState {
@@ -708,6 +1025,97 @@ mod tests {
         let display = state.selected_relative_path_text();
         assert!(display.contains('…'));
         assert!(display.len() < 200);
+    }
+
+    #[test]
+    fn diff_shell_state_tracks_no_selection_loading_and_ready() {
+        let mut state = AppState::default();
+        assert_eq!(state.diff_shell_state(), DiffShellState::NoSelection);
+
+        state.selected_row = Some(0);
+        state.entry_rows = sample_rows();
+        state.diff_loading = true;
+        assert_eq!(state.diff_shell_state(), DiffShellState::Loading);
+
+        state.diff_loading = false;
+        state.selected_diff = Some(DiffPanelViewModel {
+            relative_path: "src/main.rs".to_string(),
+            summary_text: "hunks=1 +2 -1 ctx=3".to_string(),
+            hunks: vec![crate::view_models::DiffHunkViewModel {
+                old_start: 1,
+                old_len: 1,
+                new_start: 1,
+                new_len: 1,
+                lines: vec![crate::view_models::DiffLineViewModel {
+                    old_line_no: Some(1),
+                    new_line_no: Some(1),
+                    kind: "Added".to_string(),
+                    content: "line".to_string(),
+                }],
+            }],
+            warning: None,
+            truncated: false,
+        });
+        assert_eq!(state.diff_shell_state(), DiffShellState::DetailedReady);
+    }
+
+    #[test]
+    fn diff_shell_state_marks_preview_and_unavailable() {
+        let mut state = AppState {
+            selected_row: Some(0),
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/p.js".to_string(),
+                status: "left-only".to_string(),
+                detail: "only on left".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "none".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            selected_relative_path: Some("assets/p.js".to_string()),
+            ..AppState::default()
+        };
+
+        state.selected_diff = Some(sample_preview_panel("left-only preview lines=4", "line"));
+        assert_eq!(state.diff_shell_state(), DiffShellState::PreviewReady);
+        assert!(state
+            .diff_context_hint_text()
+            .contains("Preview source: left side only"));
+
+        state.selected_diff = Some(sample_preview_panel(
+            "single-side preview unavailable",
+            "[preview unavailable] binary content is not supported",
+        ));
+        assert_eq!(state.diff_shell_state(), DiffShellState::Unavailable);
+    }
+
+    #[test]
+    fn diff_context_header_fields_use_status_specific_labels() {
+        let state = AppState {
+            selected_row: Some(0),
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "docs/readme.md".to_string(),
+                status: "equal".to_string(),
+                detail: "equal".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "none".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            selected_relative_path: Some("docs/readme.md".to_string()),
+            selected_diff: Some(sample_preview_panel("equal preview lines=10", "line")),
+            ..AppState::default()
+        };
+
+        assert_eq!(state.diff_mode_label(), "Preview");
+        assert_eq!(state.diff_result_status_label(), "Equal");
+        assert_eq!(state.diff_left_column_label(), "left");
+        assert_eq!(state.diff_right_column_label(), "right");
+        assert!(state.diff_context_hint_text().contains("Type: .md"));
     }
 
     #[test]

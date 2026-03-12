@@ -220,6 +220,74 @@ slint::slint! {
         }
     }
 
+    component DiffStateShell inherits Rectangle {
+        in property <string> state_label;
+        in property <string> title;
+        in property <string> body;
+        in property <string> tone: "neutral";
+
+        border-width: 1px;
+        border-radius: 6px;
+        border-color: root.tone == "error"
+            ? #dec5c5
+            : (root.tone == "warn"
+                ? #dfd2c0
+                : (root.tone == "info"
+                    ? #c8d9ed
+                    : (root.tone == "success"
+                        ? #c8d9ce
+                        : #d7e1ed)));
+        background: root.tone == "error"
+            ? #fdf4f4
+            : (root.tone == "warn"
+                ? #fbf8f2
+                : (root.tone == "info"
+                    ? #f2f7fd
+                    : (root.tone == "success"
+                        ? #f4faf6
+                        : #f8fafd)));
+
+        VerticalLayout {
+            padding: 14px;
+            spacing: 8px;
+
+            HorizontalLayout {
+                spacing: 8px;
+                StatusPill {
+                    label: root.state_label;
+                    tone: root.tone;
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+
+            Text {
+                text: root.title;
+                color: root.tone == "error"
+                    ? #873434
+                    : (root.tone == "warn"
+                        ? #735a31
+                        : (root.tone == "info"
+                            ? rgb(49, 89, 126)
+                            : (root.tone == "success"
+                                ? #335f45
+                                : #4a5e72)));
+                font-size: 15px;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+
+            Text {
+                visible: root.body != "";
+                text: root.body;
+                color: #5e7084;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+        }
+    }
+
     component TextAction inherits Rectangle {
         in property <string> label;
         in property <bool> enabled: true;
@@ -315,6 +383,17 @@ slint::slint! {
         in-out property <bool> provider_settings_show_api_key: false;
         in-out property <int> selected_row: -1;
         in property <string> selected_row_status;
+        in property <string> diff_mode_label;
+        in property <string> diff_mode_tone;
+        in property <string> diff_result_status_label;
+        in property <string> diff_result_status_tone;
+        in property <string> diff_shell_state_label;
+        in property <string> diff_shell_state_tone;
+        in property <string> diff_shell_state_token;
+        in property <string> diff_context_summary_text;
+        in property <string> diff_context_hint_text;
+        in property <string> diff_left_column_label;
+        in property <string> diff_right_column_label;
         property <bool> has_selected_result: root.selected_row >= 0;
 
         callback compare_clicked();
@@ -849,7 +928,7 @@ slint::slint! {
                         }
 
                         Rectangle {
-                            height: 70px;
+                            height: root.workspace_tab == 0 ? 98px : 70px;
                             background: #f8fbfe;
                             Rectangle {
                                 x: 0px;
@@ -858,23 +937,52 @@ slint::slint! {
                                 height: 1px;
                                 background: #dde5f0;
                             }
-                            VerticalLayout {
+
+                            if root.workspace_tab == 0 : VerticalLayout {
                                 padding: 10px;
-                                spacing: 3px;
+                                spacing: 5px;
                                 Text {
-                                    text: root.workspace_tab == 0 ? "Diff File View" : "Analysis Workspace";
-                                    color: #43576c;
-                                }
-                                Text {
-                                    visible: root.workspace_tab == 0;
-                                    text: root.selected_relative_path == "" ? "No file selected from Results / Navigator." : root.selected_relative_path;
-                                    color: root.selected_relative_path == "" ? #6d7d8e : #284968;
-                                    wrap: word-wrap;
+                                    text: root.selected_relative_path == "" ? "No file selected" : root.selected_relative_path;
+                                    color: root.selected_relative_path == "" ? #607286 : #294b6b;
+                                    font-size: 14px;
                                     horizontal-stretch: 1;
                                     overflow: elide;
                                 }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    StatusPill {
+                                        label: root.diff_mode_label;
+                                        tone: root.diff_mode_tone;
+                                    }
+                                    if root.has_selected_result : StatusPill {
+                                        label: root.diff_result_status_label;
+                                        tone: root.diff_result_status_tone;
+                                    }
+                                    Text {
+                                        text: root.diff_shell_state_label
+                                            + (root.diff_context_summary_text != "" ? " | " + root.diff_context_summary_text : "");
+                                        color: #4f6378;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+                                }
                                 Text {
-                                    visible: root.workspace_tab == 1;
+                                    visible: root.diff_context_hint_text != "";
+                                    text: root.diff_context_hint_text;
+                                    color: #718194;
+                                    horizontal-stretch: 1;
+                                    overflow: elide;
+                                }
+                            }
+
+                            if root.workspace_tab == 1 : VerticalLayout {
+                                padding: 10px;
+                                spacing: 3px;
+                                Text {
+                                    text: "Analysis Workspace";
+                                    color: #43576c;
+                                }
+                                Text {
                                     text: "Provider: " + root.analysis_provider_mode_text
                                         + (root.analysis_remote_mode ? (root.analysis_remote_config_ready ? " (ready)" : " (config incomplete)") : " (local)");
                                     color: #46607a;
@@ -896,107 +1004,46 @@ slint::slint! {
                                     vertical-stretch: 1;
                                     spacing: 8px;
 
-                                    HorizontalLayout {
-                                        spacing: 8px;
-                                        Text {
-                                            text: root.diff_summary_text != "" ? root.diff_summary_text
-                                                : (root.has_selected_result
-                                                    ? ((root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
-                                                        ? "File preview is pending for selected file."
-                                                        : "Detailed diff is pending for selected file.")
-                                                    : "Select one result row to open detailed diff.");
-                                            color: root.diff_summary_text != "" ? #445a70 : #627487;
-                                            wrap: word-wrap;
-                                            horizontal-stretch: 1;
-                                        }
-                                        StatusPill {
-                                            visible: root.selected_row_status == "left-only";
-                                            label: "left preview";
-                                            tone: "left";
-                                        }
-                                        StatusPill {
-                                            visible: root.selected_row_status == "right-only";
-                                            label: "right preview";
-                                            tone: "right";
-                                        }
-                                        StatusPill {
-                                            visible: root.selected_row_status == "equal";
-                                            label: "equal preview";
-                                            tone: "equal";
-                                        }
-                                        StatusPill {
-                                            visible: root.diff_loading;
-                                            label: "loading";
-                                            tone: "info";
-                                        }
-                                        StatusPill {
-                                            visible: root.diff_truncated;
-                                            label: "truncated";
-                                            tone: "warn";
-                                        }
-                                        StatusPill {
-                                            visible: root.diff_warning_text != "";
-                                            label: "warning";
-                                            tone: "warn";
-                                        }
-                                        StatusPill {
-                                            visible: root.diff_error_text != "";
-                                            label: "error";
-                                            tone: "error";
-                                        }
-                                    }
-
-                                    if !root.has_selected_result : WorkspaceStatePanel {
+                                    if root.diff_shell_state_token == "no-selection"
+                                        || root.diff_shell_state_token == "loading"
+                                        || root.diff_shell_state_token == "unavailable"
+                                        || root.diff_shell_state_token == "error"
+                                        || ((root.diff_shell_state_token == "preview-ready" || root.diff_shell_state_token == "detailed-ready") && !root.diff_has_rows) : DiffStateShell {
                                         vertical-stretch: 1;
-                                        title: "No file selected";
-                                        body: "Pick one row from Results / Navigator to load the file-level diff.";
-                                        tone: "neutral";
+                                        state_label: root.diff_shell_state_label;
+                                        tone: root.diff_shell_state_tone;
+                                        title: root.diff_shell_state_token == "no-selection"
+                                            ? "No file selected"
+                                            : (root.diff_shell_state_token == "loading"
+                                                ? (root.diff_mode_label == "Preview" ? "Loading preview content" : "Loading detailed diff")
+                                                : (root.diff_shell_state_token == "unavailable"
+                                                    ? (root.diff_mode_label == "Preview" ? "Preview unavailable" : "Detailed diff unavailable")
+                                                    : (root.diff_shell_state_token == "error"
+                                                        ? (root.diff_mode_label == "Preview" ? "Failed to load preview" : "Failed to load detailed diff")
+                                                        : (root.diff_mode_label == "Preview" ? "Preview is empty" : "Detailed diff is empty"))));
+                                        body: root.diff_shell_state_token == "no-selection"
+                                            ? "Pick one row from Results / Navigator to open file-level diff context."
+                                            : (root.diff_shell_state_token == "loading"
+                                                ? (root.diff_mode_label == "Preview"
+                                                    ? "Preparing readable lines for preview mode."
+                                                    : "Preparing hunk-level lines for detailed diff mode.")
+                                                : (root.diff_shell_state_token == "unavailable"
+                                                    ? (root.diff_warning_text != ""
+                                                        ? root.diff_warning_text
+                                                        : (root.diff_context_hint_text != "" ? root.diff_context_hint_text : "Current selection is outside this viewer capability boundary."))
+                                                    : (root.diff_shell_state_token == "error"
+                                                        ? root.diff_error_text
+                                                        : (root.diff_mode_label == "Preview"
+                                                            ? "This file has no text lines to display in preview mode."
+                                                            : "This diff has no line-level content to render."))));
                                     }
 
-                                    if root.has_selected_result && root.diff_loading : WorkspaceStatePanel {
-                                        vertical-stretch: 1;
-                                        title: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
-                                            ? "Loading file preview"
-                                            : "Loading detailed diff";
-                                        body: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
-                                            ? "Preparing readable file preview."
-                                            : "Preparing hunk-level lines for this file.";
-                                        tone: "info";
-                                    }
-
-                                    if root.has_selected_result && !root.diff_loading && !root.diff_loaded && root.diff_error_text == "" : WorkspaceStatePanel {
-                                        vertical-stretch: 1;
-                                        title: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
-                                            ? "File preview unavailable"
-                                            : "Detailed diff unavailable";
-                                        body: root.diff_warning_text != "" ? root.diff_warning_text : "This selected row does not provide text-level diff lines.";
-                                        tone: "warn";
-                                    }
-
-                                    if root.has_selected_result && !root.diff_loading && root.diff_error_text != "" : WorkspaceStatePanel {
-                                        vertical-stretch: 1;
-                                        title: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
-                                            ? "Failed to load file preview"
-                                            : "Failed to load detailed diff";
-                                        body: root.diff_error_text;
-                                        tone: "error";
-                                    }
-
-                                    if root.diff_loaded && !root.diff_loading && root.diff_error_text == "" && !root.diff_has_rows : WorkspaceStatePanel {
-                                        vertical-stretch: 1;
-                                        title: root.selected_row_status == "equal" ? "No textual differences" : "Preview has no line rows";
-                                        body: root.selected_row_status == "equal"
-                                            ? "Selected file is equal on both sides. Opening preview is still allowed for quick verification."
-                                            : "Current file preview has no line-level content to render.";
-                                        tone: "neutral";
-                                    }
-
-                                    if root.diff_loaded && !root.diff_loading && root.diff_error_text == "" && root.diff_has_rows : Rectangle {
+                                    if (root.diff_shell_state_token == "preview-ready" || root.diff_shell_state_token == "detailed-ready") && root.diff_has_rows : Rectangle {
                                         vertical-stretch: 1;
                                         border-width: 1px;
-                                        border-color: #d9e2ee;
-                                        border-radius: 5px;
-                                        background: #fdfefe;
+                                        border-color: #d7e0ec;
+                                        border-radius: 6px;
+                                        background: #fcfdff;
                                         clip: true;
 
                                         VerticalLayout {
@@ -1004,79 +1051,144 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                border-width: 0px;
-                                                background: #f4f8fd;
-                                                height: 28px;
+                                                height: 32px;
+                                                background: #f4f8fc;
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #dbe4ef;
+                                                }
                                                 HorizontalLayout {
-                                                    padding: 4px;
-                                                    spacing: 8px;
+                                                    padding: 5px;
+                                                    spacing: 0px;
                                                     Text {
-                                                        text: "old";
-                                                        width: 56px;
+                                                        text: root.diff_left_column_label;
+                                                        width: 68px;
                                                         horizontal-alignment: right;
-                                                        color: #5f7082;
+                                                        vertical-alignment: center;
+                                                        color: #637488;
+                                                    }
+                                                    Rectangle {
+                                                        width: 1px;
+                                                        height: parent.height - 6px;
+                                                        background: #dce5f0;
                                                     }
                                                     Text {
-                                                        text: "new";
-                                                        width: 56px;
+                                                        text: root.diff_right_column_label;
+                                                        width: 68px;
                                                         horizontal-alignment: right;
-                                                        color: #5f7082;
+                                                        vertical-alignment: center;
+                                                        color: #637488;
+                                                    }
+                                                    Rectangle {
+                                                        width: 1px;
+                                                        height: parent.height - 6px;
+                                                        background: #dce5f0;
                                                     }
                                                     Text {
                                                         text: " ";
-                                                        width: 20px;
+                                                        width: 24px;
+                                                    }
+                                                    Rectangle {
+                                                        width: 1px;
+                                                        height: parent.height - 6px;
+                                                        background: #dce5f0;
                                                     }
                                                     Text {
                                                         text: "content";
-                                                        color: #5f7082;
+                                                        color: #637488;
+                                                        vertical-alignment: center;
+                                                        horizontal-stretch: 1;
                                                     }
                                                 }
                                             }
 
                                             ListView {
                                                 vertical-stretch: 1;
-                                                for row_content[index] in root.diff_contents: Rectangle {
-                                                    height: root.diff_row_kinds[index] == "hunk" ? 28px : 24px;
-                                                    background: root.diff_row_kinds[index] == "hunk" ? rgb(234, 242, 251)
-                                                        : (root.diff_row_kinds[index] == "added" ? rgb(237, 248, 241)
-                                                        : (root.diff_row_kinds[index] == "removed" ? rgb(250, 239, 239) : rgb(251, 253, 255)));
+                                                for row_content[index] in root.diff_contents: row_line := Rectangle {
+                                                    property <string> row_kind: root.diff_row_kinds[index];
+                                                    property <bool> is_hunk: row_kind == "hunk";
+                                                    property <bool> is_added: row_kind == "added";
+                                                    property <bool> is_removed: row_kind == "removed";
+                                                    height: row_line.is_hunk ? 30px : 26px;
+                                                    background: row_line.is_hunk
+                                                        ? #eaf2fb
+                                                        : (row_line.is_added
+                                                            ? #f1f8f3
+                                                            : (row_line.is_removed
+                                                                ? #fbf2f2
+                                                                : (Math.mod(index, 2) == 0 ? #fbfdff : #f9fcff)));
 
-                                                    Text {
-                                                        visible: root.diff_row_kinds[index] == "hunk";
-                                                        text: row_content;
-                                                        color: #2f5377;
-                                                        vertical-alignment: center;
-                                                    }
-
-                                                    HorizontalLayout {
-                                                        visible: root.diff_row_kinds[index] != "hunk";
+                                                    if row_line.is_hunk : HorizontalLayout {
                                                         spacing: 8px;
-                                                        Text {
-                                                            text: root.diff_old_line_nos[index];
-                                                            width: 56px;
-                                                            horizontal-alignment: right;
-                                                            vertical-alignment: center;
-                                                            color: #687788;
+                                                        Rectangle {
+                                                            width: 4px;
+                                                            height: parent.height;
+                                                            background: #97b5d8;
                                                         }
                                                         Text {
-                                                            text: root.diff_new_line_nos[index];
-                                                            width: 56px;
-                                                            horizontal-alignment: right;
+                                                            text: "hunk";
+                                                            width: 40px;
+                                                            color: #4f6782;
                                                             vertical-alignment: center;
-                                                            color: #687788;
-                                                        }
-                                                        Text {
-                                                            text: root.diff_markers[index];
-                                                            width: 20px;
                                                             horizontal-alignment: center;
-                                                            vertical-alignment: center;
-                                                            color: root.diff_row_kinds[index] == "added" ? #2f6f49
-                                                                : (root.diff_row_kinds[index] == "removed" ? #8a2f2f : #5a6775);
                                                         }
                                                         Text {
                                                             text: row_content;
-                                                            color: #2c3f52;
+                                                            color: #2f5376;
                                                             vertical-alignment: center;
+                                                            horizontal-stretch: 1;
+                                                            overflow: elide;
+                                                        }
+                                                    }
+
+                                                    if !row_line.is_hunk : HorizontalLayout {
+                                                        spacing: 0px;
+                                                        Text {
+                                                            text: root.diff_old_line_nos[index];
+                                                            width: 68px;
+                                                            horizontal-alignment: right;
+                                                            vertical-alignment: center;
+                                                            color: #677889;
+                                                        }
+                                                        Rectangle {
+                                                            width: 1px;
+                                                            height: parent.height;
+                                                            background: #e4ebf4;
+                                                        }
+                                                        Text {
+                                                            text: root.diff_new_line_nos[index];
+                                                            width: 68px;
+                                                            horizontal-alignment: right;
+                                                            vertical-alignment: center;
+                                                            color: #677889;
+                                                        }
+                                                        Rectangle {
+                                                            width: 1px;
+                                                            height: parent.height;
+                                                            background: #e4ebf4;
+                                                        }
+                                                        Text {
+                                                            text: root.diff_markers[index];
+                                                            width: 24px;
+                                                            horizontal-alignment: center;
+                                                            vertical-alignment: center;
+                                                            color: row_line.is_added ? #346a4a
+                                                                : (row_line.is_removed ? #8a4242 : #5d6d7e);
+                                                        }
+                                                        Rectangle {
+                                                            width: 1px;
+                                                            height: parent.height;
+                                                            background: #e4ebf4;
+                                                        }
+                                                        Text {
+                                                            text: row_content;
+                                                            color: #2f4357;
+                                                            vertical-alignment: center;
+                                                            horizontal-stretch: 1;
+                                                            overflow: elide;
                                                         }
                                                     }
                                                 }
@@ -1515,6 +1627,17 @@ fn sync_window_state(
     window.set_provider_settings_error_text(state.provider_settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     window.set_selected_row_status(state.selected_row_status_text().into());
+    window.set_diff_mode_label(state.diff_mode_label().into());
+    window.set_diff_mode_tone(state.diff_mode_tone().into());
+    window.set_diff_result_status_label(state.diff_result_status_label().into());
+    window.set_diff_result_status_tone(state.diff_result_status_tone().into());
+    window.set_diff_shell_state_label(state.diff_shell_state_label().into());
+    window.set_diff_shell_state_tone(state.diff_shell_state_tone().into());
+    window.set_diff_shell_state_token(state.diff_shell_state_token().into());
+    window.set_diff_context_summary_text(state.diff_context_summary_text().into());
+    window.set_diff_context_hint_text(state.diff_context_hint_text().into());
+    window.set_diff_left_column_label(state.diff_left_column_label().into());
+    window.set_diff_right_column_label(state.diff_right_column_label().into());
     if should_refresh_result_models(last_state, state) {
         let filtered_rows = state.filtered_entry_rows_with_index();
         let row_statuses = filtered_rows
