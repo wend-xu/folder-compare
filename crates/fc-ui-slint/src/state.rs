@@ -254,6 +254,14 @@ impl AppState {
         )
     }
 
+    /// Returns selected compare row status token for UI rendering.
+    pub fn selected_row_status_text(&self) -> String {
+        self.selected_row
+            .and_then(|idx| self.entry_rows.get(idx))
+            .map(|row| row.status.clone())
+            .unwrap_or_default()
+    }
+
     /// Returns detailed diff warning text for UI rendering.
     pub fn diff_warning_text(&self) -> String {
         self.diff_warning.clone().unwrap_or_default()
@@ -292,6 +300,14 @@ impl AppState {
         }
 
         out
+    }
+
+    /// Returns true when current detailed diff has at least one rendered row.
+    pub fn diff_has_rows(&self) -> bool {
+        self.selected_diff
+            .as_ref()
+            .map(|diff| !diff.hunks.is_empty() && diff.hunks.iter().any(|hunk| !hunk.lines.is_empty()))
+            .unwrap_or(false)
     }
 
     /// Clears detailed diff panel state without changing compare state.

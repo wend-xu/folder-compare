@@ -110,30 +110,30 @@ slint::slint! {
         border-radius: 6px;
         border-width: 1px;
         border-color: root.tone == "different"
-            ? #e0c8ae
+            ? #dab89c
             : (root.tone == "equal"
                 ? #c2d6c7
                 : (root.tone == "left"
-                    ? #dccfbe
+                    ? #bfd0cb
                     : (root.tone == "right"
-                        ? #d6cce0
+                        ? #c6cedb
                         : (root.tone == "warn"
-                            ? #dfcfb9
+                            ? #dbc8ae
                             : (root.tone == "error"
                                 ? #dfc1c1
                                 : (root.tone == "info"
                                     ? #c6d7ec
                                     : #d5dde7))))));
         background: root.tone == "different"
-            ? #fbf3e9
+            ? #f9eee2
             : (root.tone == "equal"
                 ? #f1f8f3
                 : (root.tone == "left"
-                    ? #faf6ef
+                    ? #edf5f3
                     : (root.tone == "right"
-                        ? #f7f3fa
+                        ? #eff2f8
                         : (root.tone == "warn"
-                            ? #fbf7ef
+                            ? #fbf5ea
                             : (root.tone == "error"
                                 ? #fdf2f2
                                 : (root.tone == "info"
@@ -145,15 +145,15 @@ slint::slint! {
             horizontal-alignment: center;
             vertical-alignment: center;
             color: root.tone == "different"
-                ? #7d5124
+                ? #7a4b24
                 : (root.tone == "equal"
                     ? #2f6143
                     : (root.tone == "left"
-                        ? #72593c
+                        ? #4d6660
                         : (root.tone == "right"
-                            ? #66557a
+                            ? #556079
                             : (root.tone == "warn"
-                                ? #7a5a2f
+                                ? #7b5a2e
                                 : (root.tone == "error"
                                     ? #8a2f2f
                                     : (root.tone == "info"
@@ -279,6 +279,7 @@ slint::slint! {
         in property <string> diff_error_text;
         in property <bool> diff_truncated;
         in property <bool> diff_loaded;
+        in property <bool> diff_has_rows;
         in property <[string]> diff_row_kinds;
         in property <[string]> diff_old_line_nos;
         in property <[string]> diff_new_line_nos;
@@ -312,6 +313,7 @@ slint::slint! {
         in-out property <string> provider_settings_timeout;
         in-out property <bool> provider_settings_show_api_key: false;
         in-out property <int> selected_row: -1;
+        in property <string> selected_row_status;
         property <bool> has_selected_result: root.selected_row >= 0;
 
         callback compare_clicked();
@@ -693,37 +695,40 @@ slint::slint! {
                                         height: 46px;
                                         border-width: 1px;
                                         border-color: root.row_source_indices[index] == root.selected_row
-                                            ? #678bb8
+                                            ? #5f84b3
                                             : (root.row_statuses[index] == "different"
-                                                ? #dbc3a7
+                                                ? #d4b395
                                                 : (root.row_statuses[index] == "equal"
-                                                    ? #cadccf
+                                                    ? #c7dacd
                                                     : (root.row_statuses[index] == "left-only"
-                                                        ? #d9c9b5
+                                                        ? #c4d3cf
                                                         : (root.row_statuses[index] == "right-only"
-                                                            ? #d5c8df
+                                                            ? #c9d0dd
                                                             : #dfe5ee))));
                                         border-radius: 4px;
-                                        background: root.row_source_indices[index] == root.selected_row ? #e2ecfa
+                                        background: root.row_source_indices[index] == root.selected_row ? #d9e8fb
                                             : (!root.row_can_load_diff[index]
                                                 ? (root.row_statuses[index] == "different"
-                                                    ? #f8f1e8
+                                                    ? #f5ece2
                                                     : (root.row_statuses[index] == "equal"
-                                                        ? #f2f7f3
+                                                        ? #eff4f0
                                                         : (root.row_statuses[index] == "left-only"
-                                                            ? #f8f3ea
+                                                            ? #ecf2f0
                                                             : (root.row_statuses[index] == "right-only"
-                                                                ? #f5f1f9
-                                                                : #f4f6f9))))
+                                                                ? #eef1f6
+                                                                : #f0f2f5))))
                                                 : (root.row_statuses[index] == "different"
-                                                    ? #fcf4ea
+                                                    ? #fbf2e6
                                                     : (root.row_statuses[index] == "equal"
-                                                        ? #f7fbf8
+                                                        ? #f4faf6
                                                         : (root.row_statuses[index] == "left-only"
-                                                            ? #fbf6ee
+                                                            ? #f1f7f5
                                                             : (root.row_statuses[index] == "right-only"
-                                                                ? #f8f3fb
+                                                                ? #f2f5fa
                                                                 : #fbfcfe)))));
+                                        opacity: root.row_source_indices[index] == root.selected_row
+                                            ? 1
+                                            : (root.row_can_load_diff[index] ? 1 : 0.76);
 
                                         VerticalLayout {
                                             padding: 4px;
@@ -752,7 +757,9 @@ slint::slint! {
                                                 }
                                                 Text {
                                                     text: row_path;
-                                                    color: root.row_source_indices[index] == root.selected_row ? #1a3f67 : #2f3f50;
+                                                    color: root.row_source_indices[index] == root.selected_row
+                                                        ? #163e66
+                                                        : (root.row_can_load_diff[index] ? #2f3f50 : #5f6d7b);
                                                     vertical-alignment: center;
                                                     horizontal-stretch: 1;
                                                     overflow: elide;
@@ -760,7 +767,7 @@ slint::slint! {
                                             }
                                             Text {
                                                 text: root.row_can_load_diff[index] ? root.row_details[index] : "detailed diff unavailable";
-                                                color: root.row_can_load_diff[index] ? #647486 : #738190;
+                                                color: root.row_can_load_diff[index] ? #647486 : #6d7b8a;
                                                 vertical-alignment: center;
                                                 horizontal-stretch: 1;
                                                 overflow: elide;
@@ -893,6 +900,21 @@ slint::slint! {
                                             horizontal-stretch: 1;
                                         }
                                         StatusPill {
+                                            visible: root.selected_row_status == "left-only";
+                                            label: "left preview";
+                                            tone: "left";
+                                        }
+                                        StatusPill {
+                                            visible: root.selected_row_status == "right-only";
+                                            label: "right preview";
+                                            tone: "right";
+                                        }
+                                        StatusPill {
+                                            visible: root.selected_row_status == "equal" && root.diff_loaded;
+                                            label: "equal preview";
+                                            tone: "equal";
+                                        }
+                                        StatusPill {
                                             visible: root.diff_loading;
                                             label: "loading";
                                             tone: "info";
@@ -942,7 +964,16 @@ slint::slint! {
                                         tone: "error";
                                     }
 
-                                    if root.diff_loaded && !root.diff_loading && root.diff_error_text == "" : Rectangle {
+                                    if root.diff_loaded && !root.diff_loading && root.diff_error_text == "" && !root.diff_has_rows : WorkspaceStatePanel {
+                                        vertical-stretch: 1;
+                                        title: root.selected_row_status == "equal" ? "No textual differences" : "Preview has no line rows";
+                                        body: root.selected_row_status == "equal"
+                                            ? "Selected file is equal on both sides. Opening preview is still allowed for quick verification."
+                                            : "Current file preview has no line-level content to render.";
+                                        tone: "neutral";
+                                    }
+
+                                    if root.diff_loaded && !root.diff_loading && root.diff_error_text == "" && root.diff_has_rows : Rectangle {
                                         vertical-stretch: 1;
                                         border-width: 1px;
                                         border-color: #d9e2ee;
@@ -1416,6 +1447,7 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_diff_error_text(state.diff_error_message.clone().unwrap_or_default().into());
     window.set_diff_truncated(state.diff_truncated);
     window.set_diff_loaded(state.selected_diff.is_some());
+    window.set_diff_has_rows(state.diff_has_rows());
     window.set_analysis_loading(state.analysis_loading);
     window.set_analysis_available(state.analysis_available);
     window.set_analysis_has_result(state.analysis_result.is_some());
@@ -1441,6 +1473,7 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_analysis_timeout_text(state.analysis_timeout_text().into());
     window.set_provider_settings_error_text(state.provider_settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
+    window.set_selected_row_status(state.selected_row_status_text().into());
     let filtered_rows = state.filtered_entry_rows_with_index();
     let row_statuses = filtered_rows
         .iter()
@@ -1527,10 +1560,13 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let refresh_bridge = bridge.clone();
     let refresh_cache = Arc::clone(&sync_cache);
-    ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(33), move || {
+    ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
+        if !window.get_running() && !window.get_diff_loading() && !window.get_analysis_loading() {
+            return;
+        }
         sync_window_state_if_changed(&window, &refresh_bridge, &refresh_cache, SyncMode::Passive);
     });
 

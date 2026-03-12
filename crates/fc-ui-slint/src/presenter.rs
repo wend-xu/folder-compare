@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-const BACKGROUND_START_DELAY: Duration = Duration::from_millis(10);
+const BACKGROUND_START_DELAY: Duration = Duration::from_millis(4);
 
 /// Presenter that manages compare-oriented UI state.
 #[derive(Clone)]

@@ -186,15 +186,15 @@ pub fn map_single_side_file_preview(
     right_root: &str,
     row: &CompareEntryRowViewModel,
 ) -> DiffPanelViewModel {
-    let (side_label, marker_kind, target_path) = match row.status.as_str() {
+    let (side_label, is_left_side, target_path) = match row.status.as_str() {
         "left-only" => (
             "left-only",
-            "Removed",
+            true,
             PathBuf::from(left_root.trim()).join(&row.relative_path),
         ),
         "right-only" => (
             "right-only",
-            "Added",
+            false,
             PathBuf::from(right_root.trim()).join(&row.relative_path),
         ),
         _ => {
@@ -262,30 +262,30 @@ pub fn map_single_side_file_preview(
         .iter()
         .enumerate()
         .map(|(index, line)| DiffLineViewModel {
-            old_line_no: if marker_kind == "Removed" {
+            old_line_no: if is_left_side {
                 Some(index + 1)
             } else {
                 None
             },
-            new_line_no: if marker_kind == "Added" {
-                Some(index + 1)
-            } else {
+            new_line_no: if is_left_side {
                 None
+            } else {
+                Some(index + 1)
             },
-            kind: marker_kind.to_string(),
+            kind: "Context".to_string(),
             content: (*line).to_string(),
         })
         .collect::<Vec<_>>();
 
-    let old_len = if marker_kind == "Removed" {
+    let old_len = if is_left_side {
         line_view_models.len()
     } else {
         0
     };
-    let new_len = if marker_kind == "Added" {
-        line_view_models.len()
-    } else {
+    let new_len = if is_left_side {
         0
+    } else {
+        line_view_models.len()
     };
 
     DiffPanelViewModel {
@@ -1013,7 +1013,7 @@ mod tests {
         assert!(vm.summary_text.contains("left-only preview"));
         assert_eq!(vm.hunks.len(), 1);
         assert_eq!(vm.hunks[0].lines.len(), 2);
-        assert_eq!(vm.hunks[0].lines[0].kind, "Removed");
+        assert_eq!(vm.hunks[0].lines[0].kind, "Context");
         assert_eq!(vm.hunks[0].lines[0].old_line_no, Some(1));
         assert_eq!(vm.hunks[0].lines[0].new_line_no, None);
     }
