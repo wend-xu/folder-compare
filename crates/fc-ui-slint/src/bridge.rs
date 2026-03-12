@@ -42,6 +42,11 @@ impl UiBridge {
     pub fn snapshot(&self) -> AppState {
         self.presenter.state_snapshot()
     }
+
+    /// Returns presenter busy flags `(running, diff_loading, analysis_loading)`.
+    pub fn busy_flags(&self) -> (bool, bool, bool) {
+        self.presenter.busy_flags()
+    }
 }
 
 /// Builds a compare request from raw UI path inputs.
@@ -186,21 +191,34 @@ pub fn map_single_side_file_preview(
     right_root: &str,
     row: &CompareEntryRowViewModel,
 ) -> DiffPanelViewModel {
-    let (side_label, is_left_side, target_path) = match row.status.as_str() {
+    let (side_label, line_no_mode, target_path) = match row.status.as_str() {
         "left-only" => (
             "left-only",
-            true,
+            "left",
             PathBuf::from(left_root.trim()).join(&row.relative_path),
         ),
         "right-only" => (
             "right-only",
-            false,
+            "right",
             PathBuf::from(right_root.trim()).join(&row.relative_path),
         ),
+        "equal" => {
+            let left_path = PathBuf::from(left_root.trim()).join(&row.relative_path);
+            let right_path = PathBuf::from(right_root.trim()).join(&row.relative_path);
+            (
+                "equal",
+                "both",
+                if left_path.exists() {
+                    left_path
+                } else {
+                    right_path
+                },
+            )
+        }
         _ => {
             return build_single_side_unavailable_panel(
                 row.relative_path.as_str(),
-                "single-side preview is only available for left-only/right-only entries",
+                "preview is only available for left-only/right-only/equal entries",
             );
         }
     };
@@ -208,8 +226,11 @@ pub fn map_single_side_file_preview(
     let Ok(bytes) = fs::read(&target_path) else {
         return build_single_side_unavailable_panel(
             row.relative_path.as_str(),
-            format!("cannot read file for {side_label} preview: {}", target_path.display())
-                .as_str(),
+            format!(
+                "cannot read file for {side_label} preview: {}",
+                target_path.display()
+            )
+            .as_str(),
         );
     };
     if bytes.contains(&0u8) {
@@ -262,30 +283,30 @@ pub fn map_single_side_file_preview(
         .iter()
         .enumerate()
         .map(|(index, line)| DiffLineViewModel {
-            old_line_no: if is_left_side {
+            old_line_no: if line_no_mode == "left" || line_no_mode == "both" {
                 Some(index + 1)
             } else {
                 None
             },
-            new_line_no: if is_left_side {
-                None
-            } else {
+            new_line_no: if line_no_mode == "right" || line_no_mode == "both" {
                 Some(index + 1)
+            } else {
+                None
             },
             kind: "Context".to_string(),
             content: (*line).to_string(),
         })
         .collect::<Vec<_>>();
 
-    let old_len = if is_left_side {
+    let old_len = if line_no_mode == "left" || line_no_mode == "both" {
         line_view_models.len()
     } else {
         0
     };
-    let new_len = if is_left_side {
-        0
-    } else {
+    let new_len = if line_no_mode == "right" || line_no_mode == "both" {
         line_view_models.len()
+    } else {
+        0
     };
 
     DiffPanelViewModel {
@@ -525,7 +546,10 @@ fn detailed_diff_blocked_reason(entry: &CompareEntry) -> Option<String> {
         }
         EntryStatus::Equal | EntryStatus::Different | EntryStatus::Pending => {}
     }
-    if matches!(entry.status, EntryStatus::LeftOnly | EntryStatus::RightOnly) {
+    if matches!(
+        entry.status,
+        EntryStatus::LeftOnly | EntryStatus::RightOnly | EntryStatus::Equal
+    ) {
         return None;
     }
 
@@ -1022,8 +1046,11 @@ mod tests {
     fn map_single_side_file_preview_returns_explainer_for_binary_files() {
         let left = tempdir().expect("left temp dir should be created");
         let right = tempdir().expect("right temp dir should be created");
-        std::fs::write(left.path().join("only-left.bin"), [0u8, 159u8, 146u8, 150u8])
-            .expect("left binary should be written");
+        std::fs::write(
+            left.path().join("only-left.bin"),
+            [0u8, 159u8, 146u8, 150u8],
+        )
+        .expect("left binary should be written");
         let row = CompareEntryRowViewModel {
             relative_path: "only-left.bin".to_string(),
             status: "left-only".to_string(),
@@ -1044,5 +1071,38 @@ mod tests {
         assert!(vm.summary_text.contains("unavailable"));
         assert!(vm.warning.is_some());
         assert_eq!(vm.hunks.len(), 1);
+    }
+
+    #[test]
+    fn map_single_side_file_preview_projects_equal_text_lines() {
+        let left = tempdir().expect("left temp dir should be created");
+        let right = tempdir().expect("right temp dir should be created");
+        std::fs::write(left.path().join("equal.txt"), "same\nline\n")
+            .expect("left file should be written");
+        std::fs::write(right.path().join("equal.txt"), "same\nline\n")
+            .expect("right file should be written");
+        let row = CompareEntryRowViewModel {
+            relative_path: "equal.txt".to_string(),
+            status: "equal".to_string(),
+            detail: "equal".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "file-comparison".to_string(),
+            can_load_diff: true,
+            diff_blocked_reason: None,
+            can_load_analysis: false,
+            analysis_blocked_reason: Some("blocked".to_string()),
+        };
+
+        let vm = map_single_side_file_preview(
+            left.path().to_string_lossy().as_ref(),
+            right.path().to_string_lossy().as_ref(),
+            &row,
+        );
+        assert!(vm.summary_text.contains("equal preview"));
+        assert_eq!(vm.hunks.len(), 1);
+        assert_eq!(vm.hunks[0].lines.len(), 2);
+        assert_eq!(vm.hunks[0].lines[0].kind, "Context");
+        assert_eq!(vm.hunks[0].lines[0].old_line_no, Some(1));
+        assert_eq!(vm.hunks[0].lines[0].new_line_no, Some(1));
     }
 }

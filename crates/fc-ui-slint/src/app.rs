@@ -14,11 +14,12 @@ slint::slint! {
     import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
 
     component SectionCard inherits Rectangle {
+        in property <bool> clip_content: false;
         border-width: 1px;
         border-color: #e3e8ef;
         border-radius: 6px;
         background: #fcfdff;
-        clip: true;
+        clip: self.clip_content;
     }
 
     component ToolButton inherits Rectangle {
@@ -110,55 +111,55 @@ slint::slint! {
         border-radius: 6px;
         border-width: 1px;
         border-color: root.tone == "different"
-            ? #dab89c
+            ? #cc8d7a
             : (root.tone == "equal"
-                ? #c2d6c7
+                ? #afc7b0
                 : (root.tone == "left"
-                    ? #bfd0cb
+                    ? #c8b58f
                     : (root.tone == "right"
-                        ? #c6cedb
+                        ? #acbdc3
                         : (root.tone == "warn"
-                            ? #dbc8ae
+                            ? #dac6ab
                             : (root.tone == "error"
                                 ? #dfc1c1
                                 : (root.tone == "info"
                                     ? #c6d7ec
-                                    : #d5dde7))))));
+                                    : #cfc9c2))))));
         background: root.tone == "different"
-            ? #f9eee2
+            ? #f8e4de
             : (root.tone == "equal"
-                ? #f1f8f3
+                ? #edf5ee
                 : (root.tone == "left"
-                    ? #edf5f3
+                    ? #f4ede1
                     : (root.tone == "right"
-                        ? #eff2f8
+                        ? #e9f0f2
                         : (root.tone == "warn"
                             ? #fbf5ea
                             : (root.tone == "error"
                                 ? #fdf2f2
                                 : (root.tone == "info"
                                     ? #eef4fb
-                                    : #f4f6f9))))));
+                                    : #f1efec))))));
 
         Text {
             text: root.label;
             horizontal-alignment: center;
             vertical-alignment: center;
             color: root.tone == "different"
-                ? #7a4b24
+                ? #7a3f31
                 : (root.tone == "equal"
-                    ? #2f6143
+                    ? #355a3f
                     : (root.tone == "left"
-                        ? #4d6660
+                        ? #6d5737
                         : (root.tone == "right"
-                            ? #556079
+                            ? #3f5e68
                             : (root.tone == "warn"
                                 ? #7b5a2e
                                 : (root.tone == "error"
                                     ? #8a2f2f
                                     : (root.tone == "info"
                                         ? #2e5579
-                                        : #516274))))));
+                                        : #6b6660))))));
             font-size: 11px;
         }
     }
@@ -691,44 +692,67 @@ slint::slint! {
                                 }
                                 ListView {
                                     vertical-stretch: 1;
-                                    for row_path[index] in root.row_paths: Rectangle {
-                                        height: 46px;
-                                        border-width: 1px;
-                                        border-color: root.row_source_indices[index] == root.selected_row
-                                            ? #5f84b3
-                                            : (root.row_statuses[index] == "different"
-                                                ? #d4b395
-                                                : (root.row_statuses[index] == "equal"
-                                                    ? #c7dacd
-                                                    : (root.row_statuses[index] == "left-only"
-                                                        ? #c4d3cf
-                                                        : (root.row_statuses[index] == "right-only"
-                                                            ? #c9d0dd
-                                                            : #dfe5ee))));
-                                        border-radius: 4px;
-                                        background: root.row_source_indices[index] == root.selected_row ? #d9e8fb
-                                            : (!root.row_can_load_diff[index]
-                                                ? (root.row_statuses[index] == "different"
-                                                    ? #f5ece2
-                                                    : (root.row_statuses[index] == "equal"
-                                                        ? #eff4f0
-                                                        : (root.row_statuses[index] == "left-only"
-                                                            ? #ecf2f0
-                                                            : (root.row_statuses[index] == "right-only"
-                                                                ? #eef1f6
-                                                                : #f0f2f5))))
-                                                : (root.row_statuses[index] == "different"
-                                                    ? #fbf2e6
-                                                    : (root.row_statuses[index] == "equal"
-                                                        ? #f4faf6
-                                                        : (root.row_statuses[index] == "left-only"
-                                                            ? #f1f7f5
-                                                            : (root.row_statuses[index] == "right-only"
-                                                                ? #f2f5fa
+                                    for row_path[index] in root.row_paths: row_item := Rectangle {
+                                        property <int> source_index: root.row_source_indices[index];
+                                        property <string> row_status: root.row_statuses[index];
+                                        property <bool> row_unavailable: !root.row_can_load_diff[index];
+                                        property <bool> row_selected: source_index == root.selected_row;
+                                        property <string> row_status_label: row_status == "different"
+                                            ? "diff"
+                                            : (row_status == "equal"
+                                                ? "equal"
+                                                : (row_status == "left-only"
+                                                    ? "left"
+                                                    : (row_status == "right-only"
+                                                        ? "right"
+                                                        : row_status)));
+                                        property <string> row_status_tone: row_status == "different"
+                                            ? "different"
+                                            : (row_status == "equal"
+                                                ? "equal"
+                                                : (row_status == "left-only"
+                                                    ? "left"
+                                                    : (row_status == "right-only"
+                                                        ? "right"
+                                                        : "neutral")));
+                                        property <color> item_border_color: row_selected
+                                            ? #3f72b2
+                                            : (row_unavailable
+                                                ? #cfc9c2
+                                                : (row_status == "different"
+                                                    ? #c88f7b
+                                                    : (row_status == "equal"
+                                                        ? #b3cab4
+                                                        : (row_status == "left-only"
+                                                            ? #c7b28d
+                                                            : (row_status == "right-only"
+                                                                ? #aabdc3
+                                                                : #dce3eb)))));
+                                        property <color> item_background_color: row_selected
+                                            ? #dbe9fb
+                                            : (row_unavailable
+                                                ? #f1efec
+                                                : (row_status == "different"
+                                                    ? #f8e7e1
+                                                    : (row_status == "equal"
+                                                        ? #eef5ef
+                                                        : (row_status == "left-only"
+                                                            ? #f5eee2
+                                                            : (row_status == "right-only"
+                                                                ? #eaf0f2
                                                                 : #fbfcfe)))));
-                                        opacity: root.row_source_indices[index] == root.selected_row
-                                            ? 1
-                                            : (root.row_can_load_diff[index] ? 1 : 0.76);
+                                        property <color> path_text_color: row_selected
+                                            ? #123e69
+                                            : (row_unavailable ? #6f6962 : #2f3f50);
+                                        property <color> detail_text_color: row_selected
+                                            ? #3f5f7f
+                                            : (row_unavailable ? #89837a : #647486);
+
+                                        height: 44px;
+                                        border-width: 1px;
+                                        border-color: row_item.item_border_color;
+                                        border-radius: 3px;
+                                        background: row_item.item_background_color;
 
                                         VerticalLayout {
                                             padding: 4px;
@@ -736,38 +760,20 @@ slint::slint! {
                                             HorizontalLayout {
                                                 spacing: 7px;
                                                 StatusPill {
-                                                    label: root.row_statuses[index] == "different"
-                                                        ? "diff"
-                                                        : (root.row_statuses[index] == "equal"
-                                                            ? "equal"
-                                                            : (root.row_statuses[index] == "left-only"
-                                                                ? "left"
-                                                                : (root.row_statuses[index] == "right-only"
-                                                                    ? "right"
-                                                                    : root.row_statuses[index])));
-                                                    tone: root.row_statuses[index] == "different"
-                                                        ? "different"
-                                                        : (root.row_statuses[index] == "equal"
-                                                            ? "equal"
-                                                            : (root.row_statuses[index] == "left-only"
-                                                                ? "left"
-                                                                : (root.row_statuses[index] == "right-only"
-                                                                    ? "right"
-                                                                    : "neutral")));
+                                                    label: row_item.row_status_label;
+                                                    tone: row_item.row_unavailable ? "neutral" : row_item.row_status_tone;
                                                 }
                                                 Text {
                                                     text: row_path;
-                                                    color: root.row_source_indices[index] == root.selected_row
-                                                        ? #163e66
-                                                        : (root.row_can_load_diff[index] ? #2f3f50 : #5f6d7b);
+                                                    color: row_item.path_text_color;
                                                     vertical-alignment: center;
                                                     horizontal-stretch: 1;
                                                     overflow: elide;
                                                 }
                                             }
                                             Text {
-                                                text: root.row_can_load_diff[index] ? root.row_details[index] : "detailed diff unavailable";
-                                                color: root.row_can_load_diff[index] ? #647486 : #6d7b8a;
+                                                text: row_item.row_unavailable ? "detailed diff unavailable" : root.row_details[index];
+                                                color: row_item.detail_text_color;
                                                 vertical-alignment: center;
                                                 horizontal-stretch: 1;
                                                 overflow: elide;
@@ -776,7 +782,7 @@ slint::slint! {
 
                                         TouchArea {
                                             clicked => {
-                                                root.row_selected(root.row_source_indices[index]);
+                                                root.row_selected(row_item.source_index);
                                             }
                                         }
                                     }
@@ -894,7 +900,11 @@ slint::slint! {
                                         spacing: 8px;
                                         Text {
                                             text: root.diff_summary_text != "" ? root.diff_summary_text
-                                                : (root.has_selected_result ? "Detailed diff is pending for selected file." : "Select one result row to open detailed diff.");
+                                                : (root.has_selected_result
+                                                    ? ((root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
+                                                        ? "File preview is pending for selected file."
+                                                        : "Detailed diff is pending for selected file.")
+                                                    : "Select one result row to open detailed diff.");
                                             color: root.diff_summary_text != "" ? #445a70 : #627487;
                                             wrap: word-wrap;
                                             horizontal-stretch: 1;
@@ -910,7 +920,7 @@ slint::slint! {
                                             tone: "right";
                                         }
                                         StatusPill {
-                                            visible: root.selected_row_status == "equal" && root.diff_loaded;
+                                            visible: root.selected_row_status == "equal";
                                             label: "equal preview";
                                             tone: "equal";
                                         }
@@ -945,21 +955,29 @@ slint::slint! {
 
                                     if root.has_selected_result && root.diff_loading : WorkspaceStatePanel {
                                         vertical-stretch: 1;
-                                        title: "Loading detailed diff";
-                                        body: "Preparing hunk-level lines for this file.";
+                                        title: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
+                                            ? "Loading file preview"
+                                            : "Loading detailed diff";
+                                        body: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
+                                            ? "Preparing readable file preview."
+                                            : "Preparing hunk-level lines for this file.";
                                         tone: "info";
                                     }
 
                                     if root.has_selected_result && !root.diff_loading && !root.diff_loaded && root.diff_error_text == "" : WorkspaceStatePanel {
                                         vertical-stretch: 1;
-                                        title: "Detailed diff unavailable";
+                                        title: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
+                                            ? "File preview unavailable"
+                                            : "Detailed diff unavailable";
                                         body: root.diff_warning_text != "" ? root.diff_warning_text : "This selected row does not provide text-level diff lines.";
                                         tone: "warn";
                                     }
 
                                     if root.has_selected_result && !root.diff_loading && root.diff_error_text != "" : WorkspaceStatePanel {
                                         vertical-stretch: 1;
-                                        title: "Failed to load detailed diff";
+                                        title: (root.selected_row_status == "left-only" || root.selected_row_status == "right-only" || root.selected_row_status == "equal")
+                                            ? "Failed to load file preview"
+                                            : "Failed to load detailed diff";
                                         body: root.diff_error_text;
                                         tone: "error";
                                     }
@@ -1414,7 +1432,30 @@ fn should_skip_sync(last_state: Option<&AppState>, next_state: &AppState) -> boo
     last_state == Some(next_state)
 }
 
-fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
+fn should_refresh_result_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
+    match last_state {
+        None => true,
+        Some(last) => {
+            last.entry_rows != next_state.entry_rows
+                || last.entry_filter != next_state.entry_filter
+                || last.entry_status_filter != next_state.entry_status_filter
+        }
+    }
+}
+
+fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
+    match last_state {
+        None => true,
+        Some(last) => last.selected_diff != next_state.selected_diff,
+    }
+}
+
+fn sync_window_state(
+    window: &MainWindow,
+    state: &AppState,
+    mode: SyncMode,
+    last_state: Option<&AppState>,
+) {
     if should_sync_editable_inputs(mode) {
         window.set_left_root(state.left_root.clone().into());
         window.set_right_root(state.right_root.clone().into());
@@ -1474,59 +1515,63 @@ fn sync_window_state(window: &MainWindow, state: &AppState, mode: SyncMode) {
     window.set_provider_settings_error_text(state.provider_settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     window.set_selected_row_status(state.selected_row_status_text().into());
-    let filtered_rows = state.filtered_entry_rows_with_index();
-    let row_statuses = filtered_rows
-        .iter()
-        .map(|(_, row)| SharedString::from(row.status.clone()))
-        .collect::<Vec<_>>();
-    window.set_row_statuses(ModelRc::new(VecModel::from(row_statuses)));
-    let row_paths = filtered_rows
-        .iter()
-        .map(|(_, row)| SharedString::from(row.relative_path.clone()))
-        .collect::<Vec<_>>();
-    window.set_row_paths(ModelRc::new(VecModel::from(row_paths)));
-    let row_details = filtered_rows
-        .iter()
-        .map(|(_, row)| SharedString::from(row.detail.clone()))
-        .collect::<Vec<_>>();
-    window.set_row_details(ModelRc::new(VecModel::from(row_details)));
-    let row_source_indices = filtered_rows
-        .iter()
-        .map(|(index, _)| *index as i32)
-        .collect::<Vec<_>>();
-    window.set_row_source_indices(ModelRc::new(VecModel::from(row_source_indices)));
-    let row_can_load_diff = filtered_rows
-        .iter()
-        .map(|(_, row)| row.can_load_diff)
-        .collect::<Vec<_>>();
-    window.set_row_can_load_diff(ModelRc::new(VecModel::from(row_can_load_diff)));
+    if should_refresh_result_models(last_state, state) {
+        let filtered_rows = state.filtered_entry_rows_with_index();
+        let row_statuses = filtered_rows
+            .iter()
+            .map(|(_, row)| SharedString::from(row.status.clone()))
+            .collect::<Vec<_>>();
+        window.set_row_statuses(ModelRc::new(VecModel::from(row_statuses)));
+        let row_paths = filtered_rows
+            .iter()
+            .map(|(_, row)| SharedString::from(row.relative_path.clone()))
+            .collect::<Vec<_>>();
+        window.set_row_paths(ModelRc::new(VecModel::from(row_paths)));
+        let row_details = filtered_rows
+            .iter()
+            .map(|(_, row)| SharedString::from(row.detail.clone()))
+            .collect::<Vec<_>>();
+        window.set_row_details(ModelRc::new(VecModel::from(row_details)));
+        let row_source_indices = filtered_rows
+            .iter()
+            .map(|(index, _)| *index as i32)
+            .collect::<Vec<_>>();
+        window.set_row_source_indices(ModelRc::new(VecModel::from(row_source_indices)));
+        let row_can_load_diff = filtered_rows
+            .iter()
+            .map(|(_, row)| row.can_load_diff)
+            .collect::<Vec<_>>();
+        window.set_row_can_load_diff(ModelRc::new(VecModel::from(row_can_load_diff)));
+    }
 
-    let diff_rows = state.diff_viewer_rows();
-    let diff_row_kinds = diff_rows
-        .iter()
-        .map(|row| SharedString::from(row.row_kind.clone()))
-        .collect::<Vec<_>>();
-    window.set_diff_row_kinds(ModelRc::new(VecModel::from(diff_row_kinds)));
-    let diff_old_line_nos = diff_rows
-        .iter()
-        .map(|row| SharedString::from(row.old_line_no.clone()))
-        .collect::<Vec<_>>();
-    window.set_diff_old_line_nos(ModelRc::new(VecModel::from(diff_old_line_nos)));
-    let diff_new_line_nos = diff_rows
-        .iter()
-        .map(|row| SharedString::from(row.new_line_no.clone()))
-        .collect::<Vec<_>>();
-    window.set_diff_new_line_nos(ModelRc::new(VecModel::from(diff_new_line_nos)));
-    let diff_markers = diff_rows
-        .iter()
-        .map(|row| SharedString::from(row.marker.clone()))
-        .collect::<Vec<_>>();
-    window.set_diff_markers(ModelRc::new(VecModel::from(diff_markers)));
-    let diff_contents = diff_rows
-        .into_iter()
-        .map(|row| SharedString::from(row.content))
-        .collect::<Vec<_>>();
-    window.set_diff_contents(ModelRc::new(VecModel::from(diff_contents)));
+    if should_refresh_diff_models(last_state, state) {
+        let diff_rows = state.diff_viewer_rows();
+        let diff_row_kinds = diff_rows
+            .iter()
+            .map(|row| SharedString::from(row.row_kind.clone()))
+            .collect::<Vec<_>>();
+        window.set_diff_row_kinds(ModelRc::new(VecModel::from(diff_row_kinds)));
+        let diff_old_line_nos = diff_rows
+            .iter()
+            .map(|row| SharedString::from(row.old_line_no.clone()))
+            .collect::<Vec<_>>();
+        window.set_diff_old_line_nos(ModelRc::new(VecModel::from(diff_old_line_nos)));
+        let diff_new_line_nos = diff_rows
+            .iter()
+            .map(|row| SharedString::from(row.new_line_no.clone()))
+            .collect::<Vec<_>>();
+        window.set_diff_new_line_nos(ModelRc::new(VecModel::from(diff_new_line_nos)));
+        let diff_markers = diff_rows
+            .iter()
+            .map(|row| SharedString::from(row.marker.clone()))
+            .collect::<Vec<_>>();
+        window.set_diff_markers(ModelRc::new(VecModel::from(diff_markers)));
+        let diff_contents = diff_rows
+            .into_iter()
+            .map(|row| SharedString::from(row.content))
+            .collect::<Vec<_>>();
+        window.set_diff_contents(ModelRc::new(VecModel::from(diff_contents)));
+    }
 }
 
 fn sync_window_state_if_changed(
@@ -1540,7 +1585,7 @@ fn sync_window_state_if_changed(
     if should_skip_sync(cache_guard.as_ref(), &state) {
         return;
     }
-    sync_window_state(window, &state, mode);
+    sync_window_state(window, &state, mode, cache_guard.as_ref());
     *cache_guard = Some(state);
 }
 
@@ -1553,7 +1598,7 @@ pub fn run() -> anyhow::Result<()> {
     let bridge = UiBridge::new(presenter);
     bridge.dispatch(UiCommand::Initialize);
     let initial_state = bridge.snapshot();
-    sync_window_state(&app, &initial_state, SyncMode::Full);
+    sync_window_state(&app, &initial_state, SyncMode::Full, None);
     let sync_cache = Arc::new(Mutex::new(Some(initial_state)));
 
     let ui_refresh_timer = Timer::default();
@@ -1564,7 +1609,13 @@ pub fn run() -> anyhow::Result<()> {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
-        if !window.get_running() && !window.get_diff_loading() && !window.get_analysis_loading() {
+        let bridge_busy = refresh_bridge.busy_flags();
+        let window_busy = (
+            window.get_running(),
+            window.get_diff_loading(),
+            window.get_analysis_loading(),
+        );
+        if bridge_busy == window_busy {
             return;
         }
         sync_window_state_if_changed(&window, &refresh_bridge, &refresh_cache, SyncMode::Passive);
@@ -1623,7 +1674,9 @@ pub fn run() -> anyhow::Result<()> {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
-        if window.get_selected_row() == index && (window.get_diff_loaded() || window.get_diff_loading()) {
+        if window.get_selected_row() == index
+            && (window.get_diff_loaded() || window.get_diff_loading())
+        {
             return;
         }
 

@@ -162,16 +162,23 @@ impl AppState {
 
     /// Returns filter stats text for UI header.
     pub fn filter_stats_text(&self) -> String {
-        let visible = self.filtered_entry_rows_with_index().len();
+        let status_filter = normalize_status_filter_token(&self.entry_status_filter);
+        let visible = self
+            .entry_rows
+            .iter()
+            .filter(|row| {
+                row.matches_filter(&self.entry_filter)
+                    && status_filter_matches(&row.status, status_filter.as_str())
+            })
+            .count();
         let total = self.entry_rows.len();
         let query = self.entry_filter.trim();
-        let status_scope = normalize_status_filter_token(&self.entry_status_filter);
         let query_text = if query.is_empty() {
             "—".to_string()
         } else {
             abbreviate_middle(query, 28, 16, 8)
         };
-        let status_text = match status_scope.as_str() {
+        let status_text = match status_filter.as_str() {
             "all" => "All",
             "different" => "Different",
             "equal" => "Equal",
@@ -306,7 +313,9 @@ impl AppState {
     pub fn diff_has_rows(&self) -> bool {
         self.selected_diff
             .as_ref()
-            .map(|diff| !diff.hunks.is_empty() && diff.hunks.iter().any(|hunk| !hunk.lines.is_empty()))
+            .map(|diff| {
+                !diff.hunks.is_empty() && diff.hunks.iter().any(|hunk| !hunk.lines.is_empty())
+            })
             .unwrap_or(false)
     }
 
