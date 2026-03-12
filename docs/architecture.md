@@ -152,123 +152,78 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Phase 13.1 -> 14.2 fix-3 architecture evolution (from git log)
+## Architecture evolution (Phase 13.1 -> 15.0 fix-5)
 
-Commit range:
+This period moved `fc-ui-slint` from “feature accumulation” to a contract-driven desktop workspace architecture.  
+The same IA was preserved end-to-end, but each layer (layout, state flow, semantics, preview behavior, runtime sync) was progressively hardened.
 
-- start: `8a77ef8149eb820411427fe9380bbbde40dc8509` (`phase 13.1`)
-- end: `2a7cfc0db2f3bd215dee0f86666f99e90aa048f8` (`Phase 14.2 fix-3 输入行布局稳定性与 modal 节奏统一`)
+### 1) Information architecture and layout contract
 
-Tracked phase commits in this range:
+- IA stayed stable as:
+  - `App Bar`;
+  - `Sidebar` (`Compare Inputs / Compare Status / Filter / Scope / Results / Navigator`);
+  - `Workspace` (`Diff / Analysis` tabs, header, content).
+- Layout behavior was tightened in two steps:
+  - 14.x established sidebar width/overflow discipline and desktop-density component rhythm;
+  - 15.0 unified Workspace into one continuous shell (`Tabs -> Header -> Content`) with conditional mode branches so only one mode participates in layout at a time.
+- Result: main work area keeps stable height allocation across empty/loading/error/success states instead of fragmenting into independent boxes.
 
-- `8a77ef8` `phase 13.1`
-- `6d2ec35` `Phase 13.1 fix-1: 宽度异常 + 状态区轻收口`
-- `dd0969e` `phase 14 Provider Settings 与配置持久化`
-- `13f0a8c` `Phase 14.1：Compare Inputs / Filter 轻交互微调`
-- `8f161bc` `Phase 14.2：视觉目标图 + 设计语言收敛`
-- `058fbd3` `Phase 14.2 fix-1：视觉实现收敛`
-- `22a558c` `Phase 14.2 fix-2：组件对齐与状态控件收敛`
-- `2a7cfc0` `Phase 14.2 fix-3 输入行布局稳定性与 modal 节奏统一`
+### 2) Input/filter/status workflow contract
 
-### `fc-ui-slint` architecture maturity after Phase 14.2
+- Compare entry workflow is complete and state-driven:
+  - left/right path input + native browse + validation (`empty/missing/not-directory/unreadable`);
+  - search + segmented status scope (`All / Diff / Equal / Left / Right`) with lockstep visual state.
+- Compare Status is intentionally summary-first:
+  - primary status + compact pills + key metrics;
+  - details are weak/expandable instead of becoming a second heavy details pane.
 
-- Window information architecture is now stable:
-  - lightweight `App Bar` as global entry layer;
-  - fixed `Sidebar` with four sections:
-    - `Compare Inputs`
-    - `Compare Status`
-    - `Filter / Scope`
-    - `Results / Navigator`
-  - `Workspace` for file view with `Diff / Analysis` tabs, mode header, and content panel.
-- Sidebar sizing and width behavior is hardened:
-  - fixed sidebar width contract with stable left/right stretch behavior;
-  - long text uses elide/wrapping constraints to avoid intrinsic-width pushback.
-- Compare input architecture is now complete:
-  - left/right path input + native folder browse flow;
-  - compare action with clearer empty-path behavior;
-  - basic path validation before compare (`empty`, `missing`, `not-directory`, `unreadable`).
-- Filter architecture is now state-driven and stable:
-  - search + segmented status scope (`All / Diff / Equal / Left / Right`);
-  - active scope hint is retained as a weak signal;
-  - segmented visual state now updates in lockstep with actual filter state.
-- Compare status architecture has been reduced to summary-first:
-  - primary status + compact badges;
-  - key metrics line (`total/changed/left/right`);
-  - details downgraded to weak expandable preview rather than embedded heavy details view.
+### 3) Provider settings and persistence contract
 
-### Provider settings architecture after Phase 14
-
-- Provider configuration has moved from Analysis content into global modal flow:
-  - entry: App Bar `Provider Settings`;
-  - edit boundary: modal with explicit `Save / Cancel`;
-  - Analysis panel no longer hosts full provider form.
-- Persistence architecture is established in UI layer:
-  - `settings.rs` owns load/save for provider settings;
-  - startup loads persisted provider config in presenter `Initialize`;
-  - save path writes local `provider_settings.toml`;
-  - supports `FOLDER_COMPARE_CONFIG_DIR` override and OS-specific default config dirs.
-- Provider model now includes:
-  - `Mock` / `OpenAI-compatible` mode;
+- Provider configuration moved to a global modal boundary:
+  - entry from `App Bar -> Provider Settings`;
+  - explicit `Save / Cancel` lifecycle;
+  - Analysis content no longer embeds full provider form.
+- Persistence contract is localized in UI layer:
+  - `settings.rs` owns load/save;
+  - initialize-time hydration in presenter;
+  - file-based persistence (`provider_settings.toml`) with `FOLDER_COMPARE_CONFIG_DIR` override.
+- Provider config model is now complete for current scope:
+  - `Mock` / `OpenAI-compatible`;
   - endpoint / api key / model / timeout;
-  - API key password input semantics with show/hide toggle in modal UI.
+  - API key visibility toggle semantics.
 
-### UI component-system direction after Phase 14.2
+### 4) File View state and preview contract
 
-- A lightweight reusable UI kit is now present in Slint layer:
-  - `SectionCard`, `ToolButton`, `SegmentedRail`, `SegmentItem`, `StatusPill`, `TextAction`.
-- Visual iterations in `14.2 fix-1/2/3` focused on convergence:
-  - reduce over-styled controls and heavy borders;
-  - tighten radii and spacing toward desktop-tool density;
-  - stabilize input-row alignment and modal rhythm across provider modes.
+- File View now follows one explicit state machine:
+  - Diff: `no selection -> loading -> unavailable -> failed -> renderable`;
+  - Analysis: `no selection -> not started -> loading -> failed -> result`.
+- `WorkspaceStatePanel` became the shared state container so state transitions no longer change container grammar.
+- Single-side preview is first-class:
+  - `left-only`, `right-only`, and `equal` all enter File View preview path;
+  - equal preview is not blocked by detailed-diff eligibility;
+  - preview rows are rendered as neutral context with side-aware line numbering.
+- Diff load behavior is clarified:
+  - `can_load_diff = false` maps to explicit `unavailable` state;
+  - repeated click on the same loaded/loading row is short-circuited.
 
-## Phase 15.0 -> 15.0 fix-5 architecture evolution (from git log + session trace)
+### 5) Semantic and runtime synchronization contract
 
-Commit range:
-
-- start: `57e6e6326bc9b23a2e626eb16df0c4db9980afb6` (`Phase 15.0：语义配色与 Workspace 一体化起步`)
-- end: `3a723c473e033efdd6046a0127e07a60417c2b0a` (`Phase 15.0 fix-4 ... + Phase 15.0 fix-5 ...`)
-
-Tracked phase commits in this range:
-
-- `57e6e63` `Phase 15.0：语义配色与 Workspace 一体化起步`
-- `2b60af3` `Phase 15.0 fix-1：Workspace 布局修复与语义配色校正`
-- `9fdd3e3` `Phase 15.0 fix-2 Results 语义色收敛 + File View 行为补完 + Analysis 成功态统一`
-- `83d72c8` `Phase 15.0 fix-3：Results 语义色定稿 + 预览模式收敛 + 性能回退排查`
-- `3a723c4` `Phase 15.0 fix-4 状态色定稿 + equal 预览打通 + 滚动卡顿归因 Phase 15.0 fix-5 Results 状态色定稿 + 滚动卡顿进一步归因`
-
-### `fc-ui-slint` architecture maturity after Phase 15.0 fix-5
-
-- Workspace shell is now structurally unified while preserving IA:
-  - `Tabs -> Header -> Content` is kept as one continuous workspace flow;
-  - Diff/Analysis mode branches are conditionally rendered to avoid dual-branch layout contention;
-  - main content area consistently consumes remaining height across empty/loading/error/success states.
-- File View state machine is explicit and shared:
-  - Diff mode states are normalized as `no selection -> loading -> unavailable -> failed -> renderable`;
-  - Analysis mode states are normalized as `no selection -> not started -> loading -> failed -> result`;
-  - `WorkspaceStatePanel` is used as the common visual/state container.
-- Results/Navigator semantics are now contract-level, not ad-hoc styling:
-  - semantic status coloring is fixed for `different`, `equal`, `left-only`, `right-only`;
-  - interaction blue is reserved for selected/focus/active only;
-  - unavailable rows are treated as a separate neutral state (not blue-gray), with downgraded text hierarchy.
-- Single-side preview pipeline is unified and promoted to first-class capability:
-  - `left-only`, `right-only`, and `equal` rows can all enter File View preview path;
-  - equal preview is no longer blocked by detailed-diff eligibility checks;
-  - preview rows are rendered with neutral context styling plus side-aware line numbers.
-- Diff/analysis orchestration behavior is clearer:
-  - `can_load_diff = false` is represented as explicit `unavailable` rather than generic load failure;
-  - repeated click on the same already-loaded/loading row is short-circuited to avoid duplicate load chains.
-- UI-side refresh and scrolling safeguards were added incrementally:
-  - compare/diff list models rebuild only when relevant source state changes;
-  - timer refresh remains polling-based but is constrained to busy-state transitions, reducing unnecessary full snapshots;
+- Semantic color system is now role-based:
+  - `different/equal/left-only/right-only` carry status semantics;
+  - blue is reserved for selected/focus/active interaction;
+  - unavailable uses neutral hierarchy (not blue-gray).
+- Runtime sync path was incrementally hardened for scroll/interaction stability:
+  - list models rebuild only on relevant source-state changes;
+  - timer refresh stays polling-based but is constrained by busy-state transitions;
   - row delegate state is localized to reduce repeated indexed binding evaluation;
-  - lightweight header stats computation avoids cloning filtered rows only for count purposes.
+  - header stats avoid cloning filtered rows only to compute counts.
 
-### Scope and boundaries kept during Phase 15.0
+### 6) Guardrails kept through this evolution
 
-- No IA reset: Sidebar remains `Compare Inputs / Compare Status / Filter / Scope / Results / Navigator`.
-- No Compare View/tree-mode expansion in this phase.
-- No AI schema/provider capability expansion beyond UI integration and state-flow unification.
-- No deep expansion of Compare Status details; it stays summary-first.
+- No IA reset.
+- No Compare View/tree-mode expansion.
+- No AI schema/provider capability expansion beyond UI-state orchestration.
+- No deep Compare Status details expansion beyond summary-first intent.
 
 ## Still deferred after Phase 15.0 fix-5
 
