@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-12)
+# Folder Compare Architecture (Phase 1-14.2)
 
 ## Crate responsibilities
 
@@ -152,17 +152,88 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `compare_dirs` for summary list;
   - `diff_text_file` for selected-row detailed diff.
 
-## Still deferred after Phase 12
+## Phase 13.1 -> 14.2 fix-3 architecture evolution (from git log)
 
-- advanced settings panel (persisted profiles/secure secret storage) is not implemented.
+Commit range:
+
+- start: `8a77ef8149eb820411427fe9380bbbde40dc8509` (`phase 13.1`)
+- end: `2a7cfc0db2f3bd215dee0f86666f99e90aa048f8` (`Phase 14.2 fix-3 输入行布局稳定性与 modal 节奏统一`)
+
+Tracked phase commits in this range:
+
+- `8a77ef8` `phase 13.1`
+- `6d2ec35` `Phase 13.1 fix-1: 宽度异常 + 状态区轻收口`
+- `dd0969e` `phase 14 Provider Settings 与配置持久化`
+- `13f0a8c` `Phase 14.1：Compare Inputs / Filter 轻交互微调`
+- `8f161bc` `Phase 14.2：视觉目标图 + 设计语言收敛`
+- `058fbd3` `Phase 14.2 fix-1：视觉实现收敛`
+- `22a558c` `Phase 14.2 fix-2：组件对齐与状态控件收敛`
+- `2a7cfc0` `Phase 14.2 fix-3 输入行布局稳定性与 modal 节奏统一`
+
+### `fc-ui-slint` architecture maturity after Phase 14.2
+
+- Window information architecture is now stable:
+  - lightweight `App Bar` as global entry layer;
+  - fixed `Sidebar` with four sections:
+    - `Compare Inputs`
+    - `Compare Status`
+    - `Filter / Scope`
+    - `Results / Navigator`
+  - `Workspace` for file view with `Diff / Analysis` tabs, mode header, and content panel.
+- Sidebar sizing and width behavior is hardened:
+  - fixed sidebar width contract with stable left/right stretch behavior;
+  - long text uses elide/wrapping constraints to avoid intrinsic-width pushback.
+- Compare input architecture is now complete:
+  - left/right path input + native folder browse flow;
+  - compare action with clearer empty-path behavior;
+  - basic path validation before compare (`empty`, `missing`, `not-directory`, `unreadable`).
+- Filter architecture is now state-driven and stable:
+  - search + segmented status scope (`All / Diff / Equal / Left / Right`);
+  - active scope hint is retained as a weak signal;
+  - segmented visual state now updates in lockstep with actual filter state.
+- Compare status architecture has been reduced to summary-first:
+  - primary status + compact badges;
+  - key metrics line (`total/changed/left/right`);
+  - details downgraded to weak expandable preview rather than embedded heavy details view.
+
+### Provider settings architecture after Phase 14
+
+- Provider configuration has moved from Analysis content into global modal flow:
+  - entry: App Bar `Provider Settings`;
+  - edit boundary: modal with explicit `Save / Cancel`;
+  - Analysis panel no longer hosts full provider form.
+- Persistence architecture is established in UI layer:
+  - `settings.rs` owns load/save for provider settings;
+  - startup loads persisted provider config in presenter `Initialize`;
+  - save path writes local `provider_settings.toml`;
+  - supports `FOLDER_COMPARE_CONFIG_DIR` override and OS-specific default config dirs.
+- Provider model now includes:
+  - `Mock` / `OpenAI-compatible` mode;
+  - endpoint / api key / model / timeout;
+  - API key password input semantics with show/hide toggle in modal UI.
+
+### UI component-system direction after Phase 14.2
+
+- A lightweight reusable UI kit is now present in Slint layer:
+  - `SectionCard`, `ToolButton`, `SegmentedRail`, `SegmentItem`, `StatusPill`, `TextAction`.
+- Visual iterations in `14.2 fix-1/2/3` focused on convergence:
+  - reduce over-styled controls and heavy borders;
+  - tighten radii and spacing toward desktop-tool density;
+  - stabilize input-row alignment and modal rhythm across provider modes.
+
+## Still deferred after Phase 14.2
+
+- secure secret storage integration (Keychain/Credential Manager/Secret Service) is not implemented.
+- provider profile management (multiple saved provider presets) is not implemented.
 - response caching and token/cost tracking are not implemented.
 - multi-provider plugin orchestration is not implemented.
-- tree-based directory explorer and side-by-side directory comparison layout are not implemented.
+- tree-based directory explorer and compare-view dual-mode workspace are not implemented.
 
 ## Next implementation priority
 
-Phase 13+ should focus on hardening and operability:
+Phase 15+ should focus on workspace depth and operability:
 
-1. persisted provider settings with safer secret handling;
-2. richer remote reliability controls (retry/backoff, diagnostics, telemetry);
-3. UX polish and optional advanced compare views (tree/side-by-side).
+1. file-view depth for diff/analysis interaction (Phase 15 baseline);
+2. results-view enhancements (sorting, richer filtering, navigation efficiency);
+3. optional advanced compare views (tree/hierarchical and compare-view/file-view dual mode);
+4. provider hardening (secure secrets, diagnostics, reliability controls).

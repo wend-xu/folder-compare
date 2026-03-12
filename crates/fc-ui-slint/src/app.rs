@@ -13,6 +13,8 @@ use std::time::Duration;
 slint::slint! {
     import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
 
+    // Contract: shared visual primitives used across sidebar/workspace/modal.
+    // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
     component SectionCard inherits Rectangle {
         in property <bool> clip_content: false;
         border-width: 1px;
@@ -311,6 +313,8 @@ slint::slint! {
         }
     }
 
+    // Contract: top-level app window shell.
+    // Owns layout + UI properties/callback surfaces, but does not execute compare/diff/analysis logic directly.
     export component MainWindow inherits Window {
         title: "Folder Compare";
         preferred-width: 1200px;
@@ -416,6 +420,7 @@ slint::slint! {
             padding: 10px;
             spacing: 8px;
 
+            // Contract: app bar shell (title + global provider settings entry).
             SectionCard {
                 height: 36px;
                 border-color: #e5e9ef;
@@ -454,6 +459,8 @@ slint::slint! {
                 vertical-stretch: 1;
                 spacing: 10px;
 
+                // Contract: sidebar shell.
+                // Hosts compare setup/status/filter/navigation controls; detailed file view stays in workspace.
                 Rectangle {
                     horizontal-stretch: 0;
                     min-width: 360px;
@@ -461,6 +468,8 @@ slint::slint! {
                     VerticalLayout {
                         spacing: 8px;
 
+                        // Contract: Compare Inputs.
+                        // Collects left/right roots and compare trigger; does not render compare results.
                         SectionCard {
                             height: 142px;
                             VerticalLayout {
@@ -543,6 +552,8 @@ slint::slint! {
                             }
                         }
 
+                        // Contract: Compare Status.
+                        // Summarizes compare run status/metrics/warnings; no row selection or file-level content here.
                         SectionCard {
                             height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 132px : 88px;
                             VerticalLayout {
@@ -631,6 +642,8 @@ slint::slint! {
                             }
                         }
 
+                        // Contract: Filter / Scope.
+                        // Applies text/status filters to navigator rows; does not mutate source compare data.
                         SectionCard {
                             height: 108px;
                             VerticalLayout {
@@ -754,6 +767,8 @@ slint::slint! {
                             }
                         }
 
+                        // Contract: Results / Navigator.
+                        // Presents filtered rows and dispatches selection intent; diff/analysis rendering stays in workspace.
                         SectionCard {
                             vertical-stretch: 1;
                             VerticalLayout {
@@ -871,6 +886,7 @@ slint::slint! {
                     }
                 }
 
+                // Contract: workspace shell for file-level tabs (Diff / Analysis).
                 SectionCard {
                     horizontal-stretch: 1;
                     min-width: 500px;
@@ -880,6 +896,8 @@ slint::slint! {
                         padding: 0px;
                         spacing: 0px;
 
+                        // Contract: workspace tab header.
+                        // Owns tab switching only; tab-specific state rendering happens below.
                         Rectangle {
                             height: 42px;
                             background: #f6f9fd;
@@ -927,6 +945,8 @@ slint::slint! {
                             }
                         }
 
+                        // Contract: workspace context header.
+                        // Shows tab-specific summary/context; full tab body lives in the content region.
                         Rectangle {
                             height: root.workspace_tab == 0 ? 98px : 70px;
                             background: #f8fbfe;
@@ -993,6 +1013,8 @@ slint::slint! {
                             }
                         }
 
+                        // Contract: workspace content switch.
+                        // Exactly one main branch renders at a time: Diff tab or Analysis tab.
                         Rectangle {
                             vertical-stretch: 1;
                             background: #fbfcfe;
@@ -1000,6 +1022,8 @@ slint::slint! {
                                 padding: 10px;
                                 spacing: 8px;
 
+                                // Contract: Diff tab body.
+                                // Handles diff-state shell + line table rendering for selected row.
                                 if root.workspace_tab == 0 : VerticalLayout {
                                     vertical-stretch: 1;
                                     spacing: 8px;
@@ -1197,6 +1221,8 @@ slint::slint! {
                                     }
                                 }
 
+                                // Contract: Analysis tab body.
+                                // Handles AI analysis action/state/result rendering for selected diff context.
                                 if root.workspace_tab == 1 : VerticalLayout {
                                     vertical-stretch: 1;
                                     spacing: 8px;
@@ -1339,6 +1365,8 @@ slint::slint! {
             }
         }
 
+        // Contract: Provider Settings modal.
+        // Edits global provider config and validation errors; compare/diff workflow remains in main shell.
         Rectangle {
             visible: root.provider_settings_open;
             x: 0px;
@@ -1536,14 +1564,20 @@ enum SyncMode {
     Passive,
 }
 
+// Contract: sync mode gate for editable UI fields.
+// Full mode pulls editable inputs from state; Passive mode preserves in-flight user typing.
 fn should_sync_editable_inputs(mode: SyncMode) -> bool {
     matches!(mode, SyncMode::Full)
 }
 
+// Contract: state cache guard.
+// Prevents redundant property/model writes when the presenter state snapshot is unchanged.
 fn should_skip_sync(last_state: Option<&AppState>, next_state: &AppState) -> bool {
     last_state == Some(next_state)
 }
 
+// Contract: navigator model refresh boundary.
+// Rebuild list models only when row/filter/status inputs changed.
 fn should_refresh_result_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
     match last_state {
         None => true,
@@ -1555,6 +1589,8 @@ fn should_refresh_result_models(last_state: Option<&AppState>, next_state: &AppS
     }
 }
 
+// Contract: diff model refresh boundary.
+// Rebuild diff row models only when selected diff payload changes.
 fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
     match last_state {
         None => true,
@@ -1562,6 +1598,8 @@ fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppSta
     }
 }
 
+// Contract: state -> window projection.
+// Centralized one-way sync from AppState snapshot into Slint properties/models.
 fn sync_window_state(
     window: &MainWindow,
     state: &AppState,
@@ -1697,6 +1735,7 @@ fn sync_window_state(
     }
 }
 
+// Contract: cache-aware sync wrapper used by timer + callbacks.
 fn sync_window_state_if_changed(
     window: &MainWindow,
     bridge: &UiBridge,
@@ -1724,6 +1763,8 @@ pub fn run() -> anyhow::Result<()> {
     sync_window_state(&app, &initial_state, SyncMode::Full, None);
     let sync_cache = Arc::new(Mutex::new(Some(initial_state)));
 
+    // Contract: background UI polling loop.
+    // Polls presenter busy flags and performs passive sync only when runtime busy-state diverges from window state.
     let ui_refresh_timer = Timer::default();
     let app_weak = app.as_weak();
     let refresh_bridge = bridge.clone();
@@ -1744,6 +1785,10 @@ pub fn run() -> anyhow::Result<()> {
         sync_window_state_if_changed(&window, &refresh_bridge, &refresh_cache, SyncMode::Passive);
     });
 
+    // Contract: UI event dispatch and bridge binding.
+    // Each callback converts UI intent into UiCommand(s), then triggers passive sync.
+
+    // Compare flow callbacks.
     let app_weak = app.as_weak();
     let compare_bridge = bridge.clone();
     let compare_cache = Arc::clone(&sync_cache);
@@ -1762,6 +1807,7 @@ pub fn run() -> anyhow::Result<()> {
         sync_window_state_if_changed(&window, &compare_bridge, &compare_cache, SyncMode::Passive);
     });
 
+    // Local folder picker callbacks (UI-only input capture, no direct presenter mutation except via compare click).
     let app_weak = app.as_weak();
     app.on_left_browse_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
@@ -1790,6 +1836,7 @@ pub fn run() -> anyhow::Result<()> {
         window.set_right_root(path.to_string_lossy().to_string().into());
     });
 
+    // Navigator selection + filters callbacks.
     let app_weak = app.as_weak();
     let row_bridge = bridge.clone();
     let row_cache = Arc::clone(&sync_cache);
@@ -1837,6 +1884,7 @@ pub fn run() -> anyhow::Result<()> {
         );
     });
 
+    // Provider settings lifecycle callbacks (open/cancel/save).
     let app_weak = app.as_weak();
     let provider_settings_bridge = bridge.clone();
     let provider_settings_cache = Arc::clone(&sync_cache);
@@ -1902,6 +1950,7 @@ pub fn run() -> anyhow::Result<()> {
         }
     });
 
+    // Analysis action callbacks.
     let app_weak = app.as_weak();
     let analysis_bridge = bridge.clone();
     let analysis_cache = Arc::clone(&sync_cache);
@@ -1928,6 +1977,7 @@ pub fn run() -> anyhow::Result<()> {
         );
     });
 
+    // Analysis provider mode callbacks.
     let app_weak = app.as_weak();
     let provider_bridge = bridge.clone();
     let provider_cache = Arc::clone(&sync_cache);
@@ -1962,6 +2012,7 @@ pub fn run() -> anyhow::Result<()> {
         );
     });
 
+    // Analysis remote config field callbacks.
     let app_weak = app.as_weak();
     let endpoint_bridge = bridge.clone();
     let endpoint_cache = Arc::clone(&sync_cache);
