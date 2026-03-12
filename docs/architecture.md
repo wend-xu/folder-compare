@@ -205,6 +205,7 @@ Update this file in the same PR whenever any of the following changes:
 - provider settings boundary/persistence model;
 - runtime synchronization strategy that can affect responsiveness/stability;
 - deferred architecture decisions or priority order.
+- language/terminology policy that affects cross-thread handoff docs.
 
 ### Required sections to touch per trigger
 
@@ -216,6 +217,8 @@ Update this file in the same PR whenever any of the following changes:
 ### Writing rules
 
 - Record architecture facts and boundaries, not implementation diary details.
+- Language policy: keep this file in English; keep `docs/thread-context.md` in Chinese with key English terms preserved.
+- For shared contracts, use the same canonical terms across this file and `docs/thread-context.md`.
 - Each update must state:
   - what changed;
   - why the boundary/contract changed;
