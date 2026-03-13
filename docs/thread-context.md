@@ -4,32 +4,40 @@
 
 本文件用于“开新线程”的快速交接，定位是短周期执行上下文，不替代长期架构文档。
 
+## 本次初始化说明（2026-03-12）
+
+- 改了什么：已完成 Phase 15.1A 的 `Diff` shell 收敛与 `detailed diff` 可读性深化，并同步更新 `docs/architecture.md` 到 `Phase 15.1A` 基线。
+- 为什么影响下一线程：下一线程不应再重复做 Diff 壳层搭建，应直接转入 `Phase 15.1B`（Analysis View 产品化）与剩余回归验证。
+- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；未引入 tree mode；`fc-core/fc-ai/fc-ui-slint` 边界不变。
+
 ## 快照（Snapshot）
 
 - 日期：2026-03-12（Asia/Shanghai）
-- 分支：`dev-review-phase15_1`
-- 工作区：干净（快照时 `git status --short` 为空）
+- 分支：`dev`
+- 工作区：有改动（Phase 15.1A 落地中）
 - 最近提交：
-  - `3ef4957` phase summary: optimize `architecture.md` document structure
-  - `deb9d16` phase summary: merge phase13.1 ~ 15.0 fix5
-  - `ce8497e` phase summary: supplement `architecture.md` phase15.0 ~ 15.0 fix-5
-- 当前架构基线：`docs/architecture.md`（`Phase 15.0 fix-5` + `Phase 15.1 entry` priorities）
+  - `1703032` phase summary: add comments/refactor docs and add thread context
+  - `6d528cd` Phase 15.1A：File View shell 收敛 + Diff View 深化
+  - `3a723c4` Phase 15.0 fix-4 + fix-5 consolidation
+- 当前架构基线：`docs/architecture.md`（`Phase 15.1A` + `Phase 15.1B entry` priorities）
 
 ## 当前目标（Execution Focus）
 
-1. 持续推进 `fc-ui-slint` 的 Phase 15.1，保持 `Workspace (Diff/Analysis)` 行为稳定。
-2. 在不引入 tree mode 的前提下提升大结果集导航效率。
-3. provider hardening 保持在 `fc-ai` / UI orchestration 边界内，不耦合进 `fc-core`。
+1. 完成 Phase 15.1A 的收口验证（状态覆盖、最小窗口、全屏窗口、无基础回归）。
+2. 将后续实现重心转向 `Phase 15.1B`：Analysis View 产品化（不改 IA）。
+3. 继续推进结果导航效率与 provider hardening，保持在既有边界内。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 交互流、可读性、状态切换、低风险工程整理
-  - 结果导航体验优化（仅限当前 IA）
-  - Analysis 展示与 provider 可靠性控制
+  - `fc-ui-slint` 的 Workspace shell 一致性、状态切换稳定性、可读性增强
+  - Analysis 展示产品化（限于现有 `File View` shell）
+  - 结果导航效率优化（仅限当前 IA）
+  - provider 可靠性控制（UI/`fc-ai` 层）
 - Out of Scope：
   - IA 重置（`App Bar + Sidebar + Workspace` 保持不变）
   - Tree explorer / compare-view dual mode
+  - Compare View 新模式或目录树扩展
   - 未经阶段决策的 phase logic 改写
   - 超出现有边界契约的 AI provider 架构扩展
 
@@ -56,19 +64,19 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - Phase 15.1 增量改进保持 contract-safe、review-friendly
-  - 在大文件中降低误改风险并保持可读性
+  - Phase 15.1A 自检与收口（Diff: no selection/loading/detailed/preview/unavailable）
+  - 确认文档契约与代码行为一致（`architecture.md` + `thread-context.md`）
 - Next：
+  - `Phase 15.1B` Analysis View 产品化（不扩展 schema，不改 Sidebar IA）
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
-  - Analysis 结果可读性和稳定切换节奏优化
 - Later：
   - 承接 `docs/architecture.md` 中 deferred decisions 的 provider hardening 后续事项
 
 ## 已知风险与评审重点（Known Risks / Review Focus）
 
-1. 在细节迭代中引入 IA/layout 漂移。
+1. 在 15.1B 推进时误改 15.1A 已收敛的 Diff shell contract。
 2. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
-3. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责。
+3. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
 4. Provider Settings 生命周期回归（校验、持久化、modal 开关）。
 
 ## 验证命令（Verification Commands）

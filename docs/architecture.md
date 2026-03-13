@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.0 fix-5)
+# Folder Compare Architecture (Phase 1-15.1A)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.0 fix-5)
+## `fc-ui-slint` current architecture snapshot (Phase 15.1A)
 
 ### IA and layout contract
 
@@ -120,18 +120,22 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - primary status + compact pills + key metrics;
   - details stay lightweight/expandable, not a second heavy pane.
 
-### File View state and preview contract
+### File View shell and preview contract
 
-- Diff mode state machine:
-  - `no selection -> loading -> unavailable -> failed -> renderable`.
-- Analysis mode state machine:
-  - `no selection -> not started -> loading -> failed -> result`.
-- `WorkspaceStatePanel` is the shared container for non-renderable states in both tabs.
-- Single-side preview is first-class:
+- Diff tab now follows a three-layer File Context Header:
+  - primary: selected relative path;
+  - secondary: mode (`Detailed Diff` / `Preview`) + result status + shell-state summary;
+  - tertiary: weak technical hints (`file type`, preview source, truncation/unavailable reason).
+- Diff mode state machine is now explicit and shell-driven:
+  - `no-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`;
+  - `detailed-ready|preview-ready` can still use shell fallback for empty line payloads.
+- `DiffStateShell` is the unified container for non-renderable states in Diff mode.
+- Analysis mode keeps `WorkspaceStatePanel`, so both tabs stay semantically aligned without sharing one component implementation.
+- Single-side preview remains first-class:
   - `left-only`, `right-only`, and `equal` all enter preview path;
   - equal preview is not blocked by detailed-diff eligibility;
-  - preview rows are neutral-context rendering with side-aware line numbers.
-- `can_load_diff = false` maps to explicit `unavailable` state (not generic failure).
+  - preview table columns are side-aware (`left/right`) instead of always `old/new`.
+- `can_load_diff = false` and preview capability boundaries map to explicit `unavailable` (not generic failure).
 
 ### Provider settings and persistence contract
 
@@ -158,7 +162,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No AI schema/provider capability expansion beyond UI-state orchestration.
 - No deep Compare Status details expansion beyond summary-first intent.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.0 fix-5)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.1A)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -169,8 +173,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - completed semantic status-color contract for Results;
   - promoted single-side/equal preview to first-class File View path;
   - hardened runtime refresh to reduce unnecessary model churn during interaction.
+- 15.1A:
+  - converged Diff File View shell into a stable `Header -> State Shell -> Content` contract;
+  - elevated Diff context recognition (path/mode/status/reason) to product-grade hierarchy;
+  - improved detailed diff readability with clearer column/hunk/line rhythm and preview-aware columns.
 
-## Deferred architecture decisions (after Phase 15.0 fix-5)
+## Deferred architecture decisions (after Phase 15.1A)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -183,15 +191,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (Phase 15.1 entry)
+## Next implementation priority (Phase 15.1B entry)
 
-1. Refine File View information rhythm (`path/summary/state pills/content`) with stable transitions.
-   - acceptance: all Diff/Analysis states switch without layout jump or duplicated panels.
+1. Productize Analysis View within the existing File View shell contract.
+   - acceptance: Analysis states remain stable while hierarchy/readability reaches the same maturity as Diff.
 2. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
-3. Improve Analysis result readability while preserving workspace grammar.
-   - acceptance: result card hierarchy is scannable and consistent with Diff tab visual rhythm.
-4. Continue provider hardening without crossing core boundaries.
+3. Continue provider hardening without crossing core boundaries.
    - acceptance: reliability controls evolve in UI/`fc-ai` layers with no new coupling into `fc-core`.
 
 ## Documentation update contract (mandatory)
