@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.1A fix-1)
+# Folder Compare Architecture (Phase 1-15.1A fix-2)
 
 ## Crate responsibilities
 
@@ -124,12 +124,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 
 - Diff tab now uses a compact File Context Header instead of an always-expanded three-row stack:
   - primary: selected relative path remains the dominant line;
+  - compact meta row uses fixed-height rhythm so selected/unselected/loading/unavailable states keep the same vertical cadence;
   - compact meta row: mode (`Detailed Diff` / `Preview`) + result status + concise summary;
   - weak hints (`type`, preview source, truncation) stay inline and only escalate to a state pill when loading/unavailable/error needs stronger emphasis.
 - Diff mode state machine is now explicit and shell-driven:
   - `no-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`;
   - `detailed-ready|preview-ready` can still use shell fallback for empty line payloads.
-- `DiffStateShell` is the unified container for non-renderable states in Diff mode and is rendered as a centered formal state surface rather than plain explanatory text.
+- `DiffStateShell` is the unified container for non-renderable states in Diff mode and now fills the detail region as a formal state surface rather than a centered card.
 - Analysis mode keeps `WorkspaceStatePanel`, so both tabs stay semantically aligned without sharing one component implementation.
 - Single-side preview remains first-class:
   - `left-only`, `right-only`, and `equal` all enter preview path;
@@ -137,7 +138,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - preview table columns are side-aware (`left/right`) instead of always `old/new`.
 - Diff content keeps the `column header -> rows` structure but now guarantees baseline review ergonomics:
   - line content is selectable/copyable;
-  - the table can scroll horizontally for long lines;
+  - the table can scroll horizontally for long lines with persistent in-surface guidance;
+  - the diff body reserves a scrollbar-safe bottom inset so the last rows stay selectable/copyable;
+  - row-level copy affordance provides a low-cost fallback that copies the full underlying line text, not just the visible viewport fragment;
   - line-number columns are narrower to reduce squeeze on content.
 - `can_load_diff = false` and preview capability boundaries map to explicit `unavailable` (not generic failure).
 
@@ -182,8 +185,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - elevated Diff context recognition (path/mode/status/reason) to product-grade hierarchy;
   - improved detailed diff readability with clearer column/hunk/line rhythm and preview-aware columns.
   - fix-1 tightened the Diff header, strengthened shell-state emphasis, and added selectable + horizontally scrollable line content for long-line review.
+  - fix-2 stabilized header cadence, turned `DiffStateShell` into a detail-surface state panel, and added row-copy + scrollbar-safe affordances for long-line review.
 
-## Deferred architecture decisions (after Phase 15.1A)
+## Deferred architecture decisions (after Phase 15.1A fix-2)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -198,8 +202,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 
 ## Next implementation priority (Phase 15.1A exit / 15.1B entry)
 
-1. Run the final visual acceptance pass for `Phase 15.1A fix-1`.
-   - acceptance: Diff states, minimum window, fullscreen density, long-line horizontal review, and text selection feel stable with no layout regression.
+1. Run the final visual acceptance pass for `Phase 15.1A fix-2`.
+   - acceptance: Diff header cadence, state-surface ownership, long-line horizontal review, scrollbar clearance, row-copy fallback, minimum window, and fullscreen density feel stable with no layout regression.
 2. Productize Analysis View within the existing File View shell contract once Diff exit criteria are accepted.
    - acceptance: Analysis states remain stable while hierarchy/readability reaches the same maturity as Diff.
 3. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
