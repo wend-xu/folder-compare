@@ -139,7 +139,7 @@ impl AppState {
     fn selected_file_type_hint(&self) -> Option<String> {
         let entry = self.selected_entry_row()?;
         if entry.entry_kind != "file" {
-            return Some(format!("Entry: {}", entry.entry_kind));
+            return Some(format!("entry {}", entry.entry_kind));
         }
 
         let relative_path = self
@@ -148,14 +148,14 @@ impl AppState {
             .unwrap_or_default()
             .trim();
         if relative_path.is_empty() {
-            return Some("Type: file".to_string());
+            return Some("type file".to_string());
         }
         let ext = Path::new(relative_path)
             .extension()
             .and_then(|value| value.to_str());
         match ext.map(str::trim).filter(|value| !value.is_empty()) {
-            Some(value) => Some(format!("Type: .{}", value.to_ascii_lowercase())),
-            None => Some("Type: file".to_string()),
+            Some(value) => Some(format!("type .{}", value.to_ascii_lowercase())),
+            None => Some("type file".to_string()),
         }
     }
 
@@ -324,36 +324,28 @@ impl AppState {
             .map(|diff| diff.summary_text.trim())
             .filter(|text| !text.is_empty());
         if let Some(summary) = diff_summary {
-            return summary.to_string();
+            return abbreviate_middle(summary, 96, 64, 24);
         }
 
         match self.diff_shell_state() {
-            DiffShellState::NoSelection => {
-                "Select one row from Results / Navigator to start.".to_string()
-            }
+            DiffShellState::NoSelection => "Choose a row from Results / Navigator.".to_string(),
             DiffShellState::Loading => {
                 if self.diff_is_preview_mode() {
-                    "Preparing preview content...".to_string()
+                    "Preparing preview lines...".to_string()
                 } else {
-                    "Preparing hunk-level diff content...".to_string()
+                    "Preparing detailed diff...".to_string()
                 }
             }
-            DiffShellState::DetailedReady => "Detailed diff is ready.".to_string(),
-            DiffShellState::PreviewReady => "Preview content is ready.".to_string(),
+            DiffShellState::DetailedReady => "Detailed diff ready.".to_string(),
+            DiffShellState::PreviewReady => "Preview ready.".to_string(),
             DiffShellState::Unavailable => {
                 if self.diff_is_preview_mode() {
-                    "Preview content is unavailable for this selection.".to_string()
+                    "Preview unavailable.".to_string()
                 } else {
-                    "Detailed diff is unavailable for this selection.".to_string()
+                    "Detailed diff unavailable.".to_string()
                 }
             }
-            DiffShellState::Error => {
-                if self.diff_is_preview_mode() {
-                    "Failed to load preview content.".to_string()
-                } else {
-                    "Failed to load detailed diff content.".to_string()
-                }
-            }
+            DiffShellState::Error => "Load failed.".to_string(),
         }
     }
 
@@ -370,23 +362,124 @@ impl AppState {
 
         if self.diff_is_preview_mode() {
             let preview_reason = match self.selected_row_status_token() {
-                "left-only" => "Preview source: left side only",
-                "right-only" => "Preview source: right side only",
-                "equal" => "Preview source: shared equal content",
-                _ => "Preview source: selected row",
+                "left-only" => "source left-only",
+                "right-only" => "source right-only",
+                "equal" => "source equal",
+                _ => "source selected",
             };
             parts.push(preview_reason.to_string());
         }
 
         if self.diff_truncated {
-            parts.push("Content is truncated for readability.".to_string());
+            parts.push("truncated".to_string());
         }
 
-        if let Some(reason) = self.diff_status_technical_reason() {
-            parts.push(abbreviate_middle(reason.trim(), 148, 104, 36));
-        }
+        parts.join(" · ")
+    }
 
-        parts.join(" | ")
+    /// Returns title text for the unified Diff shell.
+    pub fn diff_shell_title_text(&self) -> String {
+        match self.diff_shell_state() {
+            DiffShellState::NoSelection => "No file selected".to_string(),
+            DiffShellState::Loading => {
+                if self.diff_is_preview_mode() {
+                    "Loading preview".to_string()
+                } else {
+                    "Loading detailed diff".to_string()
+                }
+            }
+            DiffShellState::DetailedReady => {
+                if self.diff_has_rows() {
+                    "Detailed diff ready".to_string()
+                } else {
+                    "Detailed diff has no lines".to_string()
+                }
+            }
+            DiffShellState::PreviewReady => {
+                if self.diff_has_rows() {
+                    "Preview ready".to_string()
+                } else {
+                    "Preview has no lines".to_string()
+                }
+            }
+            DiffShellState::Unavailable => {
+                if self.diff_is_preview_mode() {
+                    "Preview unavailable".to_string()
+                } else {
+                    "Detailed diff unavailable".to_string()
+                }
+            }
+            DiffShellState::Error => {
+                if self.diff_is_preview_mode() {
+                    "Failed to load preview".to_string()
+                } else {
+                    "Failed to load detailed diff".to_string()
+                }
+            }
+        }
+    }
+
+    /// Returns primary body text for the unified Diff shell.
+    pub fn diff_shell_body_text(&self) -> String {
+        match self.diff_shell_state() {
+            DiffShellState::NoSelection => {
+                "Choose one row from Results / Navigator to open the file-level Diff view."
+                    .to_string()
+            }
+            DiffShellState::Loading => {
+                if self.diff_is_preview_mode() {
+                    "Preparing selectable preview lines for the selected file.".to_string()
+                } else {
+                    "Preparing hunks, line numbers, and selectable diff lines.".to_string()
+                }
+            }
+            DiffShellState::DetailedReady => {
+                if self.diff_has_rows() {
+                    "Detailed diff content is ready.".to_string()
+                } else {
+                    "This diff has no line-level content to render.".to_string()
+                }
+            }
+            DiffShellState::PreviewReady => {
+                if self.diff_has_rows() {
+                    "Preview content is ready.".to_string()
+                } else {
+                    "This file has no text lines to display in preview mode.".to_string()
+                }
+            }
+            DiffShellState::Unavailable => {
+                if self.diff_is_preview_mode() {
+                    "This selection is valid, but the current viewer has no reviewable preview text."
+                        .to_string()
+                } else {
+                    "This selection was compared successfully, but the current viewer cannot render a detailed text diff."
+                        .to_string()
+                }
+            }
+            DiffShellState::Error => {
+                if self.diff_is_preview_mode() {
+                    "The selected preview could not be loaded in this session.".to_string()
+                } else {
+                    "The selected detailed diff could not be loaded in this session.".to_string()
+                }
+            }
+        }
+    }
+
+    /// Returns optional secondary note text for the unified Diff shell.
+    pub fn diff_shell_note_text(&self) -> String {
+        match self.diff_shell_state() {
+            DiffShellState::NoSelection => {
+                "Changed files open Detailed Diff. Left Only / Right Only / Equal entries open Preview."
+                    .to_string()
+            }
+            DiffShellState::Loading => self.diff_context_hint_text(),
+            DiffShellState::Unavailable | DiffShellState::Error => self
+                .diff_status_technical_reason()
+                .map(|reason| abbreviate_middle(reason.trim(), 220, 160, 52))
+                .unwrap_or_else(|| self.diff_context_hint_text()),
+            DiffShellState::DetailedReady | DiffShellState::PreviewReady => String::new(),
+        }
     }
 
     /// Returns left column label for diff table.
@@ -405,6 +498,17 @@ impl AppState {
             "right-only" | "equal" => "right".to_string(),
             _ => "new".to_string(),
         }
+    }
+
+    /// Returns approximate character capacity used to size the scrollable diff table.
+    pub fn diff_content_char_capacity(&self) -> i32 {
+        let max_chars = self
+            .diff_viewer_rows()
+            .iter()
+            .map(|row| row.content.chars().count())
+            .max()
+            .unwrap_or(80);
+        max_chars.clamp(80, 480) as i32
     }
 
     /// Returns warning lines rendered as a multiline string.
@@ -1080,9 +1184,7 @@ mod tests {
 
         state.selected_diff = Some(sample_preview_panel("left-only preview lines=4", "line"));
         assert_eq!(state.diff_shell_state(), DiffShellState::PreviewReady);
-        assert!(state
-            .diff_context_hint_text()
-            .contains("Preview source: left side only"));
+        assert!(state.diff_context_hint_text().contains("source left-only"));
 
         state.selected_diff = Some(sample_preview_panel(
             "single-side preview unavailable",
@@ -1115,7 +1217,7 @@ mod tests {
         assert_eq!(state.diff_result_status_label(), "Equal");
         assert_eq!(state.diff_left_column_label(), "left");
         assert_eq!(state.diff_right_column_label(), "right");
-        assert!(state.diff_context_hint_text().contains("Type: .md"));
+        assert!(state.diff_context_hint_text().contains("type .md"));
     }
 
     #[test]

@@ -4,40 +4,40 @@
 
 本文件用于“开新线程”的快速交接，定位是短周期执行上下文，不替代长期架构文档。
 
-## 本次初始化说明（2026-03-12）
+## 本次初始化说明（2026-03-13）
 
-- 改了什么：已完成 Phase 15.1A 的 `Diff` shell 收敛与 `detailed diff` 可读性深化，并同步更新 `docs/architecture.md` 到 `Phase 15.1A` 基线。
-- 为什么影响下一线程：下一线程不应再重复做 Diff 壳层搭建，应直接转入 `Phase 15.1B`（Analysis View 产品化）与剩余回归验证。
-- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；未引入 tree mode；`fc-core/fc-ai/fc-ui-slint` 边界不变。
+- 改了什么：在 `Phase 15.1A` 首轮基础上完成 `fix-1`，继续收紧 `Diff` header、强化 `DiffStateShell`，并补上可选择复制与横向滚动的基础阅读能力；同步更新 `docs/architecture.md` 到 `15.1A fix-1` 事实。
+- 为什么影响下一线程：下一线程不应假设“已经直接进入 15.1B”；应先做 `15.1A fix-1` 的视觉验收，再决定是否正式切入 `Analysis View` 产品化。
+- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；本轮未进入 `15.1B`；未引入 tree mode；`fc-core/fc-ai/fc-ui-slint` 边界不变。
 
 ## 快照（Snapshot）
 
-- 日期：2026-03-12（Asia/Shanghai）
+- 日期：2026-03-13（Asia/Shanghai）
 - 分支：`dev`
-- 工作区：有改动（Phase 15.1A 落地中）
+- 工作区：有改动（`Phase 15.1A fix-1` 落地后，待视觉验收）
 - 最近提交：
   - `1703032` phase summary: add comments/refactor docs and add thread context
   - `6d528cd` Phase 15.1A：File View shell 收敛 + Diff View 深化
   - `3a723c4` Phase 15.0 fix-4 + fix-5 consolidation
-- 当前架构基线：`docs/architecture.md`（`Phase 15.1A` + `Phase 15.1B entry` priorities）
+- 当前架构基线：`docs/architecture.md`（`Phase 15.1A fix-1` + `Phase 15.1A exit / 15.1B entry` priorities）
 
 ## 当前目标（Execution Focus）
 
-1. 完成 Phase 15.1A 的收口验证（状态覆盖、最小窗口、全屏窗口、无基础回归）。
-2. 将后续实现重心转向 `Phase 15.1B`：Analysis View 产品化（不改 IA）。
-3. 继续推进结果导航效率与 provider hardening，保持在既有边界内。
+1. 完成 `Phase 15.1A fix-1` 的 Diff 验收（状态覆盖、最小窗口、全屏窗口、长行横向阅读、可复制、无基础回归）。
+2. 在视觉 smoke 通过后，再决定是否进入 `Phase 15.1B`：Analysis View 产品化（不改 IA）。
+3. 保持结果导航效率与 provider hardening 在既有边界内，不提前扩 phase。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 的 Workspace shell 一致性、状态切换稳定性、可读性增强
-  - Analysis 展示产品化（限于现有 `File View` shell）
-  - 结果导航效率优化（仅限当前 IA）
-  - provider 可靠性控制（UI/`fc-ai` 层）
+  - `fc-ui-slint` 中 `File View / Diff` 的 shell 收口、状态面强化、基础阅读能力补足
+  - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
+  - `15.1A fix-1` 的视觉与交互验收
 - Out of Scope：
   - IA 重置（`App Bar + Sidebar + Workspace` 保持不变）
   - Tree explorer / compare-view dual mode
   - Compare View 新模式或目录树扩展
+  - `Phase 15.1B` Analysis 产品化与结构重排
   - 未经阶段决策的 phase logic 改写
   - 超出现有边界契约的 AI provider 架构扩展
 
@@ -64,20 +64,20 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - Phase 15.1A 自检与收口（Diff: no selection/loading/detailed/preview/unavailable）
+  - `Phase 15.1A fix-1` 自检与视觉验收（Diff: no selection/loading/detailed/preview/unavailable）
   - 确认文档契约与代码行为一致（`architecture.md` + `thread-context.md`）
 - Next：
-  - `Phase 15.1B` Analysis View 产品化（不扩展 schema，不改 Sidebar IA）
+  - 视觉验收通过后，进入 `Phase 15.1B` Analysis View 产品化（不扩展 schema，不改 Sidebar IA）
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
 - Later：
   - 承接 `docs/architecture.md` 中 deferred decisions 的 provider hardening 后续事项
 
 ## 已知风险与评审重点（Known Risks / Review Focus）
 
-1. 在 15.1B 推进时误改 15.1A 已收敛的 Diff shell contract。
-2. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
-3. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
-4. Provider Settings 生命周期回归（校验、持久化、modal 开关）。
+1. `Diff` header/state shell 在最小窗口与全屏窗口下出现密度或错位回归。
+2. 可选择文本与横向滚动引入交互回归（滚动冲突、长行裁切、内容无法复制）。
+3. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
+4. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
 
 ## 验证命令（Verification Commands）
 
