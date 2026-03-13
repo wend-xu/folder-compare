@@ -240,63 +240,6 @@ slint::slint! {
         }
     }
 
-    component WorkspaceStatePanel inherits Rectangle {
-        in property <string> title;
-        in property <string> body;
-        in property <string> tone: "neutral";
-        in property <bool> embedded: false;
-
-        border-width: root.embedded ? 0px : 1px;
-        border-radius: root.embedded ? 0px : 6px;
-        border-color: root.tone == "error"
-            ? #dec5c5
-            : (root.tone == "warn"
-                ? #e1d5c4
-                : (root.tone == "info"
-                    ? #c6d7ec
-                    : (root.tone == "success"
-                        ? #c4d7ca
-                        : #d7e0eb)));
-        background: root.tone == "error"
-            ? #fdf4f4
-            : (root.tone == "warn"
-                ? #fbf8f1
-                : (root.tone == "info"
-                    ? #f1f7fd
-                    : (root.tone == "success"
-                        ? #f3faf5
-                        : #f8fafd)));
-
-        VerticalLayout {
-            padding: root.embedded ? 18px : 12px;
-            spacing: root.embedded ? 6px : 4px;
-
-            Text {
-                text: root.title;
-                color: root.tone == "error"
-                    ? #8a2f2f
-                    : (root.tone == "warn"
-                        ? #7a5a2f
-                        : (root.tone == "info"
-                            ? #2e5579
-                            : (root.tone == "success"
-                                ? #2f6143
-                                : #4a5d70)));
-                font-size: 14px;
-                horizontal-stretch: 1;
-                wrap: word-wrap;
-            }
-
-            Text {
-                visible: root.body != "";
-                text: root.body;
-                color: #5f7083;
-                horizontal-stretch: 1;
-                wrap: word-wrap;
-            }
-        }
-    }
-
     component DiffStateShell inherits Rectangle {
         in property <string> state_label;
         in property <string> title;
@@ -458,6 +401,62 @@ slint::slint! {
         }
     }
 
+    component AnalysisSectionPanel inherits Rectangle {
+        in property <string> section_label;
+        in property <string> title;
+        in property <string> body;
+        in property <string> tone: "neutral";
+
+        border-width: 1px;
+        border-radius: 8px;
+        border-color: root.tone == "error"
+            ? #dfcccc
+            : (root.tone == "warn"
+                ? #dfd1bb
+                : (root.tone == "success"
+                    ? #d1dfd5
+                    : #dbe4ef));
+        background: root.tone == "error"
+            ? #fdf6f6
+            : (root.tone == "warn"
+                ? #fcf8f1
+                : (root.tone == "success"
+                    ? #f5fbf6
+                    : #ffffff));
+
+        VerticalLayout {
+            padding: 14px;
+            spacing: 8px;
+
+            Text {
+                text: root.section_label;
+                color: #708193;
+                font-size: 11px;
+                font-weight: 600;
+                horizontal-stretch: 1;
+            }
+
+            Text {
+                visible: root.title != "";
+                text: root.title;
+                color: #2f4a63;
+                font-size: 18px;
+                font-weight: 600;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+
+            Text {
+                visible: root.body != "";
+                text: root.body;
+                color: #4d6176;
+                font-size: 13px;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+    }
+
     component TextAction inherits Rectangle {
         in property <string> label;
         in property <bool> enabled: true;
@@ -578,6 +577,22 @@ slint::slint! {
         in-out property <string> analysis_api_key;
         in-out property <string> analysis_model;
         in property <string> analysis_timeout_text;
+        in property <string> analysis_state_label;
+        in property <string> analysis_state_token;
+        in property <string> analysis_state_tone;
+        in property <string> analysis_header_summary_text;
+        in property <string> analysis_technical_context_text;
+        in property <string> analysis_provider_status_label;
+        in property <string> analysis_provider_status_tone;
+        in property <string> analysis_state_title_text;
+        in property <string> analysis_state_body_text;
+        in property <string> analysis_state_note_text;
+        in property <string> analysis_summary_text;
+        in property <string> analysis_core_judgment_text;
+        in property <string> analysis_risk_label_text;
+        in property <string> analysis_risk_tone;
+        in property <string> analysis_risk_guidance_text;
+        in property <string> analysis_result_notes_text;
         in property <string> provider_settings_error_text;
         in-out property <int> workspace_tab: 0;
         in-out property <bool> compare_warnings_expanded: false;
@@ -1465,7 +1480,7 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: 70px;
+                                                height: 76px;
                                                 background: #f9fbfe;
                                                 Rectangle {
                                                     x: 0px;
@@ -1494,29 +1509,21 @@ slint::slint! {
                                                         HorizontalLayout {
                                                             spacing: 6px;
                                                             Text {
-                                                                text: "AI Analysis";
+                                                                text: "Analysis";
                                                                 color: #476077;
                                                                 font-size: 12px;
                                                                 vertical-alignment: center;
                                                             }
-                                                            Text {
-                                                                text: "Provider: " + root.analysis_provider_mode_text;
-                                                                color: #5f7184;
-                                                                font-size: 12px;
-                                                                vertical-alignment: center;
+                                                            StatusPill {
+                                                                label: root.analysis_state_label;
+                                                                tone: root.analysis_state_tone;
                                                             }
                                                             StatusPill {
-                                                                label: root.analysis_remote_mode
-                                                                    ? (root.analysis_remote_config_ready ? "remote-ready" : "remote-config")
-                                                                    : "local";
-                                                                tone: root.analysis_remote_mode
-                                                                    ? (root.analysis_remote_config_ready ? "info" : "warn")
-                                                                    : "neutral";
+                                                                label: root.analysis_provider_status_label;
+                                                                tone: root.analysis_provider_status_tone;
                                                             }
                                                             Text {
-                                                                text: root.has_selected_result
-                                                                    ? "Review the current diff context."
-                                                                    : "Choose a row from Results / Navigator.";
+                                                                text: root.analysis_header_summary_text;
                                                                 color: #5f7184;
                                                                 font-size: 12px;
                                                                 vertical-alignment: center;
@@ -1545,7 +1552,7 @@ slint::slint! {
                                             }
 
                                             Rectangle {
-                                                height: 32px;
+                                                height: 34px;
                                                 background: #f5f8fc;
                                                 Rectangle {
                                                     x: 0px;
@@ -1559,108 +1566,121 @@ slint::slint! {
                                                     padding: 7px;
                                                     spacing: 8px;
                                                     Text {
-                                                        text: "Timeout: " + root.analysis_timeout_text + "s. Use Provider Settings in App Bar to edit."
-                                                            + (root.analysis_remote_mode
-                                                                ? ""
-                                                                : " Mock provider remains available for local review.");
+                                                        text: root.analysis_technical_context_text;
                                                         color: #617285;
                                                         font-size: 12px;
                                                         vertical-alignment: center;
                                                         horizontal-stretch: 1;
                                                         overflow: elide;
                                                     }
-                                                    StatusPill {
-                                                        label: !root.has_selected_result
-                                                            ? "select-file"
-                                                            : (root.analysis_loading
-                                                                ? "analyzing"
-                                                                : (root.analysis_error_text != ""
-                                                                    ? "failed"
-                                                                    : (root.analysis_has_result ? "ready" : "idle")));
-                                                        tone: !root.has_selected_result
-                                                            ? "neutral"
-                                                            : (root.analysis_loading
-                                                                ? "info"
-                                                                : (root.analysis_error_text != ""
-                                                                    ? "error"
-                                                                    : (root.analysis_has_result ? "success" : "neutral")));
+                                                    Text {
+                                                        text: "Use Provider Settings in App Bar to edit.";
+                                                        color: #7b8a99;
+                                                        font-size: 11px;
+                                                        vertical-alignment: center;
                                                     }
                                                 }
                                             }
 
-                                            if !root.has_selected_result : WorkspaceStatePanel {
+                                            if root.analysis_state_token != "success" : DiffStateShell {
                                                 vertical-stretch: 1;
                                                 embedded: true;
-                                                title: "No file selected";
-                                                body: "Select one row in Results / Navigator before running analysis.";
-                                                tone: "neutral";
+                                                state_label: root.analysis_state_label;
+                                                title: root.analysis_state_title_text;
+                                                body: root.analysis_state_body_text;
+                                                note: root.analysis_state_note_text;
+                                                tone: root.analysis_state_tone;
                                             }
 
-                                            if root.has_selected_result && root.analysis_loading : WorkspaceStatePanel {
+                                            if root.analysis_state_token == "success" : Rectangle {
                                                 vertical-stretch: 1;
-                                                embedded: true;
-                                                title: "Analysis running";
-                                                body: "AI provider is reviewing the current diff context.";
-                                                tone: "info";
-                                            }
-
-                                            if root.has_selected_result && !root.analysis_loading && !root.analysis_has_result && root.analysis_error_text == "" : WorkspaceStatePanel {
-                                                vertical-stretch: 1;
-                                                embedded: true;
-                                                title: "Analysis not started";
-                                                body: root.analysis_hint_text != "" ? root.analysis_hint_text : "Load detailed diff first, then click Analyze.";
-                                                tone: "neutral";
-                                            }
-
-                                            if root.has_selected_result && !root.analysis_loading && root.analysis_error_text != "" : WorkspaceStatePanel {
-                                                vertical-stretch: 1;
-                                                embedded: true;
-                                                title: "Analysis failed";
-                                                body: root.analysis_error_text;
-                                                tone: "error";
-                                            }
-
-                                            if root.has_selected_result && !root.analysis_loading && root.analysis_has_result && root.analysis_error_text == "" : Rectangle {
-                                                vertical-stretch: 1;
-                                                background: #ffffff;
-                                                ScrollView {
+                                                background: #fcfdff;
+                                                analysis_success_scroll := ScrollView {
                                                     vertical-stretch: 1;
-                                                    VerticalLayout {
-                                                        padding: 14px;
-                                                        spacing: 8px;
-                                                        Text {
-                                                            text: root.analysis_title_text;
-                                                            color: #2d4f6f;
-                                                            wrap: word-wrap;
-                                                            horizontal-stretch: 1;
-                                                        }
-                                                        Text {
-                                                            visible: root.analysis_risk_level_text != "";
-                                                            text: "Risk Level: " + root.analysis_risk_level_text;
-                                                            color: #4c6174;
-                                                            wrap: word-wrap;
-                                                            horizontal-stretch: 1;
-                                                        }
-                                                        Text {
-                                                            visible: root.analysis_rationale_text != "";
-                                                            text: root.analysis_rationale_text;
-                                                            color: #3f4f60;
-                                                            wrap: word-wrap;
-                                                            horizontal-stretch: 1;
-                                                        }
-                                                        Text {
-                                                            visible: root.analysis_key_points_text != "";
-                                                            text: "Key Points:\n" + root.analysis_key_points_text;
-                                                            color: #3f4f60;
-                                                            wrap: word-wrap;
-                                                            horizontal-stretch: 1;
-                                                        }
-                                                        Text {
-                                                            visible: root.analysis_review_suggestions_text != "";
-                                                            text: "Review Suggestions:\n" + root.analysis_review_suggestions_text;
-                                                            color: #3f4f60;
-                                                            wrap: word-wrap;
-                                                            horizontal-stretch: 1;
+                                                    viewport := Rectangle {
+                                                        width: max(analysis_success_scroll.width, success_column.width + 32px);
+                                                        height: success_column.preferred-height + 32px;
+
+                                                        success_column := VerticalLayout {
+                                                            x: 16px;
+                                                            y: 16px;
+                                                            width: max(0px, min(analysis_success_scroll.width - 32px, 760px));
+                                                            spacing: 12px;
+
+                                                            AnalysisSectionPanel {
+                                                                section_label: "Summary";
+                                                                title: root.analysis_title_text != "" ? root.analysis_title_text : "Analysis Summary";
+                                                                body: root.analysis_summary_text;
+                                                            }
+
+                                                            Rectangle {
+                                                                border-width: 1px;
+                                                                border-radius: 8px;
+                                                                border-color: root.analysis_risk_tone == "error"
+                                                                    ? #dfcccc
+                                                                    : (root.analysis_risk_tone == "warn"
+                                                                        ? #dfd1bb
+                                                                        : (root.analysis_risk_tone == "success"
+                                                                            ? #d1dfd5
+                                                                            : #dbe4ef));
+                                                                background: root.analysis_risk_tone == "error"
+                                                                    ? #fdf6f6
+                                                                    : (root.analysis_risk_tone == "warn"
+                                                                        ? #fcf8f1
+                                                                        : (root.analysis_risk_tone == "success"
+                                                                            ? #f5fbf6
+                                                                            : #ffffff));
+
+                                                                VerticalLayout {
+                                                                    padding: 14px;
+                                                                    spacing: 8px;
+
+                                                                    Text {
+                                                                        text: "Risk Level";
+                                                                        color: #708193;
+                                                                        font-size: 11px;
+                                                                        font-weight: 600;
+                                                                        horizontal-stretch: 1;
+                                                                    }
+
+                                                                    StatusPill {
+                                                                        label: root.analysis_risk_label_text;
+                                                                        tone: root.analysis_risk_tone;
+                                                                    }
+
+                                                                    Text {
+                                                                        text: root.analysis_risk_guidance_text;
+                                                                        color: #4d6176;
+                                                                        font-size: 13px;
+                                                                        wrap: word-wrap;
+                                                                        horizontal-stretch: 1;
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            AnalysisSectionPanel {
+                                                                section_label: "Core Judgment";
+                                                                body: root.analysis_core_judgment_text;
+                                                            }
+
+                                                            AnalysisSectionPanel {
+                                                                visible: root.analysis_key_points_text != "";
+                                                                section_label: "Key Points";
+                                                                body: root.analysis_key_points_text;
+                                                            }
+
+                                                            AnalysisSectionPanel {
+                                                                visible: root.analysis_review_suggestions_text != "";
+                                                                section_label: "Review Suggestions";
+                                                                body: root.analysis_review_suggestions_text;
+                                                            }
+
+                                                            AnalysisSectionPanel {
+                                                                visible: root.analysis_result_notes_text != "";
+                                                                section_label: "Notes";
+                                                                body: root.analysis_result_notes_text;
+                                                                tone: "warn";
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -2022,6 +2042,22 @@ fn sync_window_state(
     window.set_analysis_api_key(state.analysis_openai_api_key.clone().into());
     window.set_analysis_model(state.analysis_openai_model.clone().into());
     window.set_analysis_timeout_text(state.analysis_timeout_text().into());
+    window.set_analysis_state_label(state.analysis_state_label().into());
+    window.set_analysis_state_token(state.analysis_state_token().into());
+    window.set_analysis_state_tone(state.analysis_state_tone().into());
+    window.set_analysis_header_summary_text(state.analysis_header_summary_text().into());
+    window.set_analysis_technical_context_text(state.analysis_technical_context_text().into());
+    window.set_analysis_provider_status_label(state.analysis_provider_status_label().into());
+    window.set_analysis_provider_status_tone(state.analysis_provider_status_tone().into());
+    window.set_analysis_state_title_text(state.analysis_state_title_text().into());
+    window.set_analysis_state_body_text(state.analysis_state_body_text().into());
+    window.set_analysis_state_note_text(state.analysis_state_note_text().into());
+    window.set_analysis_summary_text(state.analysis_summary_text().into());
+    window.set_analysis_core_judgment_text(state.analysis_core_judgment_text().into());
+    window.set_analysis_risk_label_text(state.analysis_risk_label_text().into());
+    window.set_analysis_risk_tone(state.analysis_risk_tone().into());
+    window.set_analysis_risk_guidance_text(state.analysis_risk_guidance_text().into());
+    window.set_analysis_result_notes_text(state.analysis_result_notes_text().into());
     window.set_provider_settings_error_text(state.provider_settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     window.set_selected_row_status(state.selected_row_status_text().into());

@@ -26,6 +26,21 @@ pub enum DiffShellState {
     Error,
 }
 
+/// Analysis tab shell state for unified status rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnalysisPanelState {
+    /// No row selected in Results / Navigator.
+    NoSelection,
+    /// One row is selected, but no analysis result is available yet.
+    NotStarted,
+    /// AI analysis is currently running.
+    Loading,
+    /// AI analysis failed in the current session.
+    Error,
+    /// Structured analysis result is ready.
+    Success,
+}
+
 /// In-memory UI state for compare workflow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppState {
@@ -735,6 +750,229 @@ impl AppState {
         self.analysis_result = None;
     }
 
+    /// Returns normalized Analysis panel state for header and body rendering.
+    pub fn analysis_panel_state(&self) -> AnalysisPanelState {
+        if self.selected_row.is_none() {
+            return AnalysisPanelState::NoSelection;
+        }
+        if self.analysis_loading {
+            return AnalysisPanelState::Loading;
+        }
+        if self
+            .analysis_error_message
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return AnalysisPanelState::Error;
+        }
+        if self.analysis_result.is_some() {
+            return AnalysisPanelState::Success;
+        }
+        AnalysisPanelState::NotStarted
+    }
+
+    /// Returns short state badge text for Analysis shell.
+    pub fn analysis_state_label(&self) -> String {
+        match self.analysis_panel_state() {
+            AnalysisPanelState::NoSelection => "No Selection".to_string(),
+            AnalysisPanelState::NotStarted => "Not Started".to_string(),
+            AnalysisPanelState::Loading => "Analyzing".to_string(),
+            AnalysisPanelState::Error => "Failed".to_string(),
+            AnalysisPanelState::Success => "Ready".to_string(),
+        }
+    }
+
+    /// Returns stable token for Analysis shell state branching in UI layer.
+    pub fn analysis_state_token(&self) -> String {
+        match self.analysis_panel_state() {
+            AnalysisPanelState::NoSelection => "no-selection".to_string(),
+            AnalysisPanelState::NotStarted => "not-started".to_string(),
+            AnalysisPanelState::Loading => "loading".to_string(),
+            AnalysisPanelState::Error => "error".to_string(),
+            AnalysisPanelState::Success => "success".to_string(),
+        }
+    }
+
+    /// Returns tone for Analysis shell state surfaces.
+    pub fn analysis_state_tone(&self) -> String {
+        match self.analysis_panel_state() {
+            AnalysisPanelState::NoSelection => "neutral".to_string(),
+            AnalysisPanelState::Loading => "info".to_string(),
+            AnalysisPanelState::Error => "error".to_string(),
+            AnalysisPanelState::Success => "success".to_string(),
+            AnalysisPanelState::NotStarted => {
+                if self.analysis_can_start_now() {
+                    "neutral".to_string()
+                } else {
+                    "warn".to_string()
+                }
+            }
+        }
+    }
+
+    /// Returns compact header summary text for Analysis shell.
+    pub fn analysis_header_summary_text(&self) -> String {
+        match self.analysis_panel_state() {
+            AnalysisPanelState::NoSelection => {
+                "Choose one changed text file from Results / Navigator.".to_string()
+            }
+            AnalysisPanelState::NotStarted => {
+                if self.analysis_can_start_now() {
+                    "Diff context is ready. Run Analyze to generate a review conclusion."
+                        .to_string()
+                } else if !self.analysis_hint_text().trim().is_empty() {
+                    abbreviate_middle(&self.analysis_hint_text(), 116, 88, 22)
+                } else {
+                    "Analysis is not ready for this selection yet.".to_string()
+                }
+            }
+            AnalysisPanelState::Loading => {
+                "Building a structured review conclusion for the selected diff.".to_string()
+            }
+            AnalysisPanelState::Error => {
+                "The last analysis did not complete for the current file.".to_string()
+            }
+            AnalysisPanelState::Success => self.analysis_summary_text(),
+        }
+    }
+
+    /// Returns weak technical context text for Analysis header/helper strip.
+    pub fn analysis_technical_context_text(&self) -> String {
+        let mut parts = vec![
+            format!("Provider {}", self.analysis_provider_mode_text()),
+            if self.analysis_remote_mode() {
+                if self.analysis_remote_config_ready() {
+                    "remote ready".to_string()
+                } else {
+                    "remote config incomplete".to_string()
+                }
+            } else {
+                "local deterministic".to_string()
+            },
+            format!("timeout {}s", self.analysis_timeout_text()),
+        ];
+
+        if self.diff_truncated {
+            parts.push("diff context truncated".to_string());
+        }
+
+        if let Some(warning) = self
+            .diff_warning
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            parts.push(abbreviate_middle(warning, 96, 72, 18));
+        }
+
+        parts.join(" · ")
+    }
+
+    /// Returns provider readiness badge label for Analysis header.
+    pub fn analysis_provider_status_label(&self) -> String {
+        if self.analysis_remote_mode() {
+            if self.analysis_remote_config_ready() {
+                "remote ready".to_string()
+            } else {
+                "remote config".to_string()
+            }
+        } else {
+            "local mock".to_string()
+        }
+    }
+
+    /// Returns provider readiness badge tone for Analysis header.
+    pub fn analysis_provider_status_tone(&self) -> String {
+        if self.analysis_remote_mode() {
+            if self.analysis_remote_config_ready() {
+                "info".to_string()
+            } else {
+                "warn".to_string()
+            }
+        } else {
+            "neutral".to_string()
+        }
+    }
+
+    /// Returns state surface title for Analysis mode.
+    pub fn analysis_state_title_text(&self) -> String {
+        match self.analysis_panel_state() {
+            AnalysisPanelState::NoSelection => "No file selected".to_string(),
+            AnalysisPanelState::NotStarted => {
+                if self.analysis_can_start_now() {
+                    "Analysis ready to start".to_string()
+                } else if self.analysis_available {
+                    "Analysis is waiting for diff context".to_string()
+                } else {
+                    "Analysis is not ready yet".to_string()
+                }
+            }
+            AnalysisPanelState::Loading => "Analysis in progress".to_string(),
+            AnalysisPanelState::Error => "Analysis failed".to_string(),
+            AnalysisPanelState::Success => "Review conclusion ready".to_string(),
+        }
+    }
+
+    /// Returns state surface body text for Analysis mode.
+    pub fn analysis_state_body_text(&self) -> String {
+        match self.analysis_panel_state() {
+            AnalysisPanelState::NoSelection => {
+                "Select one row in Results / Navigator to open the file-level Analysis view."
+                    .to_string()
+            }
+            AnalysisPanelState::NotStarted => {
+                if self.analysis_can_start_now() {
+                    "The selected file already has reviewable diff context. Run Analyze when you want a structured risk review."
+                        .to_string()
+                } else if !self.analysis_hint_text().trim().is_empty() {
+                    self.analysis_hint_text()
+                } else {
+                    "Prepare detailed diff context before requesting analysis.".to_string()
+                }
+            }
+            AnalysisPanelState::Loading => {
+                "The provider is reviewing the current diff context and assembling summary, risk, and next-step guidance."
+                    .to_string()
+            }
+            AnalysisPanelState::Error => {
+                "A review conclusion could not be generated for the current diff context in this session."
+                    .to_string()
+            }
+            AnalysisPanelState::Success => {
+                "Summary, risk level, key points, and review suggestions are ready below."
+                    .to_string()
+            }
+        }
+    }
+
+    /// Returns optional secondary note text for Analysis state surface.
+    pub fn analysis_state_note_text(&self) -> String {
+        match self.analysis_panel_state() {
+            AnalysisPanelState::NoSelection => {
+                "Analysis only runs for changed text files with loadable diff context."
+                    .to_string()
+            }
+            AnalysisPanelState::NotStarted => {
+                if self.analysis_can_start_now() {
+                    self.analysis_technical_context_text()
+                } else if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
+                    "Complete endpoint, API key, and model in Provider Settings before using the remote provider."
+                        .to_string()
+                } else {
+                    self.analysis_technical_context_text()
+                }
+            }
+            AnalysisPanelState::Loading => self.analysis_technical_context_text(),
+            AnalysisPanelState::Error => self
+                .analysis_error_message
+                .as_ref()
+                .map(|value| abbreviate_middle(value.trim(), 220, 168, 40))
+                .unwrap_or_else(|| self.analysis_technical_context_text()),
+            AnalysisPanelState::Success => self.analysis_result_notes_text(),
+        }
+    }
+
     /// Returns AI analysis hint text for UI rendering.
     pub fn analysis_hint_text(&self) -> String {
         self.analysis_hint.clone().unwrap_or_default()
@@ -780,6 +1018,91 @@ impl AppState {
             .unwrap_or_default()
     }
 
+    /// Returns summary excerpt for Analysis success content.
+    pub fn analysis_summary_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| {
+                let title = result.title.trim();
+                let rationale = result.rationale.trim();
+                if !rationale.is_empty() {
+                    sentence_excerpt(rationale, 168)
+                } else if !title.is_empty() {
+                    title.to_string()
+                } else {
+                    "Review summary unavailable.".to_string()
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// Returns primary assessment text for Analysis success content.
+    pub fn analysis_core_judgment_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| {
+                let rationale = result.rationale.trim();
+                if !rationale.is_empty() {
+                    rationale.to_string()
+                } else {
+                    "No core judgment was returned for this analysis.".to_string()
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// Returns risk badge label for Analysis success content.
+    pub fn analysis_risk_label_text(&self) -> String {
+        self.analysis_result
+            .as_ref()
+            .map(|result| format!("{} risk", title_case_token(&result.risk_level)))
+            .unwrap_or_default()
+    }
+
+    /// Returns risk badge tone for Analysis success content.
+    pub fn analysis_risk_tone(&self) -> String {
+        match self.analysis_risk_level_text().as_str() {
+            "high" => "error".to_string(),
+            "medium" => "warn".to_string(),
+            "low" => "success".to_string(),
+            _ => "neutral".to_string(),
+        }
+    }
+
+    /// Returns short risk guidance text for Analysis success content.
+    pub fn analysis_risk_guidance_text(&self) -> String {
+        match self.analysis_risk_level_text().as_str() {
+            "high" => "Prioritize a careful review before merging.".to_string(),
+            "medium" => "Review the changed logic paths and edge cases closely.".to_string(),
+            "low" => "No immediate high-risk signal surfaced from the current diff context."
+                .to_string(),
+            _ => "Risk signal unavailable for this analysis.".to_string(),
+        }
+    }
+
+    /// Returns notes/annotations block for Analysis success content.
+    pub fn analysis_result_notes_text(&self) -> String {
+        let mut notes = Vec::new();
+        if self.diff_truncated {
+            notes.push("The analysis was generated from truncated diff context.".to_string());
+        }
+        if let Some(warning) = self
+            .diff_warning
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            notes.push(warning.to_string());
+        }
+        if notes.is_empty() && !self.analysis_remote_mode() && self.analysis_result.is_some() {
+            notes.push(
+                "This result came from the deterministic mock provider for local review."
+                    .to_string(),
+            );
+        }
+        notes.join("\n")
+    }
+
     /// Returns human-readable AI provider mode.
     pub fn analysis_provider_mode_text(&self) -> String {
         match self.analysis_provider_kind {
@@ -821,6 +1144,14 @@ impl AppState {
         config.openai_model = normalize_optional_text(&self.analysis_openai_model);
         config.request_timeout_secs = self.analysis_request_timeout_secs.max(1);
         config
+    }
+
+    fn analysis_can_start_now(&self) -> bool {
+        self.selected_row.is_some()
+            && self.analysis_available
+            && !self.diff_loading
+            && self.selected_diff.is_some()
+            && (!self.analysis_remote_mode() || self.analysis_remote_config_ready())
     }
 }
 
@@ -876,6 +1207,40 @@ fn normalize_optional_text(raw: &str) -> Option<String> {
         None
     } else {
         Some(value.to_string())
+    }
+}
+
+fn sentence_excerpt(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let mut boundary = None;
+    for (idx, ch) in trimmed.char_indices() {
+        if matches!(ch, '.' | '!' | '?' | '。' | '！' | '？') {
+            boundary = Some(idx + ch.len_utf8());
+            break;
+        }
+    }
+
+    let excerpt = boundary
+        .map(|idx| trimmed[..idx].trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(trimmed);
+
+    if excerpt.chars().count() <= max_chars {
+        excerpt.to_string()
+    } else {
+        abbreviate_middle(excerpt, max_chars, max_chars.saturating_sub(20), 18)
+    }
+}
+
+fn title_case_token(token: &str) -> String {
+    let mut chars = token.chars();
+    match chars.next() {
+        Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+        None => String::new(),
     }
 }
 
@@ -1238,6 +1603,58 @@ mod tests {
         assert!(!state.analysis_loading);
         assert!(state.analysis_error_message.is_none());
         assert!(state.analysis_result.is_none());
+    }
+
+    #[test]
+    fn analysis_panel_state_distinguishes_no_selection_not_started_and_success() {
+        let mut state = AppState::default();
+        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::NoSelection);
+
+        state.selected_row = Some(0);
+        state.entry_rows = sample_rows();
+        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::NotStarted);
+
+        state.analysis_available = true;
+        state.selected_diff = Some(sample_preview_panel("preview", "line"));
+        assert_eq!(state.analysis_state_title_text(), "Analysis ready to start");
+
+        state.analysis_result = Some(AnalysisResultViewModel {
+            title: "Risk review for src/main.rs".to_string(),
+            risk_level: "medium".to_string(),
+            rationale: "The change touches branching logic and should be reviewed carefully."
+                .to_string(),
+            key_points: vec!["Branching changed".to_string()],
+            review_suggestions: vec!["Add coverage".to_string()],
+        });
+        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::Success);
+    }
+
+    #[test]
+    fn analysis_result_notes_include_truncation_and_warning() {
+        let state = AppState {
+            selected_row: Some(0),
+            entry_rows: sample_rows(),
+            analysis_result: Some(AnalysisResultViewModel {
+                title: "Risk review".to_string(),
+                risk_level: "high".to_string(),
+                rationale: "This change updates error handling. It also introduces unwrap."
+                    .to_string(),
+                key_points: vec!["unwrap added".to_string()],
+                review_suggestions: vec!["Check panic paths".to_string()],
+            }),
+            diff_truncated: true,
+            diff_warning: Some("input excerpt trimmed to fit provider limit".to_string()),
+            ..AppState::default()
+        };
+
+        assert_eq!(state.analysis_risk_tone(), "error");
+        assert!(state.analysis_summary_text().starts_with("This change updates"));
+        assert!(state
+            .analysis_result_notes_text()
+            .contains("truncated diff context"));
+        assert!(state
+            .analysis_result_notes_text()
+            .contains("input excerpt trimmed"));
     }
 
     #[test]

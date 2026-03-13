@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.1A fix-3)
+# Folder Compare Architecture (Phase 1-15.1B)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.1A fix-3)
+## `fc-ui-slint` current architecture snapshot (Phase 15.1B)
 
 ### IA and layout contract
 
@@ -132,7 +132,21 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `no-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`;
   - `detailed-ready|preview-ready` can still use shell fallback for empty line payloads.
 - `DiffStateShell` is the unified container for non-renderable states in Diff mode and now fills the detail region as a formal state surface rather than a centered card.
-- Analysis mode now shares the same outer workbench surface and connected tab chrome as Diff; its header/helper/body live inside the accepted workbench shell while `WorkspaceStatePanel` remains the body-state surface for empty/loading/error.
+- Analysis mode now shares the same outer workbench surface and connected tab chrome as Diff, but it has its own explicit product state machine:
+  - `no-selection -> not-started -> loading -> error|success`;
+  - `No Selection` and `Not Started` are distinct product states, not one empty placeholder.
+- Analysis header now stays compact and shell-aligned:
+  - primary: selected relative path remains the dominant line;
+  - compact meta row: `Analysis` label + state badge + weak provider-readiness badge + one-line summary;
+  - helper strip keeps provider/readiness/timeout/truncation as weak technical context rather than the primary message.
+- Analysis success content is now a structured review-conclusion panel instead of raw text stacking:
+  - `Summary`;
+  - `Risk Level`;
+  - `Core Judgment`;
+  - `Key Points`;
+  - `Review Suggestions`;
+  - `Notes` for truncation/warning/mock-provider caveats.
+- Analysis non-success states now reuse the same embedded `DiffStateShell` visual grammar as Diff, so shell hierarchy stays consistent without reintroducing detached cards.
 - Workspace shell visual grammar is now part of the contract: tabs have no inter-tab gap, selected tab fill aligns with header surfaces, lower tab edges are straight, and tab/panel seam lines must remain continuous without detached pill styling.
 - Neutral `no-selection` shell indicators stay within the cool workspace palette rather than using a warm generic neutral badge.
 - Single-side preview remains first-class:
@@ -149,6 +163,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`);
   - fixed left-side line numbers remain deferred in this phase.
 - `can_load_diff = false` and preview capability boundaries map to explicit `unavailable` (not generic failure).
+- No new AI schema, sidebar IA, compare mode, or task orchestration layer was added for `15.1B`; the productization remains presentation/state-derivation only.
 
 ### Provider settings and persistence contract
 
@@ -175,7 +190,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No AI schema/provider capability expansion beyond UI-state orchestration.
 - No deep Compare Status details expansion beyond summary-first intent.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.1A fix-3)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.1B)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -193,8 +208,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - fix-1 tightened the Diff header, strengthened shell-state emphasis, and added selectable + horizontally scrollable line content for long-line review.
   - fix-2 stabilized header cadence, turned `DiffStateShell` into a detail-surface state panel, and added row-copy + scrollbar-safe affordances for long-line review.
   - fix-3 collapsed Diff detail into one workbench panel, moved copy fallback to double-click line-number hotspots with clearer transient feedback, decoupled the vertical scrollbar from horizontal scroll position, and completed the final visual convergence pass for connected workspace tabs / seam repair / neutral `No Selection` shell tone.
+- 15.1B:
+  - productized Analysis View inside the accepted File View shell instead of treating it as a raw AI text dump;
+  - introduced an explicit five-state Analysis surface with separate `No Selection` and `Not Started` semantics;
+  - rebalanced provider/readiness/timeout into weak helper context while promoting summary/risk/judgment/suggestions to the primary reading flow;
+  - kept Diff shell, sidebar IA, and AI response schema unchanged.
 
-## Deferred architecture decisions (after Phase 15.1A fix-3)
+## Deferred architecture decisions (after Phase 15.1B)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -211,14 +231,14 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (Phase 15.1A fix-3 exit / 15.1B entry)
+## Next implementation priority (after Phase 15.1B first-round productization)
 
-1. Enter `Phase 15.1B` and productize Analysis View within the accepted File View shell contract.
-   - acceptance: Analysis reaches the same hierarchy/readability maturity as Diff without re-splitting the workbench surface or regressing the connected tab shell.
-2. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
+1. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
-3. Carry forward provider hardening deferred items only within the existing boundaries.
+2. Carry forward provider hardening deferred items only within the existing boundaries.
    - acceptance: reliability hardening does not expand IA, schema, or workspace mode count ahead of need.
+3. Only do lightweight Analysis polish if runtime smoke exposes density or geometry regressions.
+   - acceptance: fixes stay within the current shell contract and do not reopen Diff-shell or IA redesign.
 
 ## Documentation update contract (mandatory)
 
