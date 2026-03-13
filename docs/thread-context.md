@@ -6,38 +6,39 @@
 
 ## 本次初始化说明（2026-03-13）
 
-- 改了什么：在 `Phase 15.1A fix-2` 基础上完成 `fix-3`，把 `Diff` detail 收口为单一 workbench 面板，改成双击行号/`@@` 复制整行的轻量交互，并把垂直滚动承载切回 `ListView` 本体以修复“只有横向滚到最右才看见垂直滚动条”的问题；同步更新 `docs/architecture.md` 与 deferred decisions。
-- 为什么影响下一线程：下一线程不应再以 `fix-2` 的“可用但仍偏临时”的 Diff 形态为基线；应先按 `fix-3` 结果做最终视觉 smoke，再决定是否正式切入 `Phase 15.1B`。
-- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；本轮仍未进入 `15.1B`；未引入 tree mode；`fc-core/fc-ai/fc-ui-slint` 边界不变。
+- 改了什么：将既有 `Diff` workbench 收口、`ListView` 纵向滚动承载修正、双击行号/`@@` 复制整行与短暂复制反馈，以及本线程的 connected tabs / seam / neutral shell tone 视觉收敛，一并合并记为 `Phase 15.1A fix-3` 的完整收口；`Diff / Analysis` 顶部 tabs 与下方主工作面融合度已达当前验收线。
+- 为什么影响下一线程：下一线程不应再把当前基线理解为“`15.1A fix-3` 待最终视觉 smoke”；应直接以已验收的 connected workbench shell 为 baseline，推进 `Phase 15.1B` 的 Analysis View 产品化。
+- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；未引入 tree mode；`fc-core/fc-ai/fc-ui-slint` 边界不变；`15.1B` 仍是下一阶段入口，不在本轮提前扩 phase。
 
 ## 快照（Snapshot）
 
 - 日期：2026-03-13（Asia/Shanghai）
 - 分支：`dev`
-- 工作区：有改动（`Phase 15.1A fix-3` 落地后，待最终视觉验收）
+- 工作区：有改动（`Phase 15.1A fix-3` 代码与文档同步，未 commit）
 - 最近提交：
   - `1703032` phase summary: add comments/refactor docs and add thread context
   - `6d528cd` Phase 15.1A：File View shell 收敛 + Diff View 深化
   - `3a723c4` Phase 15.0 fix-4 + fix-5 consolidation
-- 当前架构基线：`docs/architecture.md`（`Phase 15.1A fix-3` + `Phase 15.1A exit / 15.1B entry` priorities）
+- 当前架构基线：`docs/architecture.md`（`Phase 15.1A fix-3` + `15.1B` entry priorities）
 
 ## 当前目标（Execution Focus）
 
-1. 完成 `Phase 15.1A fix-3` 的 Diff 验收（主工作面归属、垂直滚动条稳定显现、长行横向阅读、低噪音复制反馈、最小窗口/全屏无基础回归）。
-2. 在视觉 smoke 通过后，再决定是否进入 `Phase 15.1B`：Analysis View 产品化（不改 IA）。
-3. 保持结果导航效率与 provider hardening 在既有边界内，不提前扩 phase。
+1. 以已验收的 `Phase 15.1A fix-3` connected workbench shell 为基线，推进 `Phase 15.1B`：Analysis View 产品化（不改 IA）。
+2. 保持当前 `Diff` workbench / connected tabs / neutral shell tone 语义不回退。
+3. 在既有边界内继续结果导航效率与 provider hardening 后续，不提前扩 IA 或 mode。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 中 `File View / Diff` 的 workbench 收口、状态面强化、滚动承载修正与低噪音复制保底能力补足
+  - `fc-ui-slint` 中 `15.1B` Analysis View 在当前 accepted shell 上的产品化
+  - 保持 `Diff / Analysis` connected workbench shell 的视觉与 contract 稳定
   - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
-  - `15.1A fix-3` 的视觉与交互验收
+  - 结果导航效率迭代（限定在当前 IA）
 - Out of Scope：
   - IA 重置（`App Bar + Sidebar + Workspace` 保持不变）
   - Tree explorer / compare-view dual mode
   - Compare View 新模式或目录树扩展
-  - `Phase 15.1B` Analysis 产品化与结构重排
+  - 已验收 `Diff` shell / tabs 收敛结果的无理由返工
   - 未经阶段决策的 phase logic 改写
   - 超出现有边界契约的 AI provider 架构扩展
 
@@ -46,7 +47,7 @@
 1. `fc-core` 必须保持确定性，并与 UI/网络/provider 关注点隔离。
 2. `fc-ai` 是可选解释层；即使关闭 AI，compare 输出也必须完整可用。
 3. `fc-ui-slint` 负责 orchestration/presentation，不承载 core 业务规则。
-4. Workspace 结构保持 `Tabs -> Header -> Content`，同一时刻仅一个主分支激活。
+4. Workspace 结构保持 `Tabs -> Header -> Content`，connected workspace tabs + attached workbench surface 是当前 accepted baseline，同一时刻仅一个主分支激活。
 5. Compare Status 保持 summary-first，不演化为重型第二详情面板。
 
 ## 开始前优先阅读文件（Key Files）
@@ -64,21 +65,22 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - `Phase 15.1A fix-3` 自检与视觉验收（Diff: workbench panel / no selection / loading / detailed / preview / unavailable）
-  - 确认文档契约与代码行为一致（`architecture.md` + `thread-context.md`）
+  - `Phase 15.1B` Analysis View 产品化（基于当前 accepted shell，不改 IA）
+  - 保持 `Diff / Analysis` tabs、workbench seam、neutral shell tone 不回退
 - Next：
-  - 视觉验收通过后，进入 `Phase 15.1B` Analysis View 产品化（不扩展 schema，不改 Sidebar IA）
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
+  - 继续文档与实现 contract 对齐
 - Later：
   - 承接 `docs/architecture.md` 中 deferred decisions 的 provider hardening 后续事项
 
 ## 已知风险与评审重点（Known Risks / Review Focus）
 
-1. `Diff` workbench 在最小窗口与全屏窗口下出现密度或错位回归。
-2. `ListView` 承担垂直滚动后，列头与内容横向同步可能出现错位或滚动条回归。
-3. 双击行号复制的 discoverability 与反馈时机如果处理不好，可能让复制保底能力“存在但不明显”。
-4. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
-5. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
+1. `15.1B` 期间不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
+2. Analysis header/helper/body 增长时，可能重新引入分离 panel 或密度失衡。
+3. `ListView` 承担垂直滚动后，列头与内容横向同步仍需持续关注回归。
+4. 双击行号复制的 discoverability 仍需保留，不要被后续 Analysis 工作误伤。
+5. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
+6. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
 
 ## 验证命令（Verification Commands）
 
@@ -99,8 +101,9 @@ cargo run -p fc-ui-slint
 建议新线程首条消息直接使用：
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
+> 以当前已验收的 `Phase 15.1A fix-3` connected workbench shell 为基线。  
 > 保持当前 IA 与 phase 边界。  
-> 先确认 `Phase 15.1A fix-3` 是否已经完成最终视觉验收，再决定是否进入 `15.1B`。  
+> 直接推进 `15.1B` Analysis View 产品化，不要回退 Diff/tabs 的视觉收口。  
 > 仅执行本次任务范围内改动，并说明对 contract 的影响。
 
 ## 更新契约（Mandatory）
