@@ -229,9 +229,10 @@ slint::slint! {
         in property <string> body;
         in property <string> note;
         in property <string> tone: "neutral";
+        in property <bool> embedded: false;
 
-        border-width: 1px;
-        border-radius: 6px;
+        border-width: root.embedded ? 0px : 1px;
+        border-radius: root.embedded ? 0px : 6px;
         border-color: root.panel_border;
         background: root.panel_background;
         clip: true;
@@ -406,32 +407,37 @@ slint::slint! {
         }
     }
 
-    component MiniActionChip inherits Rectangle {
+    component DiffCopyHotspot inherits Rectangle {
         in property <string> label;
-        in property <bool> enabled: true;
-        callback tapped();
+        in property <string> feedback_label;
+        in property <string> copy_value;
+        in property <bool> enabled: root.label != "";
+        in property <bool> align_center: false;
+        in property <color> text_color: #667789;
+        callback activated();
 
-        min-width: 40px;
-        height: 18px;
-        border-width: 1px;
+        property <bool> hovered: hotspot.has_hover && root.enabled;
+
         border-radius: 4px;
-        border-color: root.enabled ? #cbd8e7 : #d8dfe8;
-        background: root.enabled ? #f5f9fd : #f7f9fc;
-        opacity: root.enabled ? 1 : 0.55;
+        background: root.hovered ? #eaf1f9 : transparent;
         clip: true;
 
         Text {
             text: root.label;
-            color: #486178;
-            font-size: 11px;
-            horizontal-alignment: center;
+            width: parent.width;
+            height: parent.height;
+            color: root.label == ""
+                ? #a2aebb
+                : (root.hovered ? #2f5a83 : root.text_color);
+            horizontal-alignment: root.align_center ? center : right;
             vertical-alignment: center;
+            font-size: 12px;
         }
 
-        TouchArea {
+        hotspot := TouchArea {
             enabled: root.enabled;
-            clicked => {
-                root.tapped();
+            double-clicked => {
+                root.activated();
             }
         }
     }
@@ -535,7 +541,6 @@ slint::slint! {
             || root.diff_shell_state_token == "unavailable"
             || root.diff_shell_state_token == "error"
             || (root.diff_shell_ready && !root.diff_has_rows);
-        property <length> diff_copy_column_width: 48px;
         property <length> diff_number_column_width: 52px;
         property <length> diff_marker_column_width: 20px;
         property <length> diff_scrollbar_safe_inset: 18px;
@@ -546,7 +551,7 @@ slint::slint! {
         callback filter_changed(string);
         callback status_filter_changed(string);
         callback row_selected(int);
-        callback diff_line_copy_requested(string);
+        callback diff_line_copy_requested(string, string);
         callback analyze_clicked();
         callback analysis_provider_mock_selected();
         callback analysis_provider_openai_selected();
@@ -1086,9 +1091,7 @@ slint::slint! {
                             }
                         }
 
-                        // Contract: workspace context header.
-                        // Shows tab-specific summary/context; full tab body lives in the content region.
-                        Rectangle {
+                        if root.workspace_tab == 1 : Rectangle {
                             height: 70px;
                             background: #f9fbfd;
                             Rectangle {
@@ -1099,60 +1102,7 @@ slint::slint! {
                                 background: #dde5f0;
                             }
 
-                            if root.workspace_tab == 0 : VerticalLayout {
-                                padding: 8px;
-                                spacing: 2px;
-                                Rectangle {
-                                    height: 28px;
-                                    background: transparent;
-
-                                    Text {
-                                        text: root.selected_relative_path == "" ? "No file selected" : root.selected_relative_path;
-                                        color: root.selected_relative_path == "" ? #607286 : #294b6b;
-                                        font-size: 15px;
-                                        font-weight: 600;
-                                        width: parent.width;
-                                        height: parent.height;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                }
-                                Rectangle {
-                                    height: 18px;
-                                    background: transparent;
-
-                                    HorizontalLayout {
-                                        spacing: 6px;
-                                        if root.has_selected_result : StatusPill {
-                                            label: root.diff_mode_label;
-                                            tone: root.diff_mode_tone;
-                                        }
-                                        if root.has_selected_result : StatusPill {
-                                            label: root.diff_result_status_label;
-                                            tone: root.diff_result_status_tone;
-                                        }
-                                        if root.diff_shell_state_token == "loading"
-                                            || root.diff_shell_state_token == "unavailable"
-                                            || root.diff_shell_state_token == "error" : StatusPill {
-                                            label: root.diff_shell_state_label;
-                                            tone: root.diff_shell_state_tone;
-                                        }
-                                        Text {
-                                            text: root.diff_context_summary_text
-                                                + (root.diff_context_hint_text != ""
-                                                    ? (root.diff_context_summary_text != "" ? "  ·  " : "") + root.diff_context_hint_text
-                                                    : "");
-                                            color: #617285;
-                                            font-size: 12px;
-                                            vertical-alignment: center;
-                                            horizontal-stretch: 1;
-                                            overflow: elide;
-                                        }
-                                    }
-                                }
-                            }
-
-                            if root.workspace_tab == 1 : VerticalLayout {
+                            VerticalLayout {
                                 padding: 10px;
                                 spacing: 3px;
                                 Text {
@@ -1181,49 +1131,62 @@ slint::slint! {
 
                                 // Contract: Diff tab body.
                                 // Handles diff-state shell + line table rendering for selected row.
-                                if root.workspace_tab == 0 : VerticalLayout {
+                                if root.workspace_tab == 0 : Rectangle {
                                     vertical-stretch: 1;
-                                    spacing: 8px;
+                                    border-width: 1px;
+                                    border-color: #d7e0ec;
+                                    border-radius: 8px;
+                                    background: #fcfdff;
+                                    clip: true;
 
-                                    if root.diff_show_shell : DiffStateShell {
-                                        vertical-stretch: 1;
-                                        state_label: root.diff_shell_state_label;
-                                        tone: root.diff_shell_state_tone;
-                                        title: root.diff_shell_title_text;
-                                        body: root.diff_shell_body_text;
-                                        note: root.diff_shell_note_text;
-                                    }
+                                    VerticalLayout {
+                                        padding: 0px;
+                                        spacing: 0px;
 
-                                    if root.diff_shell_ready && root.diff_has_rows : Rectangle {
-                                        vertical-stretch: 1;
-                                        border-width: 1px;
-                                        border-color: #d7e0ec;
-                                        border-radius: 6px;
-                                        background: #fcfdff;
-                                        clip: true;
-
-                                        VerticalLayout {
-                                            padding: 0px;
-                                            spacing: 0px;
-
+                                        Rectangle {
+                                            height: 66px;
+                                            background: #f9fbfe;
                                             Rectangle {
-                                                height: 28px;
-                                                background: #f7fafd;
-                                                Rectangle {
-                                                    x: 0px;
-                                                    y: parent.height - 1px;
-                                                    width: parent.width;
-                                                    height: 1px;
-                                                    background: #dbe4ef;
+                                                x: 0px;
+                                                y: parent.height - 1px;
+                                                width: parent.width;
+                                                height: 1px;
+                                                background: #dde5f0;
+                                            }
+
+                                            VerticalLayout {
+                                                padding: 10px;
+                                                spacing: 4px;
+
+                                                Text {
+                                                    text: root.selected_relative_path == "" ? "No file selected" : root.selected_relative_path;
+                                                    color: root.selected_relative_path == "" ? #607286 : #294b6b;
+                                                    font-size: 16px;
+                                                    font-weight: 600;
+                                                    horizontal-stretch: 1;
+                                                    overflow: elide;
                                                 }
 
                                                 HorizontalLayout {
-                                                    padding: 6px;
-                                                    spacing: 8px;
+                                                    spacing: 6px;
+                                                    if root.has_selected_result : StatusPill {
+                                                        label: root.diff_mode_label;
+                                                        tone: root.diff_mode_tone;
+                                                    }
+                                                    if root.has_selected_result : StatusPill {
+                                                        label: root.diff_result_status_label;
+                                                        tone: root.diff_result_status_tone;
+                                                    }
+                                                    if root.diff_shell_state_token == "loading"
+                                                        || root.diff_shell_state_token == "unavailable"
+                                                        || root.diff_shell_state_token == "error" : StatusPill {
+                                                        label: root.diff_shell_state_label;
+                                                        tone: root.diff_shell_state_tone;
+                                                    }
                                                     Text {
-                                                        text: "Select text or use row copy."
-                                                            + (root.diff_content_char_capacity > 112
-                                                                ? " Long lines scroll horizontally."
+                                                        text: root.diff_context_summary_text
+                                                            + (root.diff_context_hint_text != ""
+                                                                ? (root.diff_context_summary_text != "" ? "  ·  " : "") + root.diff_context_hint_text
                                                                 : "");
                                                         color: #617285;
                                                         font-size: 12px;
@@ -1231,43 +1194,80 @@ slint::slint! {
                                                         horizontal-stretch: 1;
                                                         overflow: elide;
                                                     }
-                                                    Text {
-                                                        visible: root.diff_copy_feedback_text != "";
-                                                        text: root.diff_copy_feedback_text;
-                                                        color: root.diff_copy_feedback_text == "Copy failed"
-                                                            ? #8a2f2f
-                                                            : #2f6143;
-                                                        font-size: 12px;
-                                                        font-weight: 600;
-                                                        vertical-alignment: center;
-                                                    }
                                                 }
                                             }
+                                        }
 
-                                            diff_scroll := ScrollView {
-                                                vertical-stretch: 1;
-                                                property <length> table_width: max(
-                                                    self.visible-width,
-                                                    root.diff_copy_column_width
-                                                        + root.diff_number_column_width * 2
-                                                        + root.diff_marker_column_width
-                                                        + 128px
-                                                        + root.diff_content_char_capacity * 8px
-                                                );
-                                                viewport-width: self.table_width;
-                                                viewport-height: self.visible-height;
+                                        if root.diff_show_shell : DiffStateShell {
+                                            vertical-stretch: 1;
+                                            embedded: true;
+                                            state_label: root.diff_shell_state_label;
+                                            tone: root.diff_shell_state_tone;
+                                            title: root.diff_shell_title_text;
+                                            body: root.diff_shell_body_text;
+                                            note: root.diff_shell_note_text;
+                                        }
+
+                                        if root.diff_shell_ready && root.diff_has_rows : Rectangle {
+                                            vertical-stretch: 1;
+                                            background: #fcfdff;
+
+                                            VerticalLayout {
+                                                padding: 0px;
+                                                spacing: 0px;
 
                                                 Rectangle {
-                                                    width: diff_scroll.table_width;
-                                                    height: diff_scroll.visible-height;
-                                                    background: transparent;
+                                                    height: 32px;
+                                                    background: #f5f8fc;
+                                                    Rectangle {
+                                                        x: 0px;
+                                                        y: parent.height - 1px;
+                                                        width: parent.width;
+                                                        height: 1px;
+                                                        background: #dbe4ef;
+                                                    }
+
+                                                    HorizontalLayout {
+                                                        padding: 7px;
+                                                        spacing: 8px;
+                                                        Text {
+                                                            text: "Select text or double-click a line number to copy the full row."
+                                                                + (root.diff_content_char_capacity > 112
+                                                                    ? " Long lines scroll horizontally."
+                                                                    : "");
+                                                            color: #617285;
+                                                            font-size: 12px;
+                                                            vertical-alignment: center;
+                                                            horizontal-stretch: 1;
+                                                            overflow: elide;
+                                                        }
+                                                        if root.diff_copy_feedback_text != "" : StatusPill {
+                                                            label: root.diff_copy_feedback_text;
+                                                            tone: root.diff_copy_feedback_text == "Copy failed" ? "error" : "info";
+                                                        }
+                                                    }
+                                                }
+
+                                                diff_ready_surface := Rectangle {
+                                                    vertical-stretch: 1;
+                                                    background: #ffffff;
+                                                    clip: true;
+                                                    property <length> table_width: max(
+                                                        self.width,
+                                                        root.diff_number_column_width * 2
+                                                            + root.diff_marker_column_width
+                                                            + 160px
+                                                            + root.diff_content_char_capacity * 8px
+                                                    );
 
                                                     Rectangle {
                                                         x: 0px;
                                                         y: 0px;
                                                         width: parent.width;
                                                         height: 30px;
-                                                        background: #f5f8fc;
+                                                        background: #f7f9fc;
+                                                        clip: true;
+
                                                         Rectangle {
                                                             x: 0px;
                                                             y: parent.height - 1px;
@@ -1275,83 +1275,85 @@ slint::slint! {
                                                             height: 1px;
                                                             background: #dbe4ef;
                                                         }
-                                                        HorizontalLayout {
-                                                            padding: 5px;
-                                                            spacing: 0px;
-                                                            Text {
-                                                                text: "copy";
-                                                                width: root.diff_copy_column_width;
-                                                                horizontal-alignment: center;
-                                                                vertical-alignment: center;
-                                                                font-size: 11px;
-                                                                color: #6c7b8c;
-                                                            }
-                                                            Rectangle {
-                                                                width: 1px;
-                                                                height: parent.height - 6px;
-                                                                background: #dce5f0;
-                                                            }
-                                                            Text {
-                                                                text: root.diff_left_column_label;
-                                                                width: root.diff_number_column_width;
-                                                                horizontal-alignment: right;
-                                                                vertical-alignment: center;
-                                                                font-size: 12px;
-                                                                color: #667789;
-                                                            }
-                                                            Rectangle {
-                                                                width: 1px;
-                                                                height: parent.height - 6px;
-                                                                background: #dce5f0;
-                                                            }
-                                                            Text {
-                                                                text: root.diff_right_column_label;
-                                                                width: root.diff_number_column_width;
-                                                                horizontal-alignment: right;
-                                                                vertical-alignment: center;
-                                                                font-size: 12px;
-                                                                color: #667789;
-                                                            }
-                                                            Rectangle {
-                                                                width: 1px;
-                                                                height: parent.height - 6px;
-                                                                background: #dce5f0;
-                                                            }
-                                                            Text {
-                                                                text: " ";
-                                                                width: root.diff_marker_column_width;
-                                                            }
-                                                            Rectangle {
-                                                                width: 1px;
-                                                                height: parent.height - 6px;
-                                                                background: #dce5f0;
-                                                            }
-                                                            Text {
-                                                                text: "content";
-                                                                color: #667789;
-                                                                font-size: 12px;
-                                                                vertical-alignment: center;
-                                                                horizontal-stretch: 1;
+
+                                                        Rectangle {
+                                                            x: diff_rows.viewport-x;
+                                                            y: 0px;
+                                                            width: diff_ready_surface.table_width;
+                                                            height: parent.height;
+
+                                                            HorizontalLayout {
+                                                                padding: 5px;
+                                                                spacing: 0px;
+                                                                Text {
+                                                                    text: root.diff_left_column_label;
+                                                                    width: root.diff_number_column_width;
+                                                                    horizontal-alignment: right;
+                                                                    vertical-alignment: center;
+                                                                    font-size: 12px;
+                                                                    color: #667789;
+                                                                }
+                                                                Rectangle {
+                                                                    width: 1px;
+                                                                    height: parent.height - 6px;
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    text: root.diff_right_column_label;
+                                                                    width: root.diff_number_column_width;
+                                                                    horizontal-alignment: right;
+                                                                    vertical-alignment: center;
+                                                                    font-size: 12px;
+                                                                    color: #667789;
+                                                                }
+                                                                Rectangle {
+                                                                    width: 1px;
+                                                                    height: parent.height - 6px;
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    text: " ";
+                                                                    width: root.diff_marker_column_width;
+                                                                }
+                                                                Rectangle {
+                                                                    width: 1px;
+                                                                    height: parent.height - 6px;
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    text: "content";
+                                                                    color: #667789;
+                                                                    font-size: 12px;
+                                                                    vertical-alignment: center;
+                                                                    horizontal-stretch: 1;
+                                                                }
                                                             }
                                                         }
                                                     }
 
-                                                    ListView {
+                                                    diff_rows := ListView {
                                                         x: 0px;
                                                         y: 30px;
                                                         width: parent.width;
                                                         height: max(0px, parent.height - 30px - root.diff_scrollbar_safe_inset);
+                                                        viewport-width: diff_ready_surface.table_width;
                                                         for row_content[index] in root.diff_contents: row_line := Rectangle {
                                                             property <string> row_kind: root.diff_row_kinds[index];
                                                             property <bool> is_hunk: row_kind == "hunk";
                                                             property <bool> is_added: row_kind == "added";
                                                             property <bool> is_removed: row_kind == "removed";
-                                                            property <string> marker_text: row_line.is_hunk ? "" : root.diff_markers[index];
-                                                            property <string> copy_text: row_line.marker_text == "" || row_line.marker_text == " "
+                                                            property <string> marker_text: root.diff_markers[index];
+                                                            property <string> copy_text: row_line.is_hunk || row_line.marker_text == "" || row_line.marker_text == " "
                                                                 ? row_content
                                                                 : row_line.marker_text + " " + row_content;
-                                                            width: parent.width;
-                                                            height: row_line.is_hunk ? 29px : 25px;
+                                                            property <string> old_feedback_label: root.diff_old_line_nos[index] == ""
+                                                                ? ""
+                                                                : "Line " + root.diff_old_line_nos[index];
+                                                            property <string> new_feedback_label: root.diff_new_line_nos[index] == ""
+                                                                ? ""
+                                                                : "Line " + root.diff_new_line_nos[index];
+                                                            width: diff_ready_surface.table_width;
+                                                            height: row_line.is_hunk ? 30px : 26px;
                                                             background: row_line.is_hunk
                                                                 ? #ebf2fa
                                                                 : (row_line.is_added
@@ -1360,58 +1362,16 @@ slint::slint! {
                                                                         ? #fbf1f1
                                                                         : (Math.mod(index, 2) == 0 ? #fbfdff : #f8fbfe)));
 
-                                                            if row_line.is_hunk : HorizontalLayout {
+                                                            HorizontalLayout {
                                                                 spacing: 0px;
-                                                                Rectangle {
-                                                                    width: 4px;
+                                                                DiffCopyHotspot {
+                                                                    width: root.diff_number_column_width;
                                                                     height: parent.height;
-                                                                    background: #97b5d8;
-                                                                }
-                                                                Rectangle {
-                                                                    width: root.diff_copy_column_width;
-                                                                    height: parent.height;
-                                                                    background: transparent;
-
-                                                                    MiniActionChip {
-                                                                        x: 4px;
-                                                                        y: (parent.height - self.height) / 2;
-                                                                        label: "copy";
-                                                                        tapped => {
-                                                                            root.diff_line_copy_requested(row_content);
-                                                                        }
-                                                                    }
-                                                                }
-                                                                Text {
-                                                                    text: "hunk";
-                                                                    width: 48px;
-                                                                    color: #536a83;
-                                                                    font-size: 12px;
-                                                                    vertical-alignment: center;
-                                                                    horizontal-alignment: center;
-                                                                }
-                                                                SelectableDiffText {
-                                                                    value: row_content;
-                                                                    foreground: #2f5376;
-                                                                    font_weight: 600;
-                                                                    content_padding: 8px;
-                                                                    horizontal-stretch: 1;
-                                                                }
-                                                            }
-
-                                                            if !row_line.is_hunk : HorizontalLayout {
-                                                                spacing: 0px;
-                                                                Rectangle {
-                                                                    width: root.diff_copy_column_width;
-                                                                    height: parent.height;
-                                                                    background: transparent;
-
-                                                                    MiniActionChip {
-                                                                        x: 4px;
-                                                                        y: (parent.height - self.height) / 2;
-                                                                        label: "copy";
-                                                                        tapped => {
-                                                                            root.diff_line_copy_requested(row_line.copy_text);
-                                                                        }
+                                                                    label: row_line.is_hunk ? "" : root.diff_old_line_nos[index];
+                                                                    feedback_label: row_line.old_feedback_label;
+                                                                    copy_value: row_line.copy_text;
+                                                                    activated => {
+                                                                        root.diff_line_copy_requested(self.copy_value, self.feedback_label);
                                                                     }
                                                                 }
                                                                 Rectangle {
@@ -1419,40 +1379,34 @@ slint::slint! {
                                                                     height: parent.height;
                                                                     background: #e4ebf4;
                                                                 }
-                                                                Text {
-                                                                    text: root.diff_old_line_nos[index];
+                                                                DiffCopyHotspot {
                                                                     width: root.diff_number_column_width;
-                                                                    horizontal-alignment: right;
-                                                                    vertical-alignment: center;
-                                                                    font-size: 12px;
-                                                                    color: #677889;
+                                                                    height: parent.height;
+                                                                    label: row_line.is_hunk ? "" : root.diff_new_line_nos[index];
+                                                                    feedback_label: row_line.new_feedback_label;
+                                                                    copy_value: row_line.copy_text;
+                                                                    activated => {
+                                                                        root.diff_line_copy_requested(self.copy_value, self.feedback_label);
+                                                                    }
                                                                 }
                                                                 Rectangle {
                                                                     width: 1px;
                                                                     height: parent.height;
                                                                     background: #e4ebf4;
                                                                 }
-                                                                Text {
-                                                                    text: root.diff_new_line_nos[index];
-                                                                    width: root.diff_number_column_width;
-                                                                    horizontal-alignment: right;
-                                                                    vertical-alignment: center;
-                                                                    font-size: 12px;
-                                                                    color: #677889;
-                                                                }
-                                                                Rectangle {
-                                                                    width: 1px;
-                                                                    height: parent.height;
-                                                                    background: #e4ebf4;
-                                                                }
-                                                                Text {
-                                                                    text: root.diff_markers[index];
+                                                                DiffCopyHotspot {
                                                                     width: root.diff_marker_column_width;
-                                                                    horizontal-alignment: center;
-                                                                    vertical-alignment: center;
-                                                                    font-size: 12px;
-                                                                    color: row_line.is_added ? #346a4a
-                                                                        : (row_line.is_removed ? #8a4242 : #5d6d7e);
+                                                                    height: parent.height;
+                                                                    label: row_line.marker_text;
+                                                                    enabled: row_line.is_hunk;
+                                                                    align_center: true;
+                                                                    feedback_label: "Hunk header";
+                                                                    copy_value: row_line.copy_text;
+                                                                    text_color: row_line.is_hunk ? #58789c : (row_line.is_added ? #346a4a
+                                                                        : (row_line.is_removed ? #8a4242 : #5d6d7e));
+                                                                    activated => {
+                                                                        root.diff_line_copy_requested(self.copy_value, self.feedback_label);
+                                                                    }
                                                                 }
                                                                 Rectangle {
                                                                     width: 1px;
@@ -1461,7 +1415,10 @@ slint::slint! {
                                                                 }
                                                                 SelectableDiffText {
                                                                     value: row_content;
-                                                                    foreground: #2f4357;
+                                                                    foreground: row_line.is_hunk
+                                                                        ? #2f5376
+                                                                        : #2f4357;
+                                                                    font_weight: row_line.is_hunk ? 600 : 400;
                                                                     content_padding: 8px;
                                                                     horizontal-stretch: 1;
                                                                 }
@@ -2165,16 +2122,21 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
-    app.on_diff_line_copy_requested(move |value| {
+    app.on_diff_line_copy_requested(move |value, feedback_label| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         let nonce = window.get_diff_copy_feedback_nonce() + 1;
         let feedback = if copy_text_to_clipboard(value.as_str()).is_ok() {
-            "Line copied"
+            let label = feedback_label.trim();
+            if label.is_empty() {
+                "Row copied".to_string()
+            } else {
+                format!("{label} copied")
+            }
         } else {
-            "Copy failed"
+            "Copy failed".to_string()
         };
         window.set_diff_copy_feedback_nonce(nonce);
         window.set_diff_copy_feedback_text(feedback.into());
