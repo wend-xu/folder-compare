@@ -406,6 +406,9 @@ slint::slint! {
         in property <string> title;
         in property <string> body;
         in property <string> tone: "neutral";
+        in property <string> copy_value;
+        in property <string> copy_feedback_label: root.section_label;
+        callback copy_requested(string, string);
 
         border-width: 1px;
         border-radius: 8px;
@@ -428,12 +431,35 @@ slint::slint! {
             padding: 14px;
             spacing: 8px;
 
-            Text {
-                text: root.section_label;
-                color: #708193;
-                font-size: 11px;
-                font-weight: 600;
-                horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: 8px;
+
+                Text {
+                    text: root.section_label;
+                    color: #708193;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                Rectangle {
+                    visible: root.copy_value != "";
+                    height: 20px;
+                    background: transparent;
+
+                    Text {
+                        text: "Copy";
+                        color: #6d7b8b;
+                        vertical-alignment: center;
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            root.copy_requested(root.copy_value, root.copy_feedback_label);
+                        }
+                    }
+                }
             }
 
             Text {
@@ -593,6 +619,13 @@ slint::slint! {
         in property <string> analysis_risk_tone;
         in property <string> analysis_risk_guidance_text;
         in property <string> analysis_result_notes_text;
+        in property <string> analysis_summary_copy_text;
+        in property <string> analysis_risk_copy_text;
+        in property <string> analysis_core_judgment_copy_text;
+        in property <string> analysis_key_points_copy_text;
+        in property <string> analysis_review_suggestions_copy_text;
+        in property <string> analysis_notes_copy_text;
+        in property <string> analysis_full_copy_text;
         in property <string> provider_settings_error_text;
         in-out property <int> workspace_tab: 0;
         in-out property <bool> compare_warnings_expanded: false;
@@ -620,8 +653,9 @@ slint::slint! {
         in property <string> diff_shell_body_text;
         in property <string> diff_shell_note_text;
         in property <int> diff_content_char_capacity;
-        in-out property <string> diff_copy_feedback_text: "";
-        in-out property <int> diff_copy_feedback_nonce: 0;
+        in-out property <string> weak_feedback_text: "";
+        in-out property <string> weak_feedback_tone: "info";
+        in-out property <int> weak_feedback_nonce: 0;
         property <bool> has_selected_result: root.selected_row >= 0;
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
@@ -633,6 +667,9 @@ slint::slint! {
         property <length> diff_number_column_width: 52px;
         property <length> diff_marker_column_width: 20px;
         property <length> diff_scrollbar_safe_inset: 18px;
+        property <length> workbench_header_height: 66px;
+        property <length> workbench_helper_strip_height: 32px;
+        property <length> workbench_action_strip_height: 30px;
 
         callback compare_clicked();
         callback left_browse_clicked();
@@ -640,7 +677,7 @@ slint::slint! {
         callback filter_changed(string);
         callback status_filter_changed(string);
         callback row_selected(int);
-        callback diff_line_copy_requested(string, string);
+        callback copy_requested(string, string);
         callback analyze_clicked();
         callback analysis_provider_mock_selected();
         callback analysis_provider_openai_selected();
@@ -1168,7 +1205,7 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: 66px;
+                                                height: root.workbench_header_height;
                                                 background: #f9fbfe;
                                                 Rectangle {
                                                     x: 0px;
@@ -1241,7 +1278,7 @@ slint::slint! {
                                                     spacing: 0px;
 
                                                     Rectangle {
-                                                        height: 32px;
+                                                        height: root.workbench_helper_strip_height;
                                                         background: #f5f8fc;
                                                         Rectangle {
                                                             x: 0px;
@@ -1265,9 +1302,9 @@ slint::slint! {
                                                                 horizontal-stretch: 1;
                                                                 overflow: elide;
                                                             }
-                                                            if root.diff_copy_feedback_text != "" : StatusPill {
-                                                                label: root.diff_copy_feedback_text;
-                                                                tone: root.diff_copy_feedback_text == "Copy failed" ? "error" : "info";
+                                                            if root.weak_feedback_text != "" : StatusPill {
+                                                                label: root.weak_feedback_text;
+                                                                tone: root.weak_feedback_tone;
                                                             }
                                                         }
                                                     }
@@ -1395,7 +1432,7 @@ slint::slint! {
                                                                         feedback_label: row_line.old_feedback_label;
                                                                         copy_value: row_line.copy_text;
                                                                         activated => {
-                                                                            root.diff_line_copy_requested(self.copy_value, self.feedback_label);
+                                                                            root.copy_requested(self.copy_value, self.feedback_label);
                                                                         }
                                                                     }
                                                                     Rectangle {
@@ -1410,7 +1447,7 @@ slint::slint! {
                                                                         feedback_label: row_line.new_feedback_label;
                                                                         copy_value: row_line.copy_text;
                                                                         activated => {
-                                                                            root.diff_line_copy_requested(self.copy_value, self.feedback_label);
+                                                                            root.copy_requested(self.copy_value, self.feedback_label);
                                                                         }
                                                                     }
                                                                     Rectangle {
@@ -1429,7 +1466,7 @@ slint::slint! {
                                                                         text_color: row_line.is_hunk ? #58789c : (row_line.is_added ? #346a4a
                                                                             : (row_line.is_removed ? #8a4242 : #5d6d7e));
                                                                         activated => {
-                                                                            root.diff_line_copy_requested(self.copy_value, self.feedback_label);
+                                                                            root.copy_requested(self.copy_value, self.feedback_label);
                                                                         }
                                                                     }
                                                                     Rectangle {
@@ -1480,7 +1517,7 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: 76px;
+                                                height: root.workbench_header_height;
                                                 background: #f9fbfe;
                                                 Rectangle {
                                                     x: 0px;
@@ -1508,11 +1545,9 @@ slint::slint! {
 
                                                         HorizontalLayout {
                                                             spacing: 6px;
-                                                            Text {
-                                                                text: "Analysis";
-                                                                color: #476077;
-                                                                font-size: 12px;
-                                                                vertical-alignment: center;
+                                                            StatusPill {
+                                                                label: "Analysis";
+                                                                tone: "neutral";
                                                             }
                                                             StatusPill {
                                                                 label: root.analysis_state_label;
@@ -1552,7 +1587,7 @@ slint::slint! {
                                             }
 
                                             Rectangle {
-                                                height: 34px;
+                                                height: root.workbench_helper_strip_height;
                                                 background: #f5f8fc;
                                                 Rectangle {
                                                     x: 0px;
@@ -1595,91 +1630,181 @@ slint::slint! {
                                             if root.analysis_state_token == "success" : Rectangle {
                                                 vertical-stretch: 1;
                                                 background: #fcfdff;
-                                                analysis_success_scroll := ScrollView {
-                                                    vertical-stretch: 1;
-                                                    viewport := Rectangle {
-                                                        width: max(analysis_success_scroll.width, success_column.width + 32px);
-                                                        height: success_column.preferred-height + 32px;
+                                                clip: true;
 
-                                                        success_column := VerticalLayout {
-                                                            x: 16px;
-                                                            y: 16px;
-                                                            width: max(0px, min(analysis_success_scroll.width - 32px, 760px));
-                                                            spacing: 12px;
+                                                VerticalLayout {
+                                                    padding: 0px;
+                                                    spacing: 0px;
 
-                                                            AnalysisSectionPanel {
-                                                                section_label: "Summary";
-                                                                title: root.analysis_title_text != "" ? root.analysis_title_text : "Analysis Summary";
-                                                                body: root.analysis_summary_text;
+                                                    Rectangle {
+                                                        height: root.workbench_action_strip_height;
+                                                        background: #f7f9fc;
+                                                        Rectangle {
+                                                            x: 0px;
+                                                            y: parent.height - 1px;
+                                                            width: parent.width;
+                                                            height: 1px;
+                                                            background: #dbe4ef;
+                                                        }
+
+                                                        HorizontalLayout {
+                                                            padding: 6px;
+                                                            spacing: 8px;
+                                                            Text {
+                                                                text: "Copy the structured review or switch back to Diff.";
+                                                                color: #617285;
+                                                                font-size: 12px;
+                                                                vertical-alignment: center;
+                                                                horizontal-stretch: 1;
+                                                                overflow: elide;
                                                             }
-
-                                                            Rectangle {
-                                                                border-width: 1px;
-                                                                border-radius: 8px;
-                                                                border-color: root.analysis_risk_tone == "error"
-                                                                    ? #dfcccc
-                                                                    : (root.analysis_risk_tone == "warn"
-                                                                        ? #dfd1bb
-                                                                        : (root.analysis_risk_tone == "success"
-                                                                            ? #d1dfd5
-                                                                            : #dbe4ef));
-                                                                background: root.analysis_risk_tone == "error"
-                                                                    ? #fdf6f6
-                                                                    : (root.analysis_risk_tone == "warn"
-                                                                        ? #fcf8f1
-                                                                        : (root.analysis_risk_tone == "success"
-                                                                            ? #f5fbf6
-                                                                            : #ffffff));
-
-                                                                VerticalLayout {
-                                                                    padding: 14px;
-                                                                    spacing: 8px;
-
-                                                                    Text {
-                                                                        text: "Risk Level";
-                                                                        color: #708193;
-                                                                        font-size: 11px;
-                                                                        font-weight: 600;
-                                                                        horizontal-stretch: 1;
-                                                                    }
-
-                                                                    StatusPill {
-                                                                        label: root.analysis_risk_label_text;
-                                                                        tone: root.analysis_risk_tone;
-                                                                    }
-
-                                                                    Text {
-                                                                        text: root.analysis_risk_guidance_text;
-                                                                        color: #4d6176;
-                                                                        font-size: 13px;
-                                                                        wrap: word-wrap;
-                                                                        horizontal-stretch: 1;
-                                                                    }
+                                                            TextAction {
+                                                                label: "Open Diff";
+                                                                enabled: root.has_selected_result;
+                                                                tapped => {
+                                                                    root.workspace_tab = 0;
                                                                 }
                                                             }
-
-                                                            AnalysisSectionPanel {
-                                                                section_label: "Core Judgment";
-                                                                body: root.analysis_core_judgment_text;
+                                                            TextAction {
+                                                                label: "Copy All";
+                                                                enabled: root.analysis_full_copy_text != "";
+                                                                tapped => {
+                                                                    root.copy_requested(root.analysis_full_copy_text, "Analysis");
+                                                                }
                                                             }
-
-                                                            AnalysisSectionPanel {
-                                                                visible: root.analysis_key_points_text != "";
-                                                                section_label: "Key Points";
-                                                                body: root.analysis_key_points_text;
+                                                            if root.weak_feedback_text != "" : StatusPill {
+                                                                label: root.weak_feedback_text;
+                                                                tone: root.weak_feedback_tone;
                                                             }
+                                                        }
+                                                    }
 
-                                                            AnalysisSectionPanel {
-                                                                visible: root.analysis_review_suggestions_text != "";
-                                                                section_label: "Review Suggestions";
-                                                                body: root.analysis_review_suggestions_text;
-                                                            }
+                                                    analysis_success_surface := Rectangle {
+                                                        vertical-stretch: 1;
+                                                        background: #fcfdff;
+                                                        clip: true;
 
-                                                            AnalysisSectionPanel {
-                                                                visible: root.analysis_result_notes_text != "";
-                                                                section_label: "Notes";
-                                                                body: root.analysis_result_notes_text;
-                                                                tone: "warn";
+                                                        analysis_success_scroll := ScrollView {
+                                                            width: parent.width;
+                                                            height: parent.height;
+                                                            viewport := Rectangle {
+                                                                width: max(analysis_success_scroll.width, success_column.width + 32px);
+                                                                height: max(analysis_success_scroll.height, success_column.preferred-height + 32px);
+
+                                                                success_column := VerticalLayout {
+                                                                    x: 16px;
+                                                                    y: 16px;
+                                                                    width: max(0px, min(analysis_success_scroll.width - 32px, 780px));
+                                                                    spacing: 12px;
+
+                                                                    AnalysisSectionPanel {
+                                                                        section_label: "Summary";
+                                                                        title: root.analysis_title_text != "" ? root.analysis_title_text : "Analysis Summary";
+                                                                        body: root.analysis_summary_text;
+                                                                        copy_value: root.analysis_summary_copy_text;
+                                                                        copy_requested(copy_value, feedback_label) => {
+                                                                            root.copy_requested(copy_value, feedback_label);
+                                                                        }
+                                                                    }
+
+                                                                    Rectangle {
+                                                                        border-width: 1px;
+                                                                        border-radius: 8px;
+                                                                        border-color: root.analysis_risk_tone == "error"
+                                                                            ? #dfcccc
+                                                                            : (root.analysis_risk_tone == "warn"
+                                                                                ? #dfd1bb
+                                                                                : (root.analysis_risk_tone == "success"
+                                                                                    ? #d1dfd5
+                                                                                    : #dbe4ef));
+                                                                        background: root.analysis_risk_tone == "error"
+                                                                            ? #fdf6f6
+                                                                            : (root.analysis_risk_tone == "warn"
+                                                                                ? #fcf8f1
+                                                                                : (root.analysis_risk_tone == "success"
+                                                                                    ? #f5fbf6
+                                                                                    : #ffffff));
+
+                                                                        VerticalLayout {
+                                                                            padding: 14px;
+                                                                            spacing: 8px;
+
+                                                                            HorizontalLayout {
+                                                                                spacing: 8px;
+
+                                                                                Text {
+                                                                                    text: "Risk Level";
+                                                                                    color: #708193;
+                                                                                    font-size: 11px;
+                                                                                    font-weight: 600;
+                                                                                    vertical-alignment: center;
+                                                                                    horizontal-stretch: 1;
+                                                                                }
+
+                                                                                TextAction {
+                                                                                    visible: root.analysis_risk_copy_text != "";
+                                                                                    label: "Copy";
+                                                                                    tapped => {
+                                                                                        root.copy_requested(root.analysis_risk_copy_text, "Risk Level");
+                                                                                    }
+                                                                                }
+                                                                            }
+
+                                                                            StatusPill {
+                                                                                label: root.analysis_risk_label_text;
+                                                                                tone: root.analysis_risk_tone;
+                                                                            }
+
+                                                                            Text {
+                                                                                text: root.analysis_risk_guidance_text;
+                                                                                color: #4d6176;
+                                                                                font-size: 13px;
+                                                                                wrap: word-wrap;
+                                                                                horizontal-stretch: 1;
+                                                                            }
+                                                                        }
+                                                                    }
+
+                                                                    AnalysisSectionPanel {
+                                                                        section_label: "Core Judgment";
+                                                                        body: root.analysis_core_judgment_text;
+                                                                        copy_value: root.analysis_core_judgment_copy_text;
+                                                                        copy_requested(copy_value, feedback_label) => {
+                                                                            root.copy_requested(copy_value, feedback_label);
+                                                                        }
+                                                                    }
+
+                                                                    AnalysisSectionPanel {
+                                                                        visible: root.analysis_key_points_text != "";
+                                                                        section_label: "Key Points";
+                                                                        body: root.analysis_key_points_text;
+                                                                        copy_value: root.analysis_key_points_copy_text;
+                                                                        copy_requested(copy_value, feedback_label) => {
+                                                                            root.copy_requested(copy_value, feedback_label);
+                                                                        }
+                                                                    }
+
+                                                                    AnalysisSectionPanel {
+                                                                        visible: root.analysis_review_suggestions_text != "";
+                                                                        section_label: "Review Suggestions";
+                                                                        body: root.analysis_review_suggestions_text;
+                                                                        copy_value: root.analysis_review_suggestions_copy_text;
+                                                                        copy_requested(copy_value, feedback_label) => {
+                                                                            root.copy_requested(copy_value, feedback_label);
+                                                                        }
+                                                                    }
+
+                                                                    AnalysisSectionPanel {
+                                                                        visible: root.analysis_result_notes_text != "";
+                                                                        section_label: "Notes";
+                                                                        body: root.analysis_result_notes_text;
+                                                                        tone: "warn";
+                                                                        copy_value: root.analysis_notes_copy_text;
+                                                                        copy_requested(copy_value, feedback_label) => {
+                                                                            root.copy_requested(copy_value, feedback_label);
+                                                                        }
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -2058,6 +2183,15 @@ fn sync_window_state(
     window.set_analysis_risk_tone(state.analysis_risk_tone().into());
     window.set_analysis_risk_guidance_text(state.analysis_risk_guidance_text().into());
     window.set_analysis_result_notes_text(state.analysis_result_notes_text().into());
+    window.set_analysis_summary_copy_text(state.analysis_summary_copy_text().into());
+    window.set_analysis_risk_copy_text(state.analysis_risk_copy_text().into());
+    window.set_analysis_core_judgment_copy_text(state.analysis_core_judgment_copy_text().into());
+    window.set_analysis_key_points_copy_text(state.analysis_key_points_copy_text().into());
+    window.set_analysis_review_suggestions_copy_text(
+        state.analysis_review_suggestions_copy_text().into(),
+    );
+    window.set_analysis_notes_copy_text(state.analysis_notes_copy_text().into());
+    window.set_analysis_full_copy_text(state.analysis_full_copy_text().into());
     window.set_provider_settings_error_text(state.provider_settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     window.set_selected_row_status(state.selected_row_status_text().into());
@@ -2159,6 +2293,41 @@ fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
         .map_err(|err| format!("clipboard write failed: {err}"))
 }
 
+fn show_weak_feedback(window: &MainWindow, message: String, tone: &str) {
+    let nonce = window.get_weak_feedback_nonce() + 1;
+    window.set_weak_feedback_nonce(nonce);
+    window.set_weak_feedback_tone(tone.into());
+    window.set_weak_feedback_text(message.into());
+
+    let clear_weak = window.as_weak();
+    Timer::single_shot(Duration::from_millis(1600), move || {
+        let Some(clear_window) = clear_weak.upgrade() else {
+            return;
+        };
+        if clear_window.get_weak_feedback_nonce() == nonce {
+            clear_window.set_weak_feedback_text("".into());
+        }
+    });
+}
+
+fn copy_text_with_feedback(window: &MainWindow, text: &str, feedback_label: &str) {
+    let (message, tone) = if copy_text_to_clipboard(text).is_ok() {
+        let label = feedback_label.trim();
+        (
+            if label.is_empty() {
+                "Copied".to_string()
+            } else {
+                format!("{label} copied")
+            },
+            "info",
+        )
+    } else {
+        ("Copy failed".to_string(), "error")
+    };
+
+    show_weak_feedback(window, message, tone);
+}
+
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
     let app = MainWindow::new().map_err(|err| anyhow::anyhow!(err.to_string()))?;
@@ -2252,6 +2421,7 @@ pub fn run() -> anyhow::Result<()> {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
+        window.set_workspace_tab(0);
         if window.get_selected_row() == index
             && (window.get_diff_loaded() || window.get_diff_loading())
         {
@@ -2293,34 +2463,11 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
-    app.on_diff_line_copy_requested(move |value, feedback_label| {
+    app.on_copy_requested(move |value, feedback_label| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
-
-        let nonce = window.get_diff_copy_feedback_nonce() + 1;
-        let feedback = if copy_text_to_clipboard(value.as_str()).is_ok() {
-            let label = feedback_label.trim();
-            if label.is_empty() {
-                "Row copied".to_string()
-            } else {
-                format!("{label} copied")
-            }
-        } else {
-            "Copy failed".to_string()
-        };
-        window.set_diff_copy_feedback_nonce(nonce);
-        window.set_diff_copy_feedback_text(feedback.into());
-
-        let clear_weak = window.as_weak();
-        Timer::single_shot(Duration::from_millis(1600), move || {
-            let Some(clear_window) = clear_weak.upgrade() else {
-                return;
-            };
-            if clear_window.get_diff_copy_feedback_nonce() == nonce {
-                clear_window.set_diff_copy_feedback_text("".into());
-            }
-        });
+        copy_text_with_feedback(&window, value.as_str(), feedback_label.as_str());
     });
 
     // Provider settings lifecycle callbacks (open/cancel/save).

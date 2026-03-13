@@ -137,7 +137,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `No Selection` and `Not Started` are distinct product states, not one empty placeholder.
 - Analysis header now stays compact and shell-aligned:
   - primary: selected relative path remains the dominant line;
-  - compact meta row: `Analysis` label + state badge + weak provider-readiness badge + one-line summary;
+  - compact meta row follows the same fixed-height cadence as Diff header and uses `mode + state + weak provider-readiness + one-line summary`;
   - helper strip keeps provider/readiness/timeout/truncation as weak technical context rather than the primary message.
 - Analysis success content is now a structured review-conclusion panel instead of raw text stacking:
   - `Summary`;
@@ -146,9 +146,20 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `Key Points`;
   - `Review Suggestions`;
   - `Notes` for truncation/warning/mock-provider caveats.
+- Analysis success keeps `helper strip -> action strip -> scrollable content` as one workbench surface:
+  - header/helper/action remain fixed in the shell;
+  - long review content scrolls independently inside the success body instead of stretching the whole workspace;
+  - action strip owns low-noise global actions such as `Open Diff` and `Copy All`.
+- Analysis copy baseline is intentionally lightweight:
+  - section cards expose inline `Copy` actions instead of persistent button walls;
+  - `Copy All` exports the current structured review conclusion;
+  - full free-range text-selection semantics remain deferred until Slint interaction cost is justified.
 - Analysis non-success states now reuse the same embedded `DiffStateShell` visual grammar as Diff, so shell hierarchy stays consistent without reintroducing detached cards.
 - Workspace shell visual grammar is now part of the contract: tabs have no inter-tab gap, selected tab fill aligns with header surfaces, lower tab edges are straight, and tab/panel seam lines must remain continuous without detached pill styling.
 - Neutral `no-selection` shell indicators stay within the cool workspace palette rather than using a warm generic neutral badge.
+- Results / Navigator selection remains the canonical `selected row -> Diff` entry path:
+  - selecting any result row forces the workspace back to Diff and refreshes that file's diff context;
+  - Analysis can return to the same selected file's Diff surface via tab switch or success action strip without introducing a second state path.
 - Single-side preview remains first-class:
   - `left-only`, `right-only`, and `equal` all enter preview path;
   - equal preview is not blocked by detailed-diff eligibility;
@@ -160,7 +171,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - the diff body `ListView` owns vertical scrolling while the column header mirrors its horizontal viewport, keeping the vertical scrollbar visible without depending on horizontal position;
   - the diff body reserves a scrollbar-safe bottom inset so the last rows stay selectable/copyable;
   - lightweight row-copy fallback moved from always-visible per-row buttons to double-click-on-line-number/hunk-marker hotspots that copy the full underlying line text, not just the visible viewport fragment;
-  - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`);
+  - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`) and now flows through the shared workspace weak-feedback pill instead of per-mode bespoke toast logic;
   - fixed left-side line numbers remain deferred in this phase.
 - `can_load_diff = false` and preview capability boundaries map to explicit `unavailable` (not generic failure).
 - No new AI schema, sidebar IA, compare mode, or task orchestration layer was added for `15.1B`; the productization remains presentation/state-derivation only.
@@ -212,6 +223,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - productized Analysis View inside the accepted File View shell instead of treating it as a raw AI text dump;
   - introduced an explicit five-state Analysis surface with separate `No Selection` and `Not Started` semantics;
   - rebalanced provider/readiness/timeout into weak helper context while promoting summary/risk/judgment/suggestions to the primary reading flow;
+  - fix-1 aligned Analysis header cadence with Diff, added independent success-body scrolling, landed lightweight section/whole-review copy actions, and routed copy feedback through a shared weak-feedback pill;
   - kept Diff shell, sidebar IA, and AI response schema unchanged.
 
 ## Deferred architecture decisions (after Phase 15.1B)
@@ -225,19 +237,22 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P2` Multi-provider plugin orchestration:
   - trigger: when provider fallback/routing becomes a reliability requirement.
 - `P2` Multi-line copy workflow:
-  - deferred because the current fix-3 stabilization pass only needed a low-noise safety net for single-row extraction; full range copy, clipboard formatting, and selection semantics would expand Diff interaction scope beyond the current baseline.
+  - deferred because the current baseline now covers low-noise Diff row copy plus lightweight Analysis section/whole-review copy; full range selection, clipboard formatting, and richer clipboard semantics would still expand interaction scope beyond the accepted shell.
+- `P2` Global toast / feedback orchestration:
+  - partially addressed by the shared workspace weak-feedback pill now used for copy confirmations;
+  - overlay toasts, queueing, persistence, and cross-surface routing remain deferred until save/export flows need stronger feedback semantics.
 - `P2` Sticky left-side line numbers:
   - deferred because the current Slint `ListView` viewer would need a split pinned gutter + horizontally scrollable content lane with synchronized vertical viewport, row-height parity, and hunk-row handling; that is medium-high complexity and too invasive for the accepted fix-3 stabilization shell.
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.1B first-round productization)
+## Next implementation priority (after Phase 15.1B fix-1)
 
 1. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
 2. Carry forward provider hardening deferred items only within the existing boundaries.
    - acceptance: reliability hardening does not expand IA, schema, or workspace mode count ahead of need.
-3. Only do lightweight Analysis polish if runtime smoke exposes density or geometry regressions.
+3. Only do another Analysis fix pass if runtime smoke or screenshot review still shows geometry/copy discoverability regressions.
    - acceptance: fixes stay within the current shell contract and do not reopen Diff-shell or IA redesign.
 
 ## Documentation update contract (mandatory)

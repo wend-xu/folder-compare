@@ -950,8 +950,7 @@ impl AppState {
     pub fn analysis_state_note_text(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => {
-                "Analysis only runs for changed text files with loadable diff context."
-                    .to_string()
+                "Analysis only runs for changed text files with loadable diff context.".to_string()
             }
             AnalysisPanelState::NotStarted => {
                 if self.analysis_can_start_now() {
@@ -1074,8 +1073,9 @@ impl AppState {
         match self.analysis_risk_level_text().as_str() {
             "high" => "Prioritize a careful review before merging.".to_string(),
             "medium" => "Review the changed logic paths and edge cases closely.".to_string(),
-            "low" => "No immediate high-risk signal surfaced from the current diff context."
-                .to_string(),
+            "low" => {
+                "No immediate high-risk signal surfaced from the current diff context.".to_string()
+            }
             _ => "Risk signal unavailable for this analysis.".to_string(),
         }
     }
@@ -1101,6 +1101,93 @@ impl AppState {
             );
         }
         notes.join("\n")
+    }
+
+    /// Returns copy-ready text for the Summary section.
+    pub fn analysis_summary_copy_text(&self) -> String {
+        compose_section_copy_text(
+            "Summary",
+            normalize_optional_text(&self.analysis_title_text()),
+            normalize_optional_text(&self.analysis_summary_text()),
+        )
+        .unwrap_or_default()
+    }
+
+    /// Returns copy-ready text for the Risk Level section.
+    pub fn analysis_risk_copy_text(&self) -> String {
+        compose_section_copy_text(
+            "Risk Level",
+            normalize_optional_text(&self.analysis_risk_label_text()),
+            normalize_optional_text(&self.analysis_risk_guidance_text()),
+        )
+        .unwrap_or_default()
+    }
+
+    /// Returns copy-ready text for the Core Judgment section.
+    pub fn analysis_core_judgment_copy_text(&self) -> String {
+        compose_section_copy_text(
+            "Core Judgment",
+            None,
+            normalize_optional_text(&self.analysis_core_judgment_text()),
+        )
+        .unwrap_or_default()
+    }
+
+    /// Returns copy-ready text for the Key Points section.
+    pub fn analysis_key_points_copy_text(&self) -> String {
+        compose_section_copy_text(
+            "Key Points",
+            None,
+            normalize_optional_text(&self.analysis_key_points_text()),
+        )
+        .unwrap_or_default()
+    }
+
+    /// Returns copy-ready text for the Review Suggestions section.
+    pub fn analysis_review_suggestions_copy_text(&self) -> String {
+        compose_section_copy_text(
+            "Review Suggestions",
+            None,
+            normalize_optional_text(&self.analysis_review_suggestions_text()),
+        )
+        .unwrap_or_default()
+    }
+
+    /// Returns copy-ready text for the Notes section.
+    pub fn analysis_notes_copy_text(&self) -> String {
+        compose_section_copy_text(
+            "Notes",
+            None,
+            normalize_optional_text(&self.analysis_result_notes_text()),
+        )
+        .unwrap_or_default()
+    }
+
+    /// Returns one copy-ready export for the current Analysis conclusion.
+    pub fn analysis_full_copy_text(&self) -> String {
+        let mut blocks = Vec::new();
+        if let Some(path) = self
+            .selected_relative_path
+            .as_deref()
+            .and_then(normalize_optional_text)
+        {
+            blocks.push(format!("File\n{path}"));
+        }
+
+        for section in [
+            self.analysis_summary_copy_text(),
+            self.analysis_risk_copy_text(),
+            self.analysis_core_judgment_copy_text(),
+            self.analysis_key_points_copy_text(),
+            self.analysis_review_suggestions_copy_text(),
+            self.analysis_notes_copy_text(),
+        ] {
+            if !section.trim().is_empty() {
+                blocks.push(section);
+            }
+        }
+
+        blocks.join("\n\n")
     }
 
     /// Returns human-readable AI provider mode.
@@ -1208,6 +1295,21 @@ fn normalize_optional_text(raw: &str) -> Option<String> {
     } else {
         Some(value.to_string())
     }
+}
+
+fn compose_section_copy_text(
+    section_label: &str,
+    title: Option<String>,
+    body: Option<String>,
+) -> Option<String> {
+    let mut lines = vec![section_label.to_string()];
+    if let Some(value) = title.and_then(|value| normalize_optional_text(&value)) {
+        lines.push(value);
+    }
+    if let Some(value) = body.and_then(|value| normalize_optional_text(&value)) {
+        lines.push(value);
+    }
+    (lines.len() > 1).then(|| lines.join("\n"))
 }
 
 fn sentence_excerpt(text: &str, max_chars: usize) -> String {
@@ -1608,7 +1710,10 @@ mod tests {
     #[test]
     fn analysis_panel_state_distinguishes_no_selection_not_started_and_success() {
         let mut state = AppState::default();
-        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::NoSelection);
+        assert_eq!(
+            state.analysis_panel_state(),
+            AnalysisPanelState::NoSelection
+        );
 
         state.selected_row = Some(0);
         state.entry_rows = sample_rows();
@@ -1648,13 +1753,51 @@ mod tests {
         };
 
         assert_eq!(state.analysis_risk_tone(), "error");
-        assert!(state.analysis_summary_text().starts_with("This change updates"));
+        assert!(state
+            .analysis_summary_text()
+            .starts_with("This change updates"));
         assert!(state
             .analysis_result_notes_text()
             .contains("truncated diff context"));
         assert!(state
             .analysis_result_notes_text()
             .contains("input excerpt trimmed"));
+    }
+
+    #[test]
+    fn analysis_copy_text_exports_structured_sections() {
+        let state = AppState {
+            selected_row: Some(0),
+            entry_rows: sample_rows(),
+            selected_relative_path: Some("src/main.rs".to_string()),
+            analysis_result: Some(AnalysisResultViewModel {
+                title: "Regression risk in startup path".to_string(),
+                risk_level: "high".to_string(),
+                rationale: "The patch removes validation and shifts initialization order."
+                    .to_string(),
+                key_points: vec![
+                    "Validation branch deleted".to_string(),
+                    "Startup sequencing changed".to_string(),
+                ],
+                review_suggestions: vec!["Re-run startup coverage".to_string()],
+            }),
+            diff_warning: Some("context excerpt trimmed".to_string()),
+            ..AppState::default()
+        };
+
+        assert!(state
+            .analysis_summary_copy_text()
+            .starts_with("Summary\nRegression risk"));
+        assert!(state.analysis_risk_copy_text().contains("High risk"));
+        assert!(state
+            .analysis_full_copy_text()
+            .contains("File\nsrc/main.rs"));
+        assert!(state
+            .analysis_full_copy_text()
+            .contains("Review Suggestions"));
+        assert!(state
+            .analysis_full_copy_text()
+            .contains("context excerpt trimmed"));
     }
 
     #[test]
