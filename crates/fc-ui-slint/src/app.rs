@@ -125,30 +125,38 @@ slint::slint! {
         clip: false;
 
         Rectangle {
-            visible: root.selected;
-            x: 1px;
-            y: parent.height - root.connector_depth - 1px;
-            width: max(0px, parent.width - 2px);
-            height: root.connector_depth + 1px;
-            background: root.selected_fill;
-        }
-
-        Rectangle {
-            visible: root.selected;
             x: 0px;
-            y: parent.height - root.connector_depth;
-            width: 1px;
-            height: root.connector_depth;
-            background: root.selected_border;
+            y: parent.height - root.connector_depth - 1px;
+            width: parent.width;
+            height: root.connector_depth + 1px;
+            background: root.selected ? root.selected_fill : #f1f5f9;
         }
 
         Rectangle {
-            visible: root.selected;
-            x: parent.width - 1px;
-            y: parent.height - root.connector_depth;
+            visible: true;
+            x: 0px;
+            y: parent.height - root.connector_depth - 1px;
             width: 1px;
-            height: root.connector_depth;
-            background: root.selected_border;
+            height: root.connector_depth + 1px;
+            background: root.selected ? root.selected_border : #d5dde8;
+        }
+
+        Rectangle {
+            visible: true;
+            x: parent.width - 1px;
+            y: parent.height - root.connector_depth - 1px;
+            width: 1px;
+            height: root.connector_depth + 1px;
+            background: root.selected ? root.selected_border : #d5dde8;
+        }
+
+        Rectangle {
+            visible: !root.selected;
+            x: 1px;
+            y: parent.height - 1px;
+            width: max(0px, parent.width - 2px);
+            height: 1px;
+            background: #d5dde8;
         }
 
         Text {
@@ -376,7 +384,7 @@ slint::slint! {
                 x: 18px;
                 y: 12px;
                 label: root.state_label;
-                tone: root.tone;
+                tone: root.tone == "neutral" ? "info" : root.tone;
             }
         }
 
