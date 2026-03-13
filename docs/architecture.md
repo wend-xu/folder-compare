@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.3A fix-3)
+# Folder Compare Architecture (Phase 1-15.1A fix-3)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.3A fix-3)
+## `fc-ui-slint` current architecture snapshot (Phase 15.1A fix-3)
 
 ### IA and layout contract
 
@@ -175,7 +175,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No AI schema/provider capability expansion beyond UI-state orchestration.
 - No deep Compare Status details expansion beyond summary-first intent.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.3A fix-3)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.1A fix-3)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -192,12 +192,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - improved detailed diff readability with clearer column/hunk/line rhythm and preview-aware columns.
   - fix-1 tightened the Diff header, strengthened shell-state emphasis, and added selectable + horizontally scrollable line content for long-line review.
   - fix-2 stabilized header cadence, turned `DiffStateShell` into a detail-surface state panel, and added row-copy + scrollbar-safe affordances for long-line review.
-  - fix-3 collapsed Diff detail into one workbench panel, moved copy fallback to double-click line-number hotspots with clearer transient feedback, and decoupled the vertical scrollbar from horizontal scroll position.
-- 15.3A fix-3:
-  - finalized the visual convergence pass around the accepted workbench shell;
-  - replaced detached segmented workspace tabs with connected tab chrome, aligned selected fills with header surfaces, reduced overlap depth, straightened lower tab edges, repaired seam breaks, and normalized the neutral `No Selection` shell tone.
+  - fix-3 collapsed Diff detail into one workbench panel, moved copy fallback to double-click line-number hotspots with clearer transient feedback, decoupled the vertical scrollbar from horizontal scroll position, and completed the final visual convergence pass for connected workspace tabs / seam repair / neutral `No Selection` shell tone.
 
-## Deferred architecture decisions (after Phase 15.3A fix-3)
+## Deferred architecture decisions (after Phase 15.1A fix-3)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -214,7 +211,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (Phase 15.3A fix-3 exit / 15.1B entry)
+## Next implementation priority (Phase 15.1A fix-3 exit / 15.1B entry)
 
 1. Enter `Phase 15.1B` and productize Analysis View within the accepted File View shell contract.
    - acceptance: Analysis reaches the same hierarchy/readability maturity as Diff without re-splitting the workbench surface or regressing the connected tab shell.
