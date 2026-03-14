@@ -238,6 +238,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - trigger: when provider fallback/routing becomes a reliability requirement.
 - `P2` Multi-line copy workflow:
   - deferred because the current baseline now covers low-noise Diff row copy plus lightweight Analysis section/whole-review copy; full range selection, clipboard formatting, and richer clipboard semantics would still expand interaction scope beyond the accepted shell.
+- `P2` Analysis selectable text in structured success sections:
+  - deferred to `Phase 19: AI analysis enhancement`;
+  - not a hard requirement for `Phase 15.1B fix-2`;
+  - deferred because selectable text inside current Slint nested shell/scroll layout is higher complexity than expected, and should only be re-evaluated inside success sections first.
+- `P2` Analysis streaming raw-response presentation with loading mask:
+  - deferred to `Phase 19: AI analysis enhancement`;
+  - candidate approach: stream original provider text into Analysis body first, keep a lightweight loading overlay, then format into the structured section panel after completion.
 - `P2` Global toast / feedback orchestration:
   - partially addressed by the shared workspace weak-feedback pill now used for copy confirmations;
   - overlay toasts, queueing, persistence, and cross-surface routing remain deferred until save/export flows need stronger feedback semantics.
