@@ -670,9 +670,6 @@ slint::slint! {
         property <length> workbench_header_height: 66px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
-        // Temporary runtime probe for Analysis success geometry debugging.
-        in property <bool> analysis_debug_metrics_visible: true;
-
         callback compare_clicked();
         callback left_browse_clicked();
         callback right_browse_clicked();
@@ -1706,12 +1703,8 @@ slint::slint! {
                                                                         ? (key_points_section.y + key_points_section.height)
                                                                         : (core_section.y + core_section.height)));
                                                             property <length> target_viewport_height: max(
-                                                                self.height + 1px,
+                                                                self.height,
                                                                 content_bottom + viewport_bottom_padding
-                                                            );
-                                                            property <length> scroll_capacity_height: max(
-                                                                0px,
-                                                                target_viewport_height - self.height
                                                             );
                                                             viewport-width: self.width;
                                                             viewport-height: target_viewport_height;
@@ -1856,40 +1849,6 @@ slint::slint! {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
                                                                 }
-                                                            }
-                                                        }
-
-                                                        if root.analysis_debug_metrics_visible : Rectangle {
-                                                            x: 6px;
-                                                            y: 4px;
-                                                            width: max(0px, parent.width - 12px);
-                                                            height: 14px;
-                                                            border-width: 1px;
-                                                            border-color: #d6c790;
-                                                            border-radius: 3px;
-                                                            background: #fff8dcdd;
-                                                            clip: true;
-
-                                                            Text {
-                                                                text: "diag wb=" + (workbench_panel.height / 1px)
-                                                                    + " succ=" + (analysis_success_surface.height / 1px)
-                                                                    + " scroll=" + (analysis_success_scroll.height / 1px)
-                                                                    + " vp=" + (analysis_success_scroll.viewport-height / 1px)
-                                                                    + " targetVp=" + (analysis_success_scroll.target_viewport_height / 1px)
-                                                                    + " cap=" + (analysis_success_scroll.scroll_capacity_height / 1px)
-                                                                    + " cW=" + (analysis_success_scroll.content_width / 1px)
-                                                                    + " bottom=" + (analysis_success_scroll.content_bottom / 1px)
-                                                                    + " nY=" + (notes_section.y / 1px)
-                                                                    + " nH=" + (notes_section.height / 1px);
-                                                                color: #6a5a2c;
-                                                                font-size: 9px;
-                                                                vertical-alignment: center;
-                                                                horizontal-alignment: left;
-                                                                width: parent.width - 6px;
-                                                                height: parent.height;
-                                                                x: 3px;
-                                                                y: 0px;
-                                                                overflow: elide;
                                                             }
                                                         }
                                                     }
