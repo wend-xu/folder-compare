@@ -401,6 +401,47 @@ slint::slint! {
         }
     }
 
+    component SelectableSectionText inherits Rectangle {
+        in property <string> value;
+        in property <brush> foreground: #4d6176;
+        in property <length> font_size: 13px;
+        in property <int> font_weight: 400;
+
+        background: transparent;
+        clip: true;
+        height: sizing_text.preferred-height;
+
+        // Keep wrapped-height measurement aligned with the legacy Text block.
+        sizing_text := Text {
+            x: 0px;
+            y: 0px;
+            width: root.width;
+            text: root.value;
+            color: transparent;
+            font-size: root.font_size;
+            font-weight: root.font_weight;
+            wrap: word-wrap;
+        }
+
+        TextInput {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            text: root.value;
+            read-only: true;
+            single-line: false;
+            wrap: word-wrap;
+            color: root.foreground;
+            font-size: root.font_size;
+            font-weight: root.font_weight;
+            horizontal-alignment: left;
+            vertical-alignment: top;
+            selection-background-color: #c9daec;
+            selection-foreground-color: #23384d;
+        }
+    }
+
     component AnalysisSectionPanel inherits Rectangle {
         in property <string> section_label;
         in property <string> title;
@@ -462,22 +503,20 @@ slint::slint! {
                 }
             }
 
-            Text {
+            SelectableSectionText {
                 visible: root.title != "";
-                text: root.title;
-                color: #2f4a63;
+                value: root.title;
+                foreground: #2f4a63;
                 font-size: 18px;
                 font-weight: 600;
-                wrap: word-wrap;
                 horizontal-stretch: 1;
             }
 
-            Text {
+            SelectableSectionText {
                 visible: root.body != "";
-                text: root.body;
-                color: #4d6176;
+                value: root.body;
+                foreground: #4d6176;
                 font-size: 13px;
-                wrap: word-wrap;
                 horizontal-stretch: 1;
             }
         }

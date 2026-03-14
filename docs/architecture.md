@@ -153,7 +153,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - Analysis copy baseline is intentionally lightweight:
   - section cards expose inline `Copy` actions instead of persistent button walls;
   - `Copy All` exports the current structured review conclusion;
-  - full free-range text-selection semantics remain deferred until Slint interaction cost is justified.
+  - success sections (`Summary/Core Judgment/Key Points/Review Suggestions/Notes`) support direct text selection and native system copy shortcuts;
+  - Analysis shell-state body text selection (`no-selection/not-started/loading/error`) is not a hard requirement in `Phase 15.1B fix-3` and remains out of scope for this round;
+  - if shell-state text selection is revisited, evaluate it as an isolated pass and do not couple it with success-body scroll stabilization changes.
 - Analysis non-success states now reuse the same embedded `DiffStateShell` visual grammar as Diff, so shell hierarchy stays consistent without reintroducing detached cards.
 - Workspace shell visual grammar is now part of the contract: tabs have no inter-tab gap, selected tab fill aligns with header surfaces, lower tab edges are straight, and tab/panel seam lines must remain continuous without detached pill styling.
 - Neutral `no-selection` shell indicators stay within the cool workspace palette rather than using a warm generic neutral badge.
@@ -223,7 +225,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - productized Analysis View inside the accepted File View shell instead of treating it as a raw AI text dump;
   - introduced an explicit five-state Analysis surface with separate `No Selection` and `Not Started` semantics;
   - rebalanced provider/readiness/timeout into weak helper context while promoting summary/risk/judgment/suggestions to the primary reading flow;
-  - fix-1 aligned Analysis header cadence with Diff, added independent success-body scrolling, landed lightweight section/whole-review copy actions, and routed copy feedback through a shared weak-feedback pill;
+  - fix-1 aligned Analysis header cadence with Diff, landed lightweight section/whole-review copy actions, and routed copy feedback through a shared weak-feedback pill;
+  - fix-2 stabilized independent success-body vertical scrolling with geometry-driven section stacking and dynamic scrollbar visibility;
+  - fix-3 landed selectable text inside Analysis success sections (`Summary/Core Judgment/Key Points/Review Suggestions/Notes`) while keeping shell-state selectable text out of scope;
   - kept Diff shell, sidebar IA, and AI response schema unchanged.
 
 ## Deferred architecture decisions (after Phase 15.1B)
@@ -238,10 +242,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - trigger: when provider fallback/routing becomes a reliability requirement.
 - `P2` Multi-line copy workflow:
   - deferred because the current baseline now covers low-noise Diff row copy plus lightweight Analysis section/whole-review copy; full range selection, clipboard formatting, and richer clipboard semantics would still expand interaction scope beyond the accepted shell.
-- `P2` Analysis selectable text in structured success sections:
-  - deferred to `Phase 19: AI analysis enhancement`;
-  - not a hard requirement for `Phase 15.1B fix-2`;
-  - deferred because selectable text inside current Slint nested shell/scroll layout is higher complexity than expected, and should only be re-evaluated inside success sections first.
+- `P2` Analysis shell-state selectable text (non-success states):
+  - not a hard requirement for `Phase 15.1B fix-3`;
+  - deferred for a separate pass so shell-state interaction changes do not regress the stabilized success-body scrolling contract.
 - `P2` Analysis streaming raw-response presentation with loading mask:
   - deferred to `Phase 19: AI analysis enhancement`;
   - candidate approach: stream original provider text into Analysis body first, keep a lightweight loading overlay, then format into the structured section panel after completion.
