@@ -670,7 +670,6 @@ slint::slint! {
         property <length> workbench_header_height: 66px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
-
         callback compare_clicked();
         callback left_browse_clicked();
         callback right_browse_clicked();
@@ -1687,122 +1686,167 @@ slint::slint! {
                                                         analysis_success_scroll := ScrollView {
                                                             width: parent.width;
                                                             height: parent.height;
+                                                            property <length> viewport_side_padding: 16px;
+                                                            property <length> viewport_top_padding: 16px;
+                                                            property <length> viewport_bottom_padding: 16px;
+                                                            property <length> section_spacing: 12px;
+                                                            property <length> content_width: max(
+                                                                0px,
+                                                                min(self.width - viewport_side_padding * 2, 780px)
+                                                            );
+                                                            // Use real stacked section geometry instead of guard-based estimation.
+                                                            property <length> content_bottom: notes_section.visible
+                                                                ? (notes_section.y + notes_section.height)
+                                                                : (review_suggestions_section.visible
+                                                                    ? (review_suggestions_section.y + review_suggestions_section.height)
+                                                                    : (key_points_section.visible
+                                                                        ? (key_points_section.y + key_points_section.height)
+                                                                        : (core_section.y + core_section.height)));
+                                                            property <length> target_viewport_height: max(
+                                                                self.height,
+                                                                content_bottom + viewport_bottom_padding
+                                                            );
+                                                            viewport-width: self.width;
+                                                            viewport-height: target_viewport_height;
                                                             viewport := Rectangle {
-                                                                width: max(analysis_success_scroll.width, success_column.width + 32px);
-                                                                height: max(analysis_success_scroll.height, success_column.preferred-height + 32px);
+                                                                width: analysis_success_scroll.viewport-width;
+                                                                height: analysis_success_scroll.viewport-height;
 
-                                                                success_column := VerticalLayout {
-                                                                    x: 16px;
-                                                                    y: 16px;
-                                                                    width: max(0px, min(analysis_success_scroll.width - 32px, 780px));
-                                                                    spacing: 12px;
-
-                                                                    AnalysisSectionPanel {
-                                                                        section_label: "Summary";
-                                                                        title: root.analysis_title_text != "" ? root.analysis_title_text : "Analysis Summary";
-                                                                        body: root.analysis_summary_text;
-                                                                        copy_value: root.analysis_summary_copy_text;
-                                                                        copy_requested(copy_value, feedback_label) => {
-                                                                            root.copy_requested(copy_value, feedback_label);
-                                                                        }
+                                                                summary_section := AnalysisSectionPanel {
+                                                                    x: analysis_success_scroll.viewport_side_padding;
+                                                                    y: analysis_success_scroll.viewport_top_padding;
+                                                                    width: analysis_success_scroll.content_width;
+                                                                    height: self.preferred-height;
+                                                                    section_label: "Summary";
+                                                                    title: root.analysis_title_text != "" ? root.analysis_title_text : "Analysis Summary";
+                                                                    body: root.analysis_summary_text;
+                                                                    copy_value: root.analysis_summary_copy_text;
+                                                                    copy_requested(copy_value, feedback_label) => {
+                                                                        root.copy_requested(copy_value, feedback_label);
                                                                     }
+                                                                }
 
-                                                                    Rectangle {
-                                                                        border-width: 1px;
-                                                                        border-radius: 8px;
-                                                                        border-color: root.analysis_risk_tone == "error"
-                                                                            ? #dfcccc
-                                                                            : (root.analysis_risk_tone == "warn"
-                                                                                ? #dfd1bb
-                                                                                : (root.analysis_risk_tone == "success"
-                                                                                    ? #d1dfd5
-                                                                                    : #dbe4ef));
-                                                                        background: root.analysis_risk_tone == "error"
-                                                                            ? #fdf6f6
-                                                                            : (root.analysis_risk_tone == "warn"
-                                                                                ? #fcf8f1
-                                                                                : (root.analysis_risk_tone == "success"
-                                                                                    ? #f5fbf6
-                                                                                    : #ffffff));
+                                                                risk_section := Rectangle {
+                                                                    x: analysis_success_scroll.viewport_side_padding;
+                                                                    y: summary_section.y + summary_section.height + analysis_success_scroll.section_spacing;
+                                                                    width: analysis_success_scroll.content_width;
+                                                                    height: risk_layout.preferred-height;
+                                                                    border-width: 1px;
+                                                                    border-radius: 8px;
+                                                                    border-color: root.analysis_risk_tone == "error"
+                                                                        ? #dfcccc
+                                                                        : (root.analysis_risk_tone == "warn"
+                                                                            ? #dfd1bb
+                                                                            : (root.analysis_risk_tone == "success"
+                                                                                ? #d1dfd5
+                                                                                : #dbe4ef));
+                                                                    background: root.analysis_risk_tone == "error"
+                                                                        ? #fdf6f6
+                                                                        : (root.analysis_risk_tone == "warn"
+                                                                            ? #fcf8f1
+                                                                            : (root.analysis_risk_tone == "success"
+                                                                                ? #f5fbf6
+                                                                                : #ffffff));
 
-                                                                        VerticalLayout {
-                                                                            padding: 14px;
+                                                                    risk_layout := VerticalLayout {
+                                                                        padding: 14px;
+                                                                        spacing: 8px;
+
+                                                                        HorizontalLayout {
                                                                             spacing: 8px;
 
-                                                                            HorizontalLayout {
-                                                                                spacing: 8px;
-
-                                                                                Text {
-                                                                                    text: "Risk Level";
-                                                                                    color: #708193;
-                                                                                    font-size: 11px;
-                                                                                    font-weight: 600;
-                                                                                    vertical-alignment: center;
-                                                                                    horizontal-stretch: 1;
-                                                                                }
-
-                                                                                TextAction {
-                                                                                    visible: root.analysis_risk_copy_text != "";
-                                                                                    label: "Copy";
-                                                                                    tapped => {
-                                                                                        root.copy_requested(root.analysis_risk_copy_text, "Risk Level");
-                                                                                    }
-                                                                                }
-                                                                            }
-
-                                                                            StatusPill {
-                                                                                label: root.analysis_risk_label_text;
-                                                                                tone: root.analysis_risk_tone;
-                                                                            }
-
                                                                             Text {
-                                                                                text: root.analysis_risk_guidance_text;
-                                                                                color: #4d6176;
-                                                                                font-size: 13px;
-                                                                                wrap: word-wrap;
+                                                                                text: "Risk Level";
+                                                                                color: #708193;
+                                                                                font-size: 11px;
+                                                                                font-weight: 600;
+                                                                                vertical-alignment: center;
                                                                                 horizontal-stretch: 1;
                                                                             }
+
+                                                                            TextAction {
+                                                                                visible: root.analysis_risk_copy_text != "";
+                                                                                label: "Copy";
+                                                                                tapped => {
+                                                                                    root.copy_requested(root.analysis_risk_copy_text, "Risk Level");
+                                                                                }
+                                                                            }
+                                                                        }
+
+                                                                        StatusPill {
+                                                                            label: root.analysis_risk_label_text;
+                                                                            tone: root.analysis_risk_tone;
+                                                                        }
+
+                                                                        Text {
+                                                                            text: root.analysis_risk_guidance_text;
+                                                                            color: #4d6176;
+                                                                            font-size: 13px;
+                                                                            wrap: word-wrap;
+                                                                            horizontal-stretch: 1;
                                                                         }
                                                                     }
+                                                                }
 
-                                                                    AnalysisSectionPanel {
-                                                                        section_label: "Core Judgment";
-                                                                        body: root.analysis_core_judgment_text;
-                                                                        copy_value: root.analysis_core_judgment_copy_text;
-                                                                        copy_requested(copy_value, feedback_label) => {
-                                                                            root.copy_requested(copy_value, feedback_label);
-                                                                        }
+                                                                core_section := AnalysisSectionPanel {
+                                                                    x: analysis_success_scroll.viewport_side_padding;
+                                                                    y: risk_section.y + risk_section.height + analysis_success_scroll.section_spacing;
+                                                                    width: analysis_success_scroll.content_width;
+                                                                    height: self.preferred-height;
+                                                                    section_label: "Core Judgment";
+                                                                    body: root.analysis_core_judgment_text;
+                                                                    copy_value: root.analysis_core_judgment_copy_text;
+                                                                    copy_requested(copy_value, feedback_label) => {
+                                                                        root.copy_requested(copy_value, feedback_label);
                                                                     }
+                                                                }
 
-                                                                    AnalysisSectionPanel {
-                                                                        visible: root.analysis_key_points_text != "";
-                                                                        section_label: "Key Points";
-                                                                        body: root.analysis_key_points_text;
-                                                                        copy_value: root.analysis_key_points_copy_text;
-                                                                        copy_requested(copy_value, feedback_label) => {
-                                                                            root.copy_requested(copy_value, feedback_label);
-                                                                        }
+                                                                key_points_section := AnalysisSectionPanel {
+                                                                    x: analysis_success_scroll.viewport_side_padding;
+                                                                    y: core_section.y + core_section.height + analysis_success_scroll.section_spacing;
+                                                                    width: analysis_success_scroll.content_width;
+                                                                    height: self.preferred-height;
+                                                                    visible: root.analysis_key_points_text != "";
+                                                                    section_label: "Key Points";
+                                                                    body: root.analysis_key_points_text;
+                                                                    copy_value: root.analysis_key_points_copy_text;
+                                                                    copy_requested(copy_value, feedback_label) => {
+                                                                        root.copy_requested(copy_value, feedback_label);
                                                                     }
+                                                                }
 
-                                                                    AnalysisSectionPanel {
-                                                                        visible: root.analysis_review_suggestions_text != "";
-                                                                        section_label: "Review Suggestions";
-                                                                        body: root.analysis_review_suggestions_text;
-                                                                        copy_value: root.analysis_review_suggestions_copy_text;
-                                                                        copy_requested(copy_value, feedback_label) => {
-                                                                            root.copy_requested(copy_value, feedback_label);
-                                                                        }
+                                                                review_suggestions_section := AnalysisSectionPanel {
+                                                                    x: analysis_success_scroll.viewport_side_padding;
+                                                                    y: key_points_section.y
+                                                                        + (key_points_section.visible
+                                                                            ? (key_points_section.height + analysis_success_scroll.section_spacing)
+                                                                            : 0px);
+                                                                    width: analysis_success_scroll.content_width;
+                                                                    height: self.preferred-height;
+                                                                    visible: root.analysis_review_suggestions_text != "";
+                                                                    section_label: "Review Suggestions";
+                                                                    body: root.analysis_review_suggestions_text;
+                                                                    copy_value: root.analysis_review_suggestions_copy_text;
+                                                                    copy_requested(copy_value, feedback_label) => {
+                                                                        root.copy_requested(copy_value, feedback_label);
                                                                     }
+                                                                }
 
-                                                                    AnalysisSectionPanel {
-                                                                        visible: root.analysis_result_notes_text != "";
-                                                                        section_label: "Notes";
-                                                                        body: root.analysis_result_notes_text;
-                                                                        tone: "warn";
-                                                                        copy_value: root.analysis_notes_copy_text;
-                                                                        copy_requested(copy_value, feedback_label) => {
-                                                                            root.copy_requested(copy_value, feedback_label);
-                                                                        }
+                                                                notes_section := AnalysisSectionPanel {
+                                                                    x: analysis_success_scroll.viewport_side_padding;
+                                                                    y: review_suggestions_section.y
+                                                                        + (review_suggestions_section.visible
+                                                                            ? (review_suggestions_section.height + analysis_success_scroll.section_spacing)
+                                                                            : 0px);
+                                                                    width: analysis_success_scroll.content_width;
+                                                                    height: self.preferred-height;
+                                                                    visible: root.analysis_result_notes_text != "";
+                                                                    section_label: "Notes";
+                                                                    body: root.analysis_result_notes_text;
+                                                                    tone: "warn";
+                                                                    copy_value: root.analysis_notes_copy_text;
+                                                                    copy_requested(copy_value, feedback_label) => {
+                                                                        root.copy_requested(copy_value, feedback_label);
                                                                     }
                                                                 }
                                                             }
