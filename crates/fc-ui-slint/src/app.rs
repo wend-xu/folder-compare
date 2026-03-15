@@ -14,10 +14,10 @@ use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 slint::slint! {
-    import { LineEdit, ListView, ScrollView } from "std-widgets.slint";
+    import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
     // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
@@ -243,6 +243,46 @@ slint::slint! {
                                         : #6b6660))))));
             font-size: 11px;
         }
+    }
+
+    component LoadingMask inherits Rectangle {
+        in property <string> message;
+        in property <length> corner_radius: 6px;
+
+        background: rgba(17, 24, 34, 0.24);
+        border-radius: root.corner_radius;
+        clip: true;
+
+        Rectangle {
+            width: min(340px, max(200px, parent.width - 40px));
+            height: 52px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-width: 1px;
+            border-radius: 6px;
+            border-color: #d9e2ee;
+            background: #f9fbfe;
+
+            HorizontalLayout {
+                padding: 10px;
+                spacing: 8px;
+                Spinner {
+                    width: 20px;
+                    height: 20px;
+                    indeterminate: true;
+                }
+                Text {
+                    text: root.message == "" ? "Working..." : root.message;
+                    color: #47596c;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+            }
+        }
+
+        TouchArea {}
     }
 
     component DiffStateShell inherits Rectangle {
@@ -699,6 +739,9 @@ slint::slint! {
         in property <int> diff_content_char_capacity;
         in-out property <string> toast_feedback_text: "";
         in-out property <string> toast_feedback_tone: "info";
+        in property <bool> sidebar_loading_mask_visible: false;
+        in property <bool> workspace_loading_mask_visible: false;
+        in property <string> loading_mask_text: "";
         property <bool> has_selected_result: root.selected_row >= 0;
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
@@ -866,9 +909,16 @@ slint::slint! {
                             }
                         }
 
-                        // Contract: Compare Status.
-                        // Summarizes compare run status/metrics/warnings; no row selection or file-level content here.
-                        SectionCard {
+                        sidebar_busy_scope := Rectangle {
+                            vertical-stretch: 1;
+                            background: transparent;
+                            clip: true;
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                // Contract: Compare Status.
+                                // Summarizes compare run status/metrics/warnings; no row selection or file-level content here.
+                                SectionCard {
                             height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 132px : 88px;
                             VerticalLayout {
                                 padding: 9px;
@@ -1189,12 +1239,24 @@ slint::slint! {
                                         }
 
                                         TouchArea {
+                                            enabled: !root.diff_loading;
                                             clicked => {
                                                 root.row_selected(row_item.source_index);
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
+                            }
+                            LoadingMask {
+                                visible: root.sidebar_loading_mask_visible;
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                height: parent.height;
+                                message: root.loading_mask_text;
+                                corner_radius: 6px;
                             }
                         }
                     }
@@ -1945,6 +2007,15 @@ slint::slint! {
                             }
                         }
                     }
+                    LoadingMask {
+                        visible: root.workspace_loading_mask_visible;
+                        x: 0px;
+                        y: 0px;
+                        width: parent.width;
+                        height: parent.height;
+                        message: root.loading_mask_text;
+                        corner_radius: 6px;
+                    }
                 }
             }
         }
@@ -2192,6 +2263,139 @@ enum SyncMode {
     Passive,
 }
 
+const LOADING_MASK_TIMEOUT: Duration = Duration::from_secs(12);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoadingMaskPhase {
+    Idle,
+    Comparing,
+    DiffLoading,
+    AnalysisLoading,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LoadingMaskProjection {
+    sidebar_visible: bool,
+    workspace_visible: bool,
+    message: &'static str,
+}
+
+impl Default for LoadingMaskProjection {
+    fn default() -> Self {
+        Self {
+            sidebar_visible: false,
+            workspace_visible: false,
+            message: "",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LoadingMaskWatchdog {
+    phase: LoadingMaskPhase,
+    phase_started_at: Option<Instant>,
+    last_projection: LoadingMaskProjection,
+}
+
+impl Default for LoadingMaskWatchdog {
+    fn default() -> Self {
+        Self {
+            phase: LoadingMaskPhase::Idle,
+            phase_started_at: None,
+            last_projection: LoadingMaskProjection::default(),
+        }
+    }
+}
+
+impl LoadingMaskWatchdog {
+    fn tick(
+        &mut self,
+        running: bool,
+        diff_loading: bool,
+        analysis_loading: bool,
+        now: Instant,
+    ) -> Option<LoadingMaskProjection> {
+        let phase = derive_loading_mask_phase(running, diff_loading, analysis_loading);
+        if phase == LoadingMaskPhase::Idle {
+            self.phase = LoadingMaskPhase::Idle;
+            self.phase_started_at = None;
+        } else if self.phase != phase {
+            self.phase = phase;
+            self.phase_started_at = Some(now);
+        } else if self.phase_started_at.is_none() {
+            self.phase_started_at = Some(now);
+        }
+
+        let timeout_reached = phase != LoadingMaskPhase::Idle
+            && self
+                .phase_started_at
+                .map(|start| now.duration_since(start) >= LOADING_MASK_TIMEOUT)
+                .unwrap_or(false);
+        let projection = derive_loading_mask_projection(
+            running,
+            diff_loading,
+            analysis_loading,
+            timeout_reached,
+        );
+        if projection == self.last_projection {
+            return None;
+        }
+        self.last_projection = projection;
+        Some(projection)
+    }
+}
+
+fn derive_loading_mask_phase(
+    running: bool,
+    diff_loading: bool,
+    analysis_loading: bool,
+) -> LoadingMaskPhase {
+    if running {
+        LoadingMaskPhase::Comparing
+    } else if diff_loading {
+        LoadingMaskPhase::DiffLoading
+    } else if analysis_loading {
+        LoadingMaskPhase::AnalysisLoading
+    } else {
+        LoadingMaskPhase::Idle
+    }
+}
+
+fn derive_loading_mask_projection(
+    running: bool,
+    diff_loading: bool,
+    analysis_loading: bool,
+    timeout_reached: bool,
+) -> LoadingMaskProjection {
+    let phase = derive_loading_mask_phase(running, diff_loading, analysis_loading);
+    let (sidebar_visible, workspace_visible) = match phase {
+        LoadingMaskPhase::Idle => (false, false),
+        LoadingMaskPhase::Comparing => (true, true),
+        LoadingMaskPhase::DiffLoading | LoadingMaskPhase::AnalysisLoading => (false, true),
+    };
+    let message = if timeout_reached {
+        "Taking longer than expected..."
+    } else {
+        match phase {
+            LoadingMaskPhase::Idle => "",
+            LoadingMaskPhase::Comparing => "Comparing folders...",
+            LoadingMaskPhase::DiffLoading => "Loading diff...",
+            LoadingMaskPhase::AnalysisLoading => "Running AI analysis...",
+        }
+    };
+    LoadingMaskProjection {
+        sidebar_visible,
+        workspace_visible,
+        message,
+    }
+}
+
+fn apply_loading_mask_projection(window: &MainWindow, projection: LoadingMaskProjection) {
+    window.set_sidebar_loading_mask_visible(projection.sidebar_visible);
+    window.set_workspace_loading_mask_visible(projection.workspace_visible);
+    window.set_loading_mask_text(projection.message.into());
+}
+
 // Contract: sync mode gate for editable UI fields.
 // Full mode pulls editable inputs from state; Passive mode preserves in-flight user typing.
 fn should_sync_editable_inputs(mode: SyncMode) -> bool {
@@ -2405,6 +2609,15 @@ fn sync_window_state_if_changed(
         return;
     }
     sync_window_state(window, &state, mode, cache_guard.as_ref());
+    // Keep loading-mask projection aligned with the latest synced busy flags,
+    // so short-lived diff loading started from row selection can still render immediately.
+    let immediate_projection = derive_loading_mask_projection(
+        state.running,
+        state.diff_loading,
+        state.analysis_loading,
+        false,
+    );
+    apply_loading_mask_projection(window, immediate_projection);
     *cache_guard = Some(state);
 }
 
@@ -2520,11 +2733,7 @@ fn toast_tone_token(tone: ToastTone) -> &'static str {
     }
 }
 
-fn copy_text_with_feedback(
-    toast_controller: &ToastController,
-    text: &str,
-    feedback_label: &str,
-) {
+fn copy_text_with_feedback(toast_controller: &ToastController, text: &str, feedback_label: &str) {
     let (message, tone) = if copy_text_to_clipboard(text).is_ok() {
         let label = feedback_label.trim();
         (
@@ -2562,9 +2771,11 @@ pub fn run() -> anyhow::Result<()> {
     // Contract: background UI polling loop.
     // Polls presenter busy flags and performs passive sync only when runtime busy-state diverges from window state.
     let ui_refresh_timer = Timer::default();
+    let loading_mask_watchdog = Rc::new(RefCell::new(LoadingMaskWatchdog::default()));
     let app_weak = app.as_weak();
     let refresh_bridge = bridge.clone();
     let refresh_cache = Arc::clone(&sync_cache);
+    let refresh_loading_mask_watchdog = Rc::clone(&loading_mask_watchdog);
     ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -2575,10 +2786,23 @@ pub fn run() -> anyhow::Result<()> {
             window.get_diff_loading(),
             window.get_analysis_loading(),
         );
-        if bridge_busy == window_busy {
-            return;
+        if bridge_busy != window_busy {
+            sync_window_state_if_changed(
+                &window,
+                &refresh_bridge,
+                &refresh_cache,
+                SyncMode::Passive,
+            );
         }
-        sync_window_state_if_changed(&window, &refresh_bridge, &refresh_cache, SyncMode::Passive);
+        let mut watchdog = refresh_loading_mask_watchdog.borrow_mut();
+        if let Some(projection) = watchdog.tick(
+            window.get_running(),
+            window.get_diff_loading(),
+            window.get_analysis_loading(),
+            Instant::now(),
+        ) {
+            apply_loading_mask_projection(&window, projection);
+        }
     });
 
     // Contract: UI event dispatch and bridge binding.
@@ -2640,6 +2864,9 @@ pub fn run() -> anyhow::Result<()> {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
+        if window.get_diff_loading() {
+            return;
+        }
         window.set_workspace_tab(0);
         if window.get_selected_row() == index
             && (window.get_diff_loaded() || window.get_diff_loading())
@@ -2877,6 +3104,7 @@ pub fn run() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn passive_mode_does_not_sync_editable_inputs() {
@@ -2902,5 +3130,84 @@ mod tests {
             ..AppState::default()
         };
         assert!(!should_skip_sync(Some(&previous), &next));
+    }
+
+    #[test]
+    fn loading_mask_projection_follows_scope_boundary() {
+        let idle = derive_loading_mask_projection(false, false, false, false);
+        assert_eq!(idle, LoadingMaskProjection::default());
+
+        let running = derive_loading_mask_projection(true, false, false, false);
+        assert_eq!(
+            running,
+            LoadingMaskProjection {
+                sidebar_visible: true,
+                workspace_visible: true,
+                message: "Comparing folders...",
+            }
+        );
+
+        let diff = derive_loading_mask_projection(false, true, false, false);
+        assert_eq!(
+            diff,
+            LoadingMaskProjection {
+                sidebar_visible: false,
+                workspace_visible: true,
+                message: "Loading diff...",
+            }
+        );
+
+        let analysis = derive_loading_mask_projection(false, false, true, false);
+        assert_eq!(
+            analysis,
+            LoadingMaskProjection {
+                sidebar_visible: false,
+                workspace_visible: true,
+                message: "Running AI analysis...",
+            }
+        );
+    }
+
+    #[test]
+    fn loading_mask_projection_uses_timeout_copy() {
+        let projection = derive_loading_mask_projection(false, true, false, true);
+        assert_eq!(
+            projection,
+            LoadingMaskProjection {
+                sidebar_visible: false,
+                workspace_visible: true,
+                message: "Taking longer than expected...",
+            }
+        );
+    }
+
+    #[test]
+    fn loading_mask_watchdog_resets_on_phase_change() {
+        let mut watchdog = LoadingMaskWatchdog::default();
+        let now = Instant::now();
+        let started = watchdog
+            .tick(false, true, false, now)
+            .expect("first diff-loading projection should be emitted");
+        assert_eq!(started.message, "Loading diff...");
+
+        let timed_out = watchdog
+            .tick(
+                false,
+                true,
+                false,
+                now + LOADING_MASK_TIMEOUT + Duration::from_millis(1),
+            )
+            .expect("timeout transition should emit degraded copy");
+        assert_eq!(timed_out.message, "Taking longer than expected...");
+
+        let analysis_reset = watchdog
+            .tick(
+                false,
+                false,
+                true,
+                now + LOADING_MASK_TIMEOUT + Duration::from_millis(2),
+            )
+            .expect("phase switch should reset timeout copy");
+        assert_eq!(analysis_reset.message, "Running AI analysis...");
     }
 }

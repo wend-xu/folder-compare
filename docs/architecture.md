@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.2A)
+# Folder Compare Architecture (Phase 1-15.2B)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.2A)
+## `fc-ui-slint` current architecture snapshot (Phase 15.2B)
 
 ### IA and layout contract
 
@@ -197,8 +197,25 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - Rebinding and refresh are bounded:
   - result/diff models rebuild only when relevant source state changes;
   - timer refresh is constrained by busy-state transitions;
+  - `sync_window_state_if_changed` now applies an immediate loading-mask projection from the freshly synced busy flags, so short-lived busy windows (for example `Results/Navigator -> LoadSelectedDiff`) still render workspace mask reliably before background completion;
   - row delegate local state reduces repeated indexed binding evaluation;
   - header stats avoid cloning filtered rows only for count computation.
+
+### Local loading-mask baseline (Phase 15.2B)
+
+- Loading-mask is a lightweight local UI component in `fc-ui-slint` only (no new global loading controller, no presenter/open API expansion).
+- Mask lifecycle is still derived from existing busy flags only:
+  - `running`: lock Sidebar `Compare Status / Filter / Scope / Results / Navigator` and lock the whole `Workspace`;
+  - `diff_loading`: lock the whole `Workspace`;
+  - `analysis_loading`: lock the whole `Workspace`.
+- `App Bar` and `Provider Settings` modal are outside the loading-mask scope in this phase.
+- Existing `enabled` bindings remain the primary control logic; loading-mask only adds overlay-level input interception.
+- Mask overlay keeps corner-radius alignment with host surfaces to avoid seam/clip regressions in Sidebar and Workspace.
+- Timeout handling is UI-local watchdog behavior only:
+  - before timeout: show normal loading copy;
+  - after timeout: degrade copy to `Taking longer than expected...`;
+  - timeout never mutates compare/diff/analysis business state and never auto-closes mask.
+- Minimal extra UI protection: while `diff_loading`, navigator row click is blocked to prevent selection/context drift caused by `SelectRow` racing with in-flight diff completion.
 
 ### Boundaries and non-goals in this phase
 
@@ -237,8 +254,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - narrowed local `toast-controller` responsibility to overlay toast only;
   - docked copy-action toast feedback to Diff row double-click copy and Analysis success `Copy`/`Copy All`, and removed the corresponding helper/action-strip copy pill;
   - kept Analysis success native shortcut copy (`selection + system copy`) on system-default path without toast hook due current callback boundary.
+- 15.2B:
+  - introduced reusable local `loading-mask` overlay with spinner/copy/interception, scoped to Sidebar lower controls + Workspace by busy-flag derivation;
+  - added a local timeout watchdog that only downgrades UI copy and does not write back business state;
+  - fixed short-lived diff loading visibility by projecting loading-mask immediately after state sync (not only on timer tick);
+  - kept presenter/core/ai contracts unchanged and deferred any global loading orchestration API.
 
-## Deferred architecture decisions (after Phase 15.1B)
+## Deferred architecture decisions (after Phase 15.2B)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -255,7 +277,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - deferred for a separate pass so shell-state interaction changes do not regress the stabilized success-body scrolling contract.
 - `P2` Analysis streaming raw-response presentation with loading mask:
   - deferred to `Phase 19: AI analysis enhancement`;
-  - candidate approach: stream original provider text into Analysis body first, keep a lightweight loading overlay, then format into the structured section panel after completion.
+  - local loading-mask baseline is already available in `15.2B`; deferred part is streaming raw-response orchestration and final structured hydration flow.
+- `P2` Loading-mask timeout policy configuration:
+  - local baseline currently uses a fixed UI-local timeout constant for copy downgrade only;
+  - deferred because operation-level timeout customization would require extra presenter/open API surface and is not needed for current accepted scope.
+- `P2` Global loading orchestration:
+  - local baseline now exists via window-local loading-mask scope derivation (`running/diff_loading/analysis_loading`);
+  - global route/cross-window loading coordination remains deferred until broader multi-surface workflows require a shared loading controller model.
 - `P2` Global toast / feedback orchestration:
   - local baseline now exists via window-local `toast-controller` (overlay toast, tone/queueing/replace policy, per-request duration);
   - global routing, persistence, and cross-surface orchestration remain deferred until broader save/export/report flows require a notification center model.

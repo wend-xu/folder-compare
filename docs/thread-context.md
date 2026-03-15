@@ -4,40 +4,40 @@
 
 本文件用于“开新线程”的快速交接，定位是短周期执行上下文，不替代长期架构文档。
 
-## 本轮更新说明（2026-03-15）
+## 本轮更新说明（2026-03-16）
 
-- 轮次定义：`Phase 15.2A: toast-controller docking`（基线：`Phase 15.1B fix-3` 已验收代码）。
+- 轮次定义：`Phase 15.2B: loading-mask fix (sync projection)`（基线：`Phase 15.2B loading-mask` 已落地代码）。
 - 改了什么：
-  - `toast-controller` 职责收敛为 overlay `toast`（顶部偏中）单一路径，不再接管 `banner` 语义；
-  - `workspace -> Diff detail` 双击行号/marker 复制与 `workspace -> Analysis success` 的 `Copy` / `Copy All`，统一追加 overlay `toast` 提示；
-  - 已移除 helper/action strip 中对应 copy 反馈 `PillStatus`；
-  - `Provider settings saved` 继续走 overlay `toast`；
-  - Analysis success 区域“选中文本 + 系统快捷键复制”的 toast 触发仍 deferred（当前 Slint native copy 快捷键缺少稳定回调面）。
-- 为什么影响下一线程：通知语义边界进一步收敛为 toast 单通道，后续线程应在 toast-only 基线上扩展，不要重新引入并行 copy feedback 通道。
-- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、copy baseline、`status_text`/inline error/state shell 语义不改。
+  - 保留 `Phase 15.2B` loading-mask 既有边界不变；
+  - 修复 `Results / Navigator` 选中行触发 `LoadSelectedDiff` 时，短时 `diff_loading` 可能未显示 `Workspace` mask 的窗口问题；
+  - 在 `sync_window_state_if_changed` 中追加“同步后立即按 busy flags 派生并应用 mask”步骤，避免仅依赖 timer tick。
+- 为什么影响下一线程：后续若继续调整 UI 同步节奏，必须保留“同步后即时 mask 投影”，否则短生命周期 busy 仍可能丢遮罩。
+- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、copy baseline、`toast-controller` 语义、loading scope boundary（`running`/`diff_loading`/`analysis_loading`）均不改。
 
 ## 快照（Snapshot）
 
-- 日期：2026-03-15（Asia/Shanghai）
+- 日期：2026-03-16（Asia/Shanghai）
 - 分支：`dev`
-- 工作区：有改动（`fc-ui-slint` toast docking + docs 对齐，待本线程提交）
+- 工作区：有改动（`fc-ui-slint` loading-mask + sync projection fix + docs 对齐，待本线程提交）
 - 最近提交：
   - `6afab36` phase 15.1B fix-3：Analysis selectable text（success sections only）
   - `8d932c1` phase 15.1B fix2: analysis success cannot scroll
   - `19388d5` Phase 15.1B fix1 ：Analysis View 产品化 收口
-- 当前架构基线：`docs/architecture.md`（`Phase 15.2A` 已完成 toast docking：copy 反馈为 overlay toast；global route/persistence/cross-surface orchestration 仍 deferred）
+- 当前架构基线：`docs/architecture.md`（`Phase 15.2B` 已补齐本地 loading-mask 基线，并明确 sync 后即时 mask 投影契约；global loading orchestration 仍 deferred）
 
 ## 当前目标（Execution Focus）
 
 1. 以 `Phase 15.1B fix-3` 为稳定基线，维持 `Diff/Analysis` 现有 shell contract。
-2. 在 `fc-ui-slint` 内维持 window-local `toast-controller`（toast-only）单通道反馈，避免把短生命周期反馈状态塞回 `AppState/Presenter`。
-3. 后续若扩展通知能力，优先在本地 controller 上增量演进（非全局事件总线），并继续保持最小影响面。
+2. 在 `fc-ui-slint` 内建立可复用 `loading-mask`（局部组件 + window 层派生），不扩展 presenter/open API。
+3. 保持 loading 生命周期由现有 busy flags 控制；超时只做 UI 文案降级，不改 compare/diff/analysis 业务状态；同步后即时 mask 投影不可回退。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 内的本地 toast（overlay）反馈编排
-  - 保持 `Diff / Analysis` connected workbench shell 与 copy 反馈语义稳定
+  - `fc-ui-slint` 内本地 `loading-mask` 组件与 scope 派生逻辑
+  - `running` / `diff_loading` / `analysis_loading` 到 Sidebar/Workspace 锁定范围映射
+  - 本地 timeout watchdog 文案降级（不改业务状态）
+  - 保持 `Diff / Analysis` connected workbench shell 与 copy/toast 语义稳定
   - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
   - 最小回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、必要时 UI smoke）
 - Out of Scope：
@@ -45,7 +45,7 @@
   - Tree explorer / compare-view dual mode
   - Compare View 新模式或目录树扩展
   - `fc-core` / `fc-ai` 合约改动
-  - 全局通知中心、跨窗口/跨 surface 路由、持久化通知
+  - 全局 loading controller、跨窗口 loading 路由、loading 持久化
   - 超出现有边界契约的 AI provider 架构扩展
 
 ## 硬契约（Do Not Break）
@@ -71,11 +71,11 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - 维护 `Phase 15.2A` toast docking 基线（toast-only controller）
-  - 保持 Diff/Analysis copy 动作走 overlay toast 的低噪音反馈
+  - 维护 `Phase 15.2B` loading-mask 基线（busy-flags 派生 scope + UI watchdog + sync projection）
+  - 保持 toast-only feedback 与 loading-mask 并存，不回退既有 copy/toast 行为
 - Next：
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
-  - 在现有 controller 上评估更多低风险 `toast` 接入点（仅非阻断成功/信息类）
+  - 在现有本地控制层评估更多低风险 `toast` / loading 文案接入点（仅非阻断信息类）
   - 评估 Analysis success 文本选择的 native copy 快捷键回调可行性（若 Slint 提供稳定 hook 再补 toast）
 - Later：
   - 承接 `docs/architecture.md` 中 deferred 的 provider hardening 与 global notification orchestration
@@ -83,12 +83,12 @@
 ## 已知风险与评审重点（Known Risks / Review Focus）
 
 1. 不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
-2. overlay `toast` 不能改写 Diff/Analysis 的阅读节奏，也不能破坏 helper/action strip 现有信息密度。
-3. overlay `toast` 必须是布局外层叠加，不得破坏现有滚动与主内容高度。
-4. 双击行号复制与 Analysis copy/copy-all 的反馈时序不能回退（`Replace` 行为需可预期）。
+2. loading-mask 必须是叠加层，不能破坏现有布局、滚动、tabs seam、workspace shell。
+3. mask 范围不能越界到 `App Bar` / `Provider Settings` modal。
+4. busy flags 是单一生命周期来源；timeout 不得反写 compare/diff/analysis 状态。
 5. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
-6. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
-7. `Results / Navigator -> Diff` 与 `Analysis -> Diff` 的链路一致性不能因后续 polish 再次分叉。
+6. `diff_loading` 期间 navigator 交互需保持最小保护，避免 selection/context drift；短时 busy 事件仍需可见 mask。
+7. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
 
 ## 验证命令（Verification Commands）
 
@@ -109,9 +109,9 @@ cargo run -p fc-ui-slint
 建议新线程首条消息直接使用：
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
-> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller docking` 版本为基线。  
+> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller docking` + `Phase 15.2B loading-mask(+sync projection fix)` 版本为基线。  
 > 保持当前 IA 与 phase 边界。  
-> 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast-controller 重新塞进 `AppState/Presenter`。  
+> 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast/loading controller 重新塞进 `AppState/Presenter`。  
 > 仅执行本次任务范围内改动，并说明对 contract 的影响。
 
 ## 更新契约（Mandatory）
