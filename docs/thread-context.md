@@ -4,43 +4,48 @@
 
 本文件用于“开新线程”的快速交接，定位是短周期执行上下文，不替代长期架构文档。
 
-## 本轮更新说明（2026-03-14）
+## 本轮更新说明（2026-03-15）
 
-- 轮次定义：`Phase 15.1B fix-2 : Analysis success body scroll stabilization`。
-- 改了什么：Analysis success body 改为去估算化几何驱动（按 section 实际堆叠位置计算内容底部），并将垂直滚动条策略改为动态展示（有溢出显示、无溢出隐藏）。
-- 为什么影响下一线程：`fix-2` 核心目标已达成，下一线程主要做收尾（移除临时诊断后复测、确认滚动条策略是否保持最小改动）。
-- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`fc-core/fc-ai/fc-ui-slint` 边界不变；不引入 selectable text 新方案、不扩散到 Diff shell/Sidebar/Compare View。
+- 轮次定义：`Phase 15.2A: toast-controller`（基线：`Phase 15.1B fix-3` 已验收代码）。
+- 改了什么：
+  - 在 `fc-ui-slint` 落地 window-local `toast-controller`（`banner` + 顶部偏中 `toast` 两种 placement）；
+  - 支持 `success/warn/error/info` tone、可配置 duration（默认 `2000ms`）、`replace/queue/auto` 策略；
+  - 将 `show_weak_feedback` / `copy_text_with_feedback` 抽象进 controller，copy 反馈继续走 `banner`；
+  - 增加 `Provider settings saved` 的 overlay `toast` 实际接入；
+  - 可测策略逻辑拆入独立 policy 模块并补最小单测。
+- 为什么影响下一线程：此前文档中“global toast 仍 deferred”容易让人误判为“尚无本地通知基线”；现在已有可复用本地 controller，后续线程应在此基线上扩展而不是重造。
+- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、copy baseline、helper/action strip 语义不回退；`status_text`/inline error/state shell 语义不改。
 
 ## 快照（Snapshot）
 
-- 日期：2026-03-14（Asia/Shanghai）
-- 分支：`dev-phase15_1B_fix`
-- 工作区：有改动（本轮收尾：`app.rs` 滚动条动态策略 + thread context 更新，待 commit）
+- 日期：2026-03-15（Asia/Shanghai）
+- 分支：`dev`
+- 工作区：有改动（`fc-ui-slint` toast-controller + docs 对齐，待本线程提交）
 - 最近提交：
-  - `1703032` phase summary: add comments/refactor docs and add thread context
-  - `6d528cd` Phase 15.1A：File View shell 收敛 + Diff View 深化
-  - `3a723c4` Phase 15.0 fix-4 + fix-5 consolidation
-- 当前架构基线：`docs/architecture.md`（`Phase 15.1B fix-2` contract，selectable text / streaming raw response deferred to Phase 19）
+  - `6afab36` phase 15.1B fix-3：Analysis selectable text（success sections only）
+  - `8d932c1` phase 15.1B fix2: analysis success cannot scroll
+  - `19388d5` Phase 15.1B fix1 ：Analysis View 产品化 收口
+- 当前架构基线：`docs/architecture.md`（`Phase 15.2A` 本地 toast-controller 已落地；global route/persistence/cross-surface orchestration 仍 deferred）
 
 ## 当前目标（Execution Focus）
 
-1. 以当前 `Phase 15.1B fix-2` 版本为 baseline，确认 Analysis success body 的垂直滚动承载稳定。
-2. 保持当前 `Diff` workbench / connected tabs / neutral shell tone / Analysis state surface 语义不回退。
-3. 完成 `15.1B` 收尾项（滚动条策略最小化、回归验证）后，转入下一阶段任务。
+1. 以 `Phase 15.1B fix-3` 为稳定基线，维持 `Diff/Analysis` 现有 shell contract。
+2. 在 `fc-ui-slint` 内维持并复用 window-local `toast-controller`，避免把短生命周期反馈状态塞回 `AppState/Presenter`。
+3. 后续若扩展通知能力，优先在本地 controller 上增量演进（非全局事件总线），并继续保持最小影响面。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 中 `15.1B fix-2` 后的 runtime smoke 与轻量收尾
-  - 保持 `Diff / Analysis` connected workbench shell 的视觉与 contract 稳定
+  - `fc-ui-slint` 内的本地 toast/banner 编排（策略、队列、计时、UI 渲染接线）
+  - 保持 `Diff / Analysis` connected workbench shell 与 copy 反馈语义稳定
   - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
-  - 在当前 IA 内判断 `15.1B` 是否可正式收口
+  - 最小回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、必要时 UI smoke）
 - Out of Scope：
   - IA 重置（`App Bar + Sidebar + Workspace` 保持不变）
   - Tree explorer / compare-view dual mode
   - Compare View 新模式或目录树扩展
-  - 已验收 `Diff` shell / tabs 收敛结果的无理由返工
-  - 未经阶段决策的 phase logic 改写
+  - `fc-core` / `fc-ai` 合约改动
+  - 全局通知中心、跨窗口/跨 surface 路由、持久化通知
   - 超出现有边界契约的 AI provider 架构扩展
 
 ## 硬契约（Do Not Break）
@@ -66,20 +71,20 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - `Phase 15.1B fix-2` 收尾验证（标准/最小/大窗口下 Analysis success 可滚到底部）
-  - 验证动态滚动条策略与复制链路（section copy / `Copy All` / weak feedback）不回退
+  - 维护 `Phase 15.2A` 本地 toast-controller 基线（banner/toast、策略、duration、timer）
+  - 保持 copy feedback 走 `banner` placement，不扩散为全局漂浮提示
 - Next：
-  - 若 `15.1B` 已收口，则进入结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
-  - 继续文档与实现 contract 对齐
+  - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
+  - 在现有 controller 上评估是否需要更多低风险 `toast` 接入点（仅非阻断成功/信息类）
 - Later：
-  - 承接 `docs/architecture.md` 中 deferred decisions 的 provider hardening 后续事项
+  - 承接 `docs/architecture.md` 中 deferred 的 provider hardening 与 global notification orchestration
 
 ## 已知风险与评审重点（Known Risks / Review Focus）
 
 1. 不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
-2. Analysis success panel 在最小窗口下仍需持续关注长文本换行与末尾 section 可达性回归。
-3. `ListView` 承担垂直滚动后，列头与内容横向同步仍需持续关注回归。
-4. 双击行号复制的 discoverability 仍需保留，不要被 shared weak feedback / Analysis copy 工作误伤。
+2. `banner` placement 只能复用现有 helper/action strip 弱提示位，不能改写 Diff/Analysis 的阅读节奏。
+3. overlay `toast` 必须是布局外层叠加，不得破坏现有滚动与主内容高度。
+4. 双击行号复制与 Analysis section copy 的反馈时序不能回退（replace/auto 行为需可预期）。
 5. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
 6. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
 7. `Results / Navigator -> Diff` 与 `Analysis -> Diff` 的链路一致性不能因后续 polish 再次分叉。
@@ -103,9 +108,9 @@ cargo run -p fc-ui-slint
 建议新线程首条消息直接使用：
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
-> 以当前 `Phase 15.1B fix-2` 版本为基线。  
+> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller` 版本为基线。  
 > 保持当前 IA 与 phase 边界。  
-> 不要把 Analysis 退回原始文本堆叠，也不要回退 Diff/tabs 的视觉收口、独立滚动与轻量 copy/feedback 机制。  
+> 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast-controller 重新塞进 `AppState/Presenter`。  
 > 仅执行本次任务范围内改动，并说明对 contract 的影响。
 
 ## 更新契约（Mandatory）

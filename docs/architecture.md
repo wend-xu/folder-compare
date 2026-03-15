@@ -173,7 +173,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - the diff body `ListView` owns vertical scrolling while the column header mirrors its horizontal viewport, keeping the vertical scrollbar visible without depending on horizontal position;
   - the diff body reserves a scrollbar-safe bottom inset so the last rows stay selectable/copyable;
   - lightweight row-copy fallback moved from always-visible per-row buttons to double-click-on-line-number/hunk-marker hotspots that copy the full underlying line text, not just the visible viewport fragment;
-  - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`) and now flows through the shared workspace weak-feedback pill instead of per-mode bespoke toast logic;
+  - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`) and now flows through a window-local `toast-controller` using `banner` placement in the existing workspace helper/action strip positions;
+  - the same `toast-controller` can render top-center overlay `toast` placement for low-risk success/info notifications (for example, provider settings save confirmation);
   - fixed left-side line numbers remain deferred in this phase.
 - `can_load_diff = false` and preview capability boundaries map to explicit `unavailable` (not generic failure).
 - No new AI schema, sidebar IA, compare mode, or task orchestration layer was added for `15.1B`; the productization remains presentation/state-derivation only.
@@ -249,8 +250,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - deferred to `Phase 19: AI analysis enhancement`;
   - candidate approach: stream original provider text into Analysis body first, keep a lightweight loading overlay, then format into the structured section panel after completion.
 - `P2` Global toast / feedback orchestration:
-  - partially addressed by the shared workspace weak-feedback pill now used for copy confirmations;
-  - overlay toasts, queueing, persistence, and cross-surface routing remain deferred until save/export flows need stronger feedback semantics.
+  - local baseline now exists via window-local `toast-controller` (`banner` + overlay `toast`, tone/queueing/replace policy, per-request duration);
+  - global routing, persistence, and cross-surface orchestration remain deferred until broader save/export/report flows require a notification center model.
 - `P2` Sticky left-side line numbers:
   - deferred because the current Slint `ListView` viewer would need a split pinned gutter + horizontally scrollable content lane with synchronized vertical viewport, row-height parity, and hunk-row handling; that is medium-high complexity and too invasive for the accepted fix-3 stabilization shell.
 - `P3` Tree explorer / compare-view dual-mode workspace:
