@@ -6,37 +6,37 @@
 
 ## 本轮更新说明（2026-03-15）
 
-- 轮次定义：`Phase 15.2A: toast-controller`（基线：`Phase 15.1B fix-3` 已验收代码）。
+- 轮次定义：`Phase 15.2A: toast-controller docking`（基线：`Phase 15.1B fix-3` 已验收代码）。
 - 改了什么：
-  - 在 `fc-ui-slint` 落地 window-local `toast-controller`（`banner` + 顶部偏中 `toast` 两种 placement）；
-  - 支持 `success/warn/error/info` tone、可配置 duration（默认 `2000ms`）、`replace/queue/auto` 策略；
-  - 将 `show_weak_feedback` / `copy_text_with_feedback` 抽象进 controller，copy 反馈继续走 `banner`；
-  - 增加 `Provider settings saved` 的 overlay `toast` 实际接入；
-  - 可测策略逻辑拆入独立 policy 模块并补最小单测。
-- 为什么影响下一线程：此前文档中“global toast 仍 deferred”容易让人误判为“尚无本地通知基线”；现在已有可复用本地 controller，后续线程应在此基线上扩展而不是重造。
-- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、copy baseline、helper/action strip 语义不回退；`status_text`/inline error/state shell 语义不改。
+  - `toast-controller` 职责收敛为 overlay `toast`（顶部偏中）单一路径，不再接管 `banner` 语义；
+  - `weak_feedback_text/tone/nonce` 恢复为 helper/action strip 的本地弱反馈通道；
+  - `workspace -> Diff detail` 双击行号/marker 复制与 `workspace -> Analysis success` 的 `Copy` / `Copy All`，统一追加 overlay `toast` 提示（并保留原 weak pill）；
+  - `Provider settings saved` 继续走 overlay `toast`；
+  - Analysis success 区域“选中文本 + 系统快捷键复制”的 toast 触发仍 deferred（当前 Slint native copy 快捷键缺少稳定回调面）。
+- 为什么影响下一线程：通知语义边界发生了关键收敛（`toast` 与 `weak feedback` 分责明确），后续线程应在“toast-only controller + weak pill”基线上增量演进，而不是重新混用通道。
+- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、copy baseline、`status_text`/inline error/state shell 语义不改。
 
 ## 快照（Snapshot）
 
 - 日期：2026-03-15（Asia/Shanghai）
 - 分支：`dev`
-- 工作区：有改动（`fc-ui-slint` toast-controller + docs 对齐，待本线程提交）
+- 工作区：有改动（`fc-ui-slint` toast docking + docs 对齐，待本线程提交）
 - 最近提交：
   - `6afab36` phase 15.1B fix-3：Analysis selectable text（success sections only）
   - `8d932c1` phase 15.1B fix2: analysis success cannot scroll
   - `19388d5` Phase 15.1B fix1 ：Analysis View 产品化 收口
-- 当前架构基线：`docs/architecture.md`（`Phase 15.2A` 本地 toast-controller 已落地；global route/persistence/cross-surface orchestration 仍 deferred）
+- 当前架构基线：`docs/architecture.md`（`Phase 15.2A` 已完成 toast docking：copy 反馈为 weak pill + overlay toast；global route/persistence/cross-surface orchestration 仍 deferred）
 
 ## 当前目标（Execution Focus）
 
 1. 以 `Phase 15.1B fix-3` 为稳定基线，维持 `Diff/Analysis` 现有 shell contract。
-2. 在 `fc-ui-slint` 内维持并复用 window-local `toast-controller`，避免把短生命周期反馈状态塞回 `AppState/Presenter`。
+2. 在 `fc-ui-slint` 内维持 window-local `toast-controller`（toast-only）与 `weak_feedback` 双通道分责，避免把短生命周期反馈状态塞回 `AppState/Presenter`。
 3. 后续若扩展通知能力，优先在本地 controller 上增量演进（非全局事件总线），并继续保持最小影响面。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 内的本地 toast/banner 编排（策略、队列、计时、UI 渲染接线）
+  - `fc-ui-slint` 内的本地 toast（overlay）+ weak feedback（helper/action strip）编排
   - 保持 `Diff / Analysis` connected workbench shell 与 copy 反馈语义稳定
   - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
   - 最小回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、必要时 UI smoke）
@@ -71,20 +71,21 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - 维护 `Phase 15.2A` 本地 toast-controller 基线（banner/toast、策略、duration、timer）
-  - 保持 copy feedback 走 `banner` placement，不扩散为全局漂浮提示
+  - 维护 `Phase 15.2A` toast docking 基线（toast-only controller + weak feedback）
+  - 保持 Diff/Analysis copy 动作走 weak pill + overlay toast 的低噪音双通道
 - Next：
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
-  - 在现有 controller 上评估是否需要更多低风险 `toast` 接入点（仅非阻断成功/信息类）
+  - 在现有 controller 上评估更多低风险 `toast` 接入点（仅非阻断成功/信息类）
+  - 评估 Analysis success 文本选择的 native copy 快捷键回调可行性（若 Slint 提供稳定 hook 再补 toast）
 - Later：
   - 承接 `docs/architecture.md` 中 deferred 的 provider hardening 与 global notification orchestration
 
 ## 已知风险与评审重点（Known Risks / Review Focus）
 
 1. 不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
-2. `banner` placement 只能复用现有 helper/action strip 弱提示位，不能改写 Diff/Analysis 的阅读节奏。
+2. `weak feedback` 只能复用 helper/action strip 弱提示位；overlay `toast` 不能改写 Diff/Analysis 的阅读节奏。
 3. overlay `toast` 必须是布局外层叠加，不得破坏现有滚动与主内容高度。
-4. 双击行号复制与 Analysis section copy 的反馈时序不能回退（replace/auto 行为需可预期）。
+4. 双击行号复制与 Analysis copy/copy-all 的反馈时序不能回退（`Replace` 行为需可预期）。
 5. 运行时同步回归（timer polling、model refresh 边界、状态抖动/过期）。
 6. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
 7. `Results / Navigator -> Diff` 与 `Analysis -> Diff` 的链路一致性不能因后续 polish 再次分叉。
@@ -108,7 +109,7 @@ cargo run -p fc-ui-slint
 建议新线程首条消息直接使用：
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
-> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller` 版本为基线。  
+> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller docking` 版本为基线。  
 > 保持当前 IA 与 phase 边界。  
 > 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast-controller 重新塞进 `AppState/Presenter`。  
 > 仅执行本次任务范围内改动，并说明对 contract 的影响。

@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.1B)
+# Folder Compare Architecture (Phase 1-15.2A)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.1B)
+## `fc-ui-slint` current architecture snapshot (Phase 15.2A)
 
 ### IA and layout contract
 
@@ -154,6 +154,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - section cards expose inline `Copy` actions instead of persistent button walls;
   - `Copy All` exports the current structured review conclusion;
   - success sections (`Summary/Core Judgment/Key Points/Review Suggestions/Notes`) support direct text selection and native system copy shortcuts;
+  - explicit copy actions (`Copy` / `Copy All`) now trigger dual feedback: helper/action strip weak pill + overlay `toast`;
+  - native shortcut copy for selected success text currently keeps system-default behavior; toast feedback for this path is deferred until Slint exposes a stable native copy callback surface in this shell;
   - Analysis shell-state body text selection (`no-selection/not-started/loading/error`) is not a hard requirement in `Phase 15.1B fix-3` and remains out of scope for this round;
   - if shell-state text selection is revisited, evaluate it as an isolated pass and do not couple it with success-body scroll stabilization changes.
 - Analysis non-success states now reuse the same embedded `DiffStateShell` visual grammar as Diff, so shell hierarchy stays consistent without reintroducing detached cards.
@@ -173,8 +175,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - the diff body `ListView` owns vertical scrolling while the column header mirrors its horizontal viewport, keeping the vertical scrollbar visible without depending on horizontal position;
   - the diff body reserves a scrollbar-safe bottom inset so the last rows stay selectable/copyable;
   - lightweight row-copy fallback moved from always-visible per-row buttons to double-click-on-line-number/hunk-marker hotspots that copy the full underlying line text, not just the visible viewport fragment;
-  - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`) and now flows through a window-local `toast-controller` using `banner` placement in the existing workspace helper/action strip positions;
-  - the same `toast-controller` can render top-center overlay `toast` placement for low-risk success/info notifications (for example, provider settings save confirmation);
+  - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`) and now uses dual channels: weak pill in helper/action strip + top-center overlay `toast` for copy actions;
+  - window-local `toast-controller` is toast-only (overlay placement); weak pill feedback is managed by dedicated `weak_feedback` state and timer in `app.rs`;
+  - overlay `toast` also covers low-risk success/info notifications (for example, provider settings save confirmation);
   - fixed left-side line numbers remain deferred in this phase.
 - `can_load_diff = false` and preview capability boundaries map to explicit `unavailable` (not generic failure).
 - No new AI schema, sidebar IA, compare mode, or task orchestration layer was added for `15.1B`; the productization remains presentation/state-derivation only.
@@ -230,6 +233,10 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - fix-2 stabilized independent success-body vertical scrolling with geometry-driven section stacking and dynamic scrollbar visibility;
   - fix-3 landed selectable text inside Analysis success sections (`Summary/Core Judgment/Key Points/Review Suggestions/Notes`) while keeping shell-state selectable text out of scope;
   - kept Diff shell, sidebar IA, and AI response schema unchanged.
+- 15.2A:
+  - narrowed local `toast-controller` responsibility to overlay toast only and restored helper/action strip weak feedback as a separate channel;
+  - docked copy-action toast feedback to Diff row double-click copy and Analysis success `Copy`/`Copy All` while preserving weak-pill baseline;
+  - kept Analysis success native shortcut copy (`selection + system copy`) on system-default path without toast hook due current callback boundary.
 
 ## Deferred architecture decisions (after Phase 15.1B)
 
@@ -250,7 +257,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - deferred to `Phase 19: AI analysis enhancement`;
   - candidate approach: stream original provider text into Analysis body first, keep a lightweight loading overlay, then format into the structured section panel after completion.
 - `P2` Global toast / feedback orchestration:
-  - local baseline now exists via window-local `toast-controller` (`banner` + overlay `toast`, tone/queueing/replace policy, per-request duration);
+  - local baseline now exists via window-local `toast-controller` (overlay toast, tone/queueing/replace policy, per-request duration) + `weak_feedback` helper/action-strip channel;
   - global routing, persistence, and cross-surface orchestration remain deferred until broader save/export/report flows require a notification center model.
 - `P2` Sticky left-side line numbers:
   - deferred because the current Slint `ListView` viewer would need a split pinned gutter + horizontally scrollable content lane with synchronized vertical viewport, row-height parity, and hunk-row handling; that is medium-high complexity and too invasive for the accepted fix-3 stabilization shell.

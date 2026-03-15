@@ -47,7 +47,6 @@ impl ToastRequest {
         }
     }
 
-    #[allow(dead_code)]
     pub fn with_duration(mut self, duration: Duration) -> Self {
         self.duration = if duration.is_zero() {
             DEFAULT_TOAST_DURATION
@@ -57,7 +56,6 @@ impl ToastRequest {
         self
     }
 
-    #[allow(dead_code)]
     pub fn with_strategy(mut self, strategy: ToastStrategy) -> Self {
         self.strategy = strategy;
         self

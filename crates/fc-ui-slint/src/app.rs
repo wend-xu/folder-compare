@@ -6,7 +6,7 @@ use crate::folder_picker;
 use crate::presenter::Presenter;
 use crate::state::AppState;
 use crate::toast_controller::{
-    ToastPlacement, ToastQueueState, ToastRequest, ToastTone,
+    ToastPlacement, ToastQueueState, ToastRequest, ToastStrategy, ToastTone,
 };
 use copypasta::{ClipboardContext, ClipboardProvider};
 use fc_ai::AiProviderKind;
@@ -2548,7 +2548,12 @@ fn show_weak_feedback(window: &MainWindow, message: String, tone: &str) {
     });
 }
 
-fn copy_text_with_feedback(window: &MainWindow, text: &str, feedback_label: &str) {
+fn copy_text_with_feedback(
+    window: &MainWindow,
+    toast_controller: &ToastController,
+    text: &str,
+    feedback_label: &str,
+) {
     let (message, tone) = if copy_text_to_clipboard(text).is_ok() {
         let label = feedback_label.trim();
         (
@@ -2563,7 +2568,17 @@ fn copy_text_with_feedback(window: &MainWindow, text: &str, feedback_label: &str
         ("Copy failed".to_string(), "error")
     };
 
-    show_weak_feedback(window, message, tone);
+    let toast_tone = if tone == "error" {
+        ToastTone::Error
+    } else {
+        ToastTone::Info
+    };
+    show_weak_feedback(window, message.clone(), tone);
+    toast_controller.dispatch(
+        ToastRequest::new(message, toast_tone, ToastPlacement::Toast)
+            .with_duration(Duration::from_millis(1600))
+            .with_strategy(ToastStrategy::Replace),
+    );
 }
 
 /// Runs the UI application.
@@ -2702,11 +2717,17 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let copy_toast_controller = toast_controller.clone();
     app.on_copy_requested(move |value, feedback_label| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
-        copy_text_with_feedback(&window, value.as_str(), feedback_label.as_str());
+        copy_text_with_feedback(
+            &window,
+            &copy_toast_controller,
+            value.as_str(),
+            feedback_label.as_str(),
+        );
     });
 
     // Provider settings lifecycle callbacks (open/cancel/save).
