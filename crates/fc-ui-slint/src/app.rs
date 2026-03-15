@@ -6,7 +6,7 @@ use crate::folder_picker;
 use crate::presenter::Presenter;
 use crate::state::AppState;
 use crate::toast_controller::{
-    ToastPlacement, ToastQueueState, ToastRequest, ToastStrategy, ToastTone,
+    ToastPlacement, ToastQueueState, ToastRequest, ToastTone,
 };
 use copypasta::{ClipboardContext, ClipboardProvider};
 use fc_ai::AiProviderKind;
@@ -697,8 +697,9 @@ slint::slint! {
         in property <string> diff_shell_body_text;
         in property <string> diff_shell_note_text;
         in property <int> diff_content_char_capacity;
-        in-out property <string> banner_feedback_text: "";
-        in-out property <string> banner_feedback_tone: "info";
+        in-out property <string> weak_feedback_text: "";
+        in-out property <string> weak_feedback_tone: "info";
+        in-out property <int> weak_feedback_nonce: 0;
         in-out property <string> toast_feedback_text: "";
         in-out property <string> toast_feedback_tone: "info";
         property <bool> has_selected_result: root.selected_row >= 0;
@@ -1346,9 +1347,9 @@ slint::slint! {
                                                                 horizontal-stretch: 1;
                                                                 overflow: elide;
                                                             }
-                                                            if root.banner_feedback_text != "" : StatusPill {
-                                                                label: root.banner_feedback_text;
-                                                                tone: root.banner_feedback_tone;
+                                                            if root.weak_feedback_text != "" : StatusPill {
+                                                                label: root.weak_feedback_text;
+                                                                tone: root.weak_feedback_tone;
                                                             }
                                                         }
                                                     }
@@ -1716,9 +1717,9 @@ slint::slint! {
                                                                     root.copy_requested(root.analysis_full_copy_text, "Analysis");
                                                                 }
                                                             }
-                                                            if root.banner_feedback_text != "" : StatusPill {
-                                                                label: root.banner_feedback_text;
-                                                                tone: root.banner_feedback_tone;
+                                                            if root.weak_feedback_text != "" : StatusPill {
+                                                                label: root.weak_feedback_text;
+                                                                tone: root.weak_feedback_tone;
                                                             }
                                                         }
                                                     }
@@ -1966,6 +1967,7 @@ slint::slint! {
             y: 14px;
             width: self.bubble_width;
             height: 34px;
+            opacity: 0.5;
             border-width: 1px;
             border-radius: 6px;
             border-color: root.toast_feedback_tone == "error"
@@ -2442,25 +2444,14 @@ impl ToastControllerInner {
             return;
         };
         let tone = toast_tone_token(request.tone);
-        match request.placement {
-            ToastPlacement::Banner => {
-                window.set_banner_feedback_tone(tone.into());
-                window.set_banner_feedback_text(request.message.clone().into());
-                window.set_toast_feedback_text("".into());
-            }
-            ToastPlacement::Toast => {
-                window.set_toast_feedback_tone(tone.into());
-                window.set_toast_feedback_text(request.message.clone().into());
-                window.set_banner_feedback_text("".into());
-            }
-        }
+        window.set_toast_feedback_tone(tone.into());
+        window.set_toast_feedback_text(request.message.clone().into());
     }
 
-    fn clear_all(&self) {
+    fn clear_toast(&self) {
         let Some(window) = self.window.upgrade() else {
             return;
         };
-        window.set_banner_feedback_text("".into());
         window.set_toast_feedback_text("".into());
     }
 }
@@ -2519,7 +2510,7 @@ impl ToastController {
                     Some((inner.generation, active.duration))
                 }
                 None => {
-                    inner.clear_all();
+                    inner.clear_toast();
                     None
                 }
             }
@@ -2540,7 +2531,24 @@ fn toast_tone_token(tone: ToastTone) -> &'static str {
     }
 }
 
-fn copy_text_with_feedback(controller: &ToastController, text: &str, feedback_label: &str) {
+fn show_weak_feedback(window: &MainWindow, message: String, tone: &str) {
+    let nonce = window.get_weak_feedback_nonce() + 1;
+    window.set_weak_feedback_nonce(nonce);
+    window.set_weak_feedback_tone(tone.into());
+    window.set_weak_feedback_text(message.into());
+
+    let clear_weak = window.as_weak();
+    Timer::single_shot(Duration::from_millis(1600), move || {
+        let Some(clear_window) = clear_weak.upgrade() else {
+            return;
+        };
+        if clear_window.get_weak_feedback_nonce() == nonce {
+            clear_window.set_weak_feedback_text("".into());
+        }
+    });
+}
+
+fn copy_text_with_feedback(window: &MainWindow, text: &str, feedback_label: &str) {
     let (message, tone) = if copy_text_to_clipboard(text).is_ok() {
         let label = feedback_label.trim();
         (
@@ -2549,17 +2557,13 @@ fn copy_text_with_feedback(controller: &ToastController, text: &str, feedback_la
             } else {
                 format!("{label} copied")
             },
-            ToastTone::Info,
+            "info",
         )
     } else {
-        ("Copy failed".to_string(), ToastTone::Error)
+        ("Copy failed".to_string(), "error")
     };
 
-    controller.dispatch(
-        ToastRequest::new(message, tone, ToastPlacement::Banner)
-            .with_duration(Duration::from_millis(1600))
-            .with_strategy(ToastStrategy::Replace),
-    );
+    show_weak_feedback(window, message, tone);
 }
 
 /// Runs the UI application.
@@ -2698,16 +2702,11 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
-    let copy_toast_controller = toast_controller.clone();
     app.on_copy_requested(move |value, feedback_label| {
-        if app_weak.upgrade().is_none() {
+        let Some(window) = app_weak.upgrade() else {
             return;
-        }
-        copy_text_with_feedback(
-            &copy_toast_controller,
-            value.as_str(),
-            feedback_label.as_str(),
-        );
+        };
+        copy_text_with_feedback(&window, value.as_str(), feedback_label.as_str());
     });
 
     // Provider settings lifecycle callbacks (open/cancel/save).

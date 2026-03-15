@@ -7,7 +7,6 @@ pub const DEFAULT_TOAST_DURATION: Duration = Duration::from_millis(2000);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastPlacement {
-    Banner,
     Toast,
 }
 
@@ -48,6 +47,7 @@ impl ToastRequest {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_duration(mut self, duration: Duration) -> Self {
         self.duration = if duration.is_zero() {
             DEFAULT_TOAST_DURATION
@@ -57,6 +57,7 @@ impl ToastRequest {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_strategy(mut self, strategy: ToastStrategy) -> Self {
         self.strategy = strategy;
         self
@@ -147,9 +148,9 @@ mod tests {
     #[test]
     fn queue_strategy_keeps_order_until_timeout() {
         let mut queue = ToastQueueState::default();
-        let first = ToastRequest::new("A", ToastTone::Info, ToastPlacement::Banner)
+        let first = ToastRequest::new("A", ToastTone::Info, ToastPlacement::Toast)
             .with_strategy(ToastStrategy::Queue);
-        let second = ToastRequest::new("B", ToastTone::Warn, ToastPlacement::Banner)
+        let second = ToastRequest::new("B", ToastTone::Warn, ToastPlacement::Toast)
             .with_strategy(ToastStrategy::Queue);
 
         let first_result = queue.enqueue(first.clone());
@@ -178,7 +179,7 @@ mod tests {
     fn replace_strategy_overrides_current_immediately() {
         let mut queue = ToastQueueState::default();
         queue.enqueue(
-            ToastRequest::new("A", ToastTone::Info, ToastPlacement::Banner)
+            ToastRequest::new("A", ToastTone::Info, ToastPlacement::Toast)
                 .with_strategy(ToastStrategy::Queue),
         );
 
@@ -202,12 +203,12 @@ mod tests {
     fn auto_strategy_replaces_same_content_and_resets_timer() {
         let mut queue = ToastQueueState::default();
         queue.enqueue(
-            ToastRequest::new("Copied", ToastTone::Info, ToastPlacement::Banner)
+            ToastRequest::new("Copied", ToastTone::Info, ToastPlacement::Toast)
                 .with_duration(Duration::from_millis(1000)),
         );
 
         let auto_result = queue.enqueue(
-            ToastRequest::new("Copied", ToastTone::Info, ToastPlacement::Banner)
+            ToastRequest::new("Copied", ToastTone::Info, ToastPlacement::Toast)
                 .with_duration(Duration::from_millis(3600))
                 .with_strategy(ToastStrategy::Auto),
         );
