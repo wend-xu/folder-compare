@@ -697,9 +697,6 @@ slint::slint! {
         in property <string> diff_shell_body_text;
         in property <string> diff_shell_note_text;
         in property <int> diff_content_char_capacity;
-        in-out property <string> weak_feedback_text: "";
-        in-out property <string> weak_feedback_tone: "info";
-        in-out property <int> weak_feedback_nonce: 0;
         in-out property <string> toast_feedback_text: "";
         in-out property <string> toast_feedback_tone: "info";
         property <bool> has_selected_result: root.selected_row >= 0;
@@ -1347,10 +1344,6 @@ slint::slint! {
                                                                 horizontal-stretch: 1;
                                                                 overflow: elide;
                                                             }
-                                                            if root.weak_feedback_text != "" : StatusPill {
-                                                                label: root.weak_feedback_text;
-                                                                tone: root.weak_feedback_tone;
-                                                            }
                                                         }
                                                     }
 
@@ -1716,10 +1709,6 @@ slint::slint! {
                                                                 tapped => {
                                                                     root.copy_requested(root.analysis_full_copy_text, "Analysis");
                                                                 }
-                                                            }
-                                                            if root.weak_feedback_text != "" : StatusPill {
-                                                                label: root.weak_feedback_text;
-                                                                tone: root.weak_feedback_tone;
                                                             }
                                                         }
                                                     }
@@ -2531,25 +2520,7 @@ fn toast_tone_token(tone: ToastTone) -> &'static str {
     }
 }
 
-fn show_weak_feedback(window: &MainWindow, message: String, tone: &str) {
-    let nonce = window.get_weak_feedback_nonce() + 1;
-    window.set_weak_feedback_nonce(nonce);
-    window.set_weak_feedback_tone(tone.into());
-    window.set_weak_feedback_text(message.into());
-
-    let clear_weak = window.as_weak();
-    Timer::single_shot(Duration::from_millis(1600), move || {
-        let Some(clear_window) = clear_weak.upgrade() else {
-            return;
-        };
-        if clear_window.get_weak_feedback_nonce() == nonce {
-            clear_window.set_weak_feedback_text("".into());
-        }
-    });
-}
-
 fn copy_text_with_feedback(
-    window: &MainWindow,
     toast_controller: &ToastController,
     text: &str,
     feedback_label: &str,
@@ -2562,20 +2533,14 @@ fn copy_text_with_feedback(
             } else {
                 format!("{label} copied")
             },
-            "info",
+            ToastTone::Info,
         )
     } else {
-        ("Copy failed".to_string(), "error")
+        ("Copy failed".to_string(), ToastTone::Error)
     };
 
-    let toast_tone = if tone == "error" {
-        ToastTone::Error
-    } else {
-        ToastTone::Info
-    };
-    show_weak_feedback(window, message.clone(), tone);
     toast_controller.dispatch(
-        ToastRequest::new(message, toast_tone, ToastPlacement::Toast)
+        ToastRequest::new(message, tone, ToastPlacement::Toast)
             .with_duration(Duration::from_millis(1600))
             .with_strategy(ToastStrategy::Replace),
     );
@@ -2719,11 +2684,10 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let copy_toast_controller = toast_controller.clone();
     app.on_copy_requested(move |value, feedback_label| {
-        let Some(window) = app_weak.upgrade() else {
+        if app_weak.upgrade().is_none() {
             return;
-        };
+        }
         copy_text_with_feedback(
-            &window,
             &copy_toast_controller,
             value.as_str(),
             feedback_label.as_str(),
