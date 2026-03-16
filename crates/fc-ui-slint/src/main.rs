@@ -3,6 +3,7 @@
 mod app;
 mod bridge;
 mod commands;
+mod context_menu;
 mod folder_picker;
 mod presenter;
 mod settings;
