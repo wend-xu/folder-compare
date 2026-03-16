@@ -238,7 +238,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - menu open/close;
   - anchor position near the right-click point;
   - target/context token;
-  - action dispatch and custom-action handler storage.
+  - action dispatch and custom-action handler storage;
+  - auto-close on outside click, tab switch, compare/analyze rerun, selected-row change, busy-start, and user scroll on `Results / Navigator` plus Analysis success `ScrollView`.
 - Business state remains outside the menu core:
   - no menu state was added to `AppState`;
   - no presenter/core/ai contract was expanded for menu actions.
@@ -249,7 +250,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - Current safe-surface integration points:
   - `Results / Navigator` item;
   - `Workspace` file context header (`Diff` and `Analysis` header surface);
-  - `Analysis` success section header/card chrome (`Summary`, `Risk Level`, `Core Judgment`, `Key Points`, `Review Suggestions`, `Notes`).
+  - `Analysis` success section header/card chrome (`Summary`, `Core Judgment`, `Key Points`, `Review Suggestions`, `Notes`).
+- `Risk Level` keeps explicit `Copy` button only in this phase and no longer participates in context-menu coverage.
 - Explicitly deferred to `Phase 15.2E` or later:
   - all `LineEdit` / `TextInput`;
   - `SelectableSectionText`;
@@ -311,8 +313,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - kept tone semantics and visual hierarchy unchanged while reducing duplicated semantic hex values;
   - explicitly deferred runtime theme switching, Provider Settings visual upgrade, and full layout/surface color cleanup.
 - 15.2D:
-  - added one shared window-local context-menu core with `Copy` / `Copy Summary` actions, right-click anchor positioning, outside-click close, and action dispatch by target token;
-  - connected only non-input safe surfaces (`Results / Navigator`, `Workspace` file context header, `Analysis` success section chrome);
+  - added one shared window-local context-menu core with `Copy` / `Copy Summary` actions, right-click anchor positioning, outside-click close, scroll close on `Results`/Analysis success scroll hosts, and action dispatch by target token;
+  - connected only non-input safe surfaces (`Results / Navigator`, `Workspace` file context header, `Analysis` success section chrome except `Risk Level`);
+  - normalized `AnalysisSectionPanel` anchor coordinates so section menus open near the actual pointer location;
   - kept `SelectableSectionText` / `SelectableDiffText` / all editable inputs out of scope so the menu core remains independently stable and does not depend on `15.2E`.
 
 ## Deferred architecture decisions (after Phase 15.2D)

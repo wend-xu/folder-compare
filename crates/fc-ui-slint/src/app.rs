@@ -570,8 +570,8 @@ slint::slint! {
                     pointer-event(event) => {
                         if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
                             root.context_menu_requested(
-                                self.absolute-position.x + self.mouse-x - root.absolute-position.x,
-                                self.absolute-position.y + self.mouse-y - root.absolute-position.y,
+                                self.absolute-position.x + self.mouse-x,
+                                self.absolute-position.y + self.mouse-y,
                                 root.section_label,
                                 root.title,
                                 root.body,
@@ -1338,6 +1338,9 @@ slint::slint! {
                                             }
                                         }
                                     }
+                                    scrolled => {
+                                        root.context_menu_close_requested();
+                                    }
                                 }
                             }
                         }
@@ -1913,6 +1916,9 @@ slint::slint! {
                                                         analysis_success_scroll := ScrollView {
                                                             width: parent.width;
                                                             height: parent.height;
+                                                            scrolled => {
+                                                                root.context_menu_close_requested();
+                                                            }
                                                             property <length> viewport_side_padding: 16px;
                                                             property <length> viewport_top_padding: 16px;
                                                             property <length> viewport_bottom_padding: 16px;
@@ -1952,8 +1958,8 @@ slint::slint! {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
                                                                     context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
-                                                                        root.context_menu_anchor_x = anchor_x;
-                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.context_menu_anchor_x = anchor_x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = anchor_y - root.absolute-position.y;
                                                                         root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
                                                                     }
                                                                 }
@@ -2009,20 +2015,6 @@ slint::slint! {
                                                                                 }
                                                                             }
 
-                                                                            TouchArea {
-                                                                                pointer-event(event) => {
-                                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
-                                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
-                                                                                        root.analysis_section_context_menu_requested(
-                                                                                            "Risk Level",
-                                                                                            root.analysis_risk_label_text,
-                                                                                            root.analysis_risk_guidance_text,
-                                                                                            root.analysis_risk_copy_text,
-                                                                                        );
-                                                                                    }
-                                                                                }
-                                                                            }
                                                                         }
 
                                                                         StatusPill {
@@ -2052,8 +2044,8 @@ slint::slint! {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
                                                                     context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
-                                                                        root.context_menu_anchor_x = anchor_x;
-                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.context_menu_anchor_x = anchor_x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = anchor_y - root.absolute-position.y;
                                                                         root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
                                                                     }
                                                                 }
@@ -2071,8 +2063,8 @@ slint::slint! {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
                                                                     context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
-                                                                        root.context_menu_anchor_x = anchor_x;
-                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.context_menu_anchor_x = anchor_x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = anchor_y - root.absolute-position.y;
                                                                         root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
                                                                     }
                                                                 }
@@ -2093,8 +2085,8 @@ slint::slint! {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
                                                                     context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
-                                                                        root.context_menu_anchor_x = anchor_x;
-                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.context_menu_anchor_x = anchor_x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = anchor_y - root.absolute-position.y;
                                                                         root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
                                                                     }
                                                                 }
@@ -2116,8 +2108,8 @@ slint::slint! {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
                                                                     context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
-                                                                        root.context_menu_anchor_x = anchor_x;
-                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.context_menu_anchor_x = anchor_x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = anchor_y - root.absolute-position.y;
                                                                         root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
                                                                     }
                                                                 }

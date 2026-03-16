@@ -9,8 +9,10 @@
 - 轮次定义：`Phase 15.2D: menu core + non-input safe surfaces`（基线：`Phase 15.2A toast-controller overlay only` + `Phase 15.2B loading-mask(+sync projection fix)` + `Phase 15.2C ui_palette` 已落地代码）。
 - 改了什么：
   - 在 `fc-ui-slint` 内新增共享 `context-menu core`（window-local controller + shared menu surface），不把短生命周期菜单状态塞回 `AppState/Presenter`；
-  - 接入 `Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome 的右键 `Copy / Copy Summary`；
-  - 增加 target/context token、anchor positioning、action dispatch 和自动关闭策略（tab 切换 / compare 重跑 / selected row 变化 / action 执行后 / 外部点击）；
+  - 接入 `Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome（`Summary` / `Core Judgment` / `Key Points` / `Review Suggestions` / `Notes`）的右键 `Copy / Copy Summary`；
+  - `Risk Level` 在本阶段仅保留显式 `Copy` 按钮，不再提供右键菜单；
+  - 增加 target/context token、anchor positioning、action dispatch 和自动关闭策略（tab 切换 / compare 重跑 / selected row 变化 / action 执行后 / 外部点击 / `Results` 与 Analysis success 滚动）；
+  - 修正 `AnalysisSectionPanel` 的 anchor 坐标归一化，避免 Analysis section 菜单错误吸附到顶部；
   - 保持 `toast-controller` 仍为 overlay toast only，不回退为 banner 或全局通知中心。
 - 为什么影响下一线程：`15.2D` 已提供未来 input integration 可复用的最小 menu core；如果跳过 `15.2E`，主线也可以直接推进 phase 16，不再依赖 editable input 方案。
 - 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、loading scope boundary（`running`/`diff_loading`/`analysis_loading`）、`SelectableSectionText`/`SelectableDiffText`、以及所有输入控件绑定结构均不改。
@@ -37,7 +39,7 @@
 - In Scope：
   - `fc-ui-slint` 内共享 `context-menu core`（open/close、action dispatch、anchor positioning、target token）
   - `Copy / Copy Summary` 公共动作与最小格式化 helper
-  - safe surface 接入：`Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome
+  - safe surface 接入：`Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome（`Summary` / `Core Judgment` / `Key Points` / `Review Suggestions` / `Notes`）
   - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
   - 最小回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、`cargo run -p fc-ui-slint` smoke）
 - Out of Scope：
@@ -74,8 +76,8 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - 收口 `Phase 15.2D` shared context-menu core 与 safe surface 接线
-  - 验证自动关闭策略与 copy-family helper 不污染主线状态机
+  - `Phase 15.2D` shared context-menu core 收口已完成，待确认是否直接推进 `15.2E`
+  - 验证滚动自动关闭、Analysis section anchor 和 copy-family helper 不污染主线状态机
 - Next：
   - 评估是否完全跳过 `15.2E` 直接推进 phase 16；若做 `15.2E`，仅作为 isolated editable-input pass
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
@@ -88,7 +90,7 @@
 1. 不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
 2. `context-menu core` 必须保持 window-local；不要把 menu lifecycle 反向塞回 `AppState/Presenter`。
 3. 不要误接 editable input surface，尤其 `SelectableSectionText` / `SelectableDiffText` / `LineEdit` / `TextInput`。
-4. 右键接线不能破坏 `Results / Navigator` 左键选择、Diff 行号双击复制、Analysis success 文本选择与滚动。
+4. 右键接线不能破坏 `Results / Navigator` 左键选择、Diff 行号双击复制、Analysis success 文本选择与滚动；`Risk Level` 保持 `Copy` 按钮-only，不再属于 menu safe surface。
 5. `toast-controller` 仍是 overlay toast only；不要回退 15.2A 的边界。
 
 ## 验证命令（Verification Commands）
