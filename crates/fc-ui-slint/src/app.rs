@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
+    import { UiPalette } from "src/ui_palette.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
     // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
@@ -192,56 +193,62 @@ slint::slint! {
         border-radius: 6px;
         border-width: 1px;
         border-color: root.tone == "different"
-            ? #cc8d7a
+            ? UiPalette.status_pill_tone_different_border
             : (root.tone == "equal"
-                ? #afc7b0
+                ? UiPalette.status_pill_tone_equal_border
                 : (root.tone == "left"
-                    ? #c8b58f
+                    ? UiPalette.status_pill_tone_left_border
                     : (root.tone == "right"
-                        ? #acbdc3
+                        ? UiPalette.status_pill_tone_right_border
                         : (root.tone == "warn"
-                            ? #dac6ab
+                            ? UiPalette.status_pill_tone_warn_border
                             : (root.tone == "error"
-                                ? #dfc1c1
+                                ? UiPalette.status_pill_tone_error_border
                                 : (root.tone == "info"
-                                    ? #c6d7ec
-                                    : #cfc9c2))))));
+                                    ? UiPalette.status_pill_tone_info_border
+                                    : UiPalette.status_pill_tone_neutral_border))))));
         background: root.tone == "different"
-            ? #f8e4de
+            ? UiPalette.status_pill_tone_different_background
             : (root.tone == "equal"
-                ? #edf5ee
+                ? UiPalette.status_pill_tone_equal_background
                 : (root.tone == "left"
-                    ? #f4ede1
+                    ? UiPalette.status_pill_tone_left_background
                     : (root.tone == "right"
-                        ? #e9f0f2
+                        ? UiPalette.status_pill_tone_right_background
                         : (root.tone == "warn"
-                            ? #fbf5ea
+                            ? UiPalette.status_pill_tone_warn_background
                             : (root.tone == "error"
-                                ? #fdf2f2
+                                ? UiPalette.status_pill_tone_error_background
                                 : (root.tone == "info"
-                                    ? #eef4fb
-                                    : #f1efec))))));
-
-        Text {
-            text: root.label;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            color: root.tone == "different"
-                ? #7a3f31
-                : (root.tone == "equal"
-                    ? #355a3f
-                    : (root.tone == "left"
-                        ? #6d5737
-                        : (root.tone == "right"
-                            ? #3f5e68
-                            : (root.tone == "warn"
-                                ? #7b5a2e
-                                : (root.tone == "error"
-                                    ? #8a2f2f
-                                    : (root.tone == "info"
-                                        ? #2e5579
-                                        : #6b6660))))));
-            font-size: 11px;
+                                    ? UiPalette.status_pill_tone_info_background
+                                    : UiPalette.status_pill_tone_neutral_background))))));
+        HorizontalLayout {
+            width: parent.width;
+            height: parent.height;
+            padding-left: 4px;
+            padding-right: 4px;
+            spacing: 6px;
+            Text {
+                text: root.label;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: root.tone == "different"
+                    ? UiPalette.status_pill_tone_different_text
+                    : (root.tone == "equal"
+                        ? UiPalette.status_pill_tone_equal_text
+                        : (root.tone == "left"
+                            ? UiPalette.status_pill_tone_left_text
+                            : (root.tone == "right"
+                                ? UiPalette.status_pill_tone_right_text
+                                : (root.tone == "warn"
+                                    ? UiPalette.status_pill_tone_warn_text
+                                    : (root.tone == "error"
+                                        ? UiPalette.status_pill_tone_error_text
+                                        : (root.tone == "info"
+                                            ? UiPalette.status_pill_tone_info_text
+                                            : UiPalette.status_pill_tone_neutral_text))))));
+                font-size: 11px;
+            }
         }
     }
 
@@ -249,7 +256,7 @@ slint::slint! {
         in property <string> message;
         in property <length> corner_radius: 6px;
 
-        background: rgba(17, 24, 34, 0.24);
+        background: UiPalette.loading_mask_overlay;
         border-radius: root.corner_radius;
         clip: true;
 
@@ -260,8 +267,8 @@ slint::slint! {
             y: (parent.height - self.height) / 2;
             border-width: 1px;
             border-radius: 6px;
-            border-color: #d9e2ee;
-            background: #f9fbfe;
+            border-color: UiPalette.loading_mask_panel_border;
+            background: UiPalette.loading_mask_panel_background;
 
             HorizontalLayout {
                 padding: 10px;
@@ -273,7 +280,7 @@ slint::slint! {
                 }
                 Text {
                     text: root.message == "" ? "Working..." : root.message;
-                    color: #47596c;
+                    color: UiPalette.loading_mask_message_text;
                     font-size: 13px;
                     vertical-alignment: center;
                     horizontal-stretch: 1;
@@ -300,42 +307,42 @@ slint::slint! {
         clip: true;
 
         property <brush> panel_border: root.tone == "error"
-            ? #dec8c8
+            ? UiPalette.state_shell_tone_error_border
             : (root.tone == "warn"
-                ? #e0d1bc
+                ? UiPalette.state_shell_tone_warn_border
                 : (root.tone == "info"
-                    ? #cad9ea
+                    ? UiPalette.state_shell_tone_info_border
                     : (root.tone == "success"
-                        ? #cad9cf
-                        : #d7e1ed)));
+                        ? UiPalette.state_shell_tone_success_border
+                        : UiPalette.state_shell_tone_neutral_border)));
         property <brush> panel_background: root.tone == "error"
-            ? #fbf3f3
+            ? UiPalette.state_shell_tone_error_background
             : (root.tone == "warn"
-                ? #fbf8f2
+                ? UiPalette.state_shell_tone_warn_background
                 : (root.tone == "info"
-                    ? #f1f6fb
+                    ? UiPalette.state_shell_tone_info_background
                     : (root.tone == "success"
-                        ? #f3f8f4
-                        : #f8fafc)));
+                        ? UiPalette.state_shell_tone_success_background
+                        : UiPalette.state_shell_tone_neutral_background)));
         property <brush> accent_color: root.tone == "error"
-            ? #ba7676
+            ? UiPalette.state_shell_tone_error_accent
             : (root.tone == "warn"
-                ? #b79868
+                ? UiPalette.state_shell_tone_warn_accent
                 : (root.tone == "info"
-                    ? #7fa2c9
+                    ? UiPalette.state_shell_tone_info_accent
                     : (root.tone == "success"
-                        ? #7ca889
-                        : #9aadbf)));
+                        ? UiPalette.state_shell_tone_success_accent
+                        : UiPalette.state_shell_tone_neutral_accent)));
 
         property <brush> title_color: root.tone == "error"
-            ? #7f3333
+            ? UiPalette.state_shell_tone_error_title_text
             : (root.tone == "warn"
-                ? #735730
+                ? UiPalette.state_shell_tone_warn_title_text
                 : (root.tone == "info"
-                    ? #2e5579
+                    ? UiPalette.state_shell_tone_info_title_text
                     : (root.tone == "success"
-                        ? #315d42
-                        : #475c71)));
+                        ? UiPalette.state_shell_tone_success_title_text
+                        : UiPalette.state_shell_tone_neutral_title_text)));
 
         Rectangle {
             x: 0px;
@@ -351,21 +358,21 @@ slint::slint! {
             width: parent.width;
             height: 42px;
             background: root.tone == "error"
-                ? #f8e9e9
+                ? UiPalette.state_shell_tone_error_header_background
                 : (root.tone == "warn"
-                    ? #f7efdf
+                    ? UiPalette.state_shell_tone_warn_header_background
                     : (root.tone == "info"
-                        ? #e9f1fb
+                        ? UiPalette.state_shell_tone_info_header_background
                         : (root.tone == "success"
-                            ? #e8f2eb
-                            : #eef3f8)));
+                            ? UiPalette.state_shell_tone_success_header_background
+                            : UiPalette.state_shell_tone_neutral_header_background)));
 
             Rectangle {
                 x: 0px;
                 y: parent.height - 1px;
                 width: parent.width;
                 height: 1px;
-                background: #dce5ee;
+                background: UiPalette.state_shell_header_separator;
             }
 
             StatusPill {
@@ -394,7 +401,7 @@ slint::slint! {
             Text {
                 visible: root.body != "";
                 text: root.body;
-                color: #55687b;
+                color: UiPalette.state_shell_body_text;
                 font-size: 14px;
                 wrap: word-wrap;
                 horizontal-stretch: 1;
@@ -403,14 +410,14 @@ slint::slint! {
             Rectangle {
                 visible: root.note != "";
                 height: 1px;
-                background: #dde5ee;
+                background: UiPalette.state_shell_note_separator;
                 horizontal-stretch: 1;
             }
 
             Text {
                 visible: root.note != "";
                 text: root.note;
-                color: #6d7c8d;
+                color: UiPalette.state_shell_note_text;
                 font-size: 13px;
                 wrap: word-wrap;
                 horizontal-stretch: 1;
@@ -499,19 +506,19 @@ slint::slint! {
         border-width: 1px;
         border-radius: 8px;
         border-color: root.tone == "error"
-            ? #dfcccc
+            ? UiPalette.result_section_tone_error_border
             : (root.tone == "warn"
-                ? #dfd1bb
+                ? UiPalette.result_section_tone_warn_border
                 : (root.tone == "success"
-                    ? #d1dfd5
-                    : #dbe4ef));
+                    ? UiPalette.result_section_tone_success_border
+                    : UiPalette.result_section_tone_neutral_border));
         background: root.tone == "error"
-            ? #fdf6f6
+            ? UiPalette.result_section_tone_error_background
             : (root.tone == "warn"
-                ? #fcf8f1
+                ? UiPalette.result_section_tone_warn_background
                 : (root.tone == "success"
-                    ? #f5fbf6
-                    : #ffffff));
+                    ? UiPalette.result_section_tone_success_background
+                    : UiPalette.result_section_tone_neutral_background));
 
         VerticalLayout {
             padding: 14px;
@@ -1173,38 +1180,38 @@ slint::slint! {
                                                     : (row_status == "right-only"
                                                         ? "right"
                                                         : "neutral")));
-                                        property <color> item_border_color: row_selected
-                                            ? #3f72b2
+                                        property <brush> item_border_color: row_selected
+                                            ? UiPalette.results_row_selected_border
                                             : (row_unavailable
-                                                ? #cfc9c2
+                                                ? UiPalette.results_row_unavailable_border
                                                 : (row_status == "different"
-                                                    ? #c88f7b
+                                                    ? UiPalette.results_row_tone_different_border
                                                     : (row_status == "equal"
-                                                        ? #b3cab4
+                                                        ? UiPalette.results_row_tone_equal_border
                                                         : (row_status == "left-only"
-                                                            ? #c7b28d
+                                                            ? UiPalette.results_row_tone_left_border
                                                             : (row_status == "right-only"
-                                                                ? #aabdc3
-                                                                : #dce3eb)))));
-                                        property <color> item_background_color: row_selected
-                                            ? #dbe9fb
+                                                                ? UiPalette.results_row_tone_right_border
+                                                                : UiPalette.results_row_tone_neutral_border)))));
+                                        property <brush> item_background_color: row_selected
+                                            ? UiPalette.results_row_selected_background
                                             : (row_unavailable
-                                                ? #f1efec
+                                                ? UiPalette.results_row_unavailable_background
                                                 : (row_status == "different"
-                                                    ? #f8e7e1
+                                                    ? UiPalette.results_row_tone_different_background
                                                     : (row_status == "equal"
-                                                        ? #eef5ef
+                                                        ? UiPalette.results_row_tone_equal_background
                                                         : (row_status == "left-only"
-                                                            ? #f5eee2
+                                                            ? UiPalette.results_row_tone_left_background
                                                             : (row_status == "right-only"
-                                                                ? #eaf0f2
-                                                                : #fbfcfe)))));
-                                        property <color> path_text_color: row_selected
-                                            ? #123e69
-                                            : (row_unavailable ? #6f6962 : #2f3f50);
-                                        property <color> detail_text_color: row_selected
-                                            ? #3f5f7f
-                                            : (row_unavailable ? #89837a : #647486);
+                                                                ? UiPalette.results_row_tone_right_background
+                                                                : UiPalette.results_row_tone_neutral_background)))));
+                                        property <brush> path_text_color: row_selected
+                                            ? UiPalette.results_row_selected_path_text
+                                            : (row_unavailable ? UiPalette.results_row_unavailable_path_text : UiPalette.results_row_tone_neutral_path_text);
+                                        property <brush> detail_text_color: row_selected
+                                            ? UiPalette.results_row_selected_detail_text
+                                            : (row_unavailable ? UiPalette.results_row_unavailable_detail_text : UiPalette.results_row_tone_neutral_detail_text);
 
                                         height: 44px;
                                         border-width: 1px;
@@ -1831,19 +1838,19 @@ slint::slint! {
                                                                     border-width: 1px;
                                                                     border-radius: 8px;
                                                                     border-color: root.analysis_risk_tone == "error"
-                                                                        ? #dfcccc
+                                                                        ? UiPalette.result_section_tone_error_border
                                                                         : (root.analysis_risk_tone == "warn"
-                                                                            ? #dfd1bb
+                                                                            ? UiPalette.result_section_tone_warn_border
                                                                             : (root.analysis_risk_tone == "success"
-                                                                                ? #d1dfd5
-                                                                                : #dbe4ef));
+                                                                                ? UiPalette.result_section_tone_success_border
+                                                                                : UiPalette.result_section_tone_neutral_border));
                                                                     background: root.analysis_risk_tone == "error"
-                                                                        ? #fdf6f6
+                                                                        ? UiPalette.result_section_tone_error_background
                                                                         : (root.analysis_risk_tone == "warn"
-                                                                            ? #fcf8f1
+                                                                            ? UiPalette.result_section_tone_warn_background
                                                                             : (root.analysis_risk_tone == "success"
-                                                                                ? #f5fbf6
-                                                                                : #ffffff));
+                                                                                ? UiPalette.result_section_tone_success_background
+                                                                                : UiPalette.result_section_tone_neutral_background));
 
                                                                     risk_layout := VerticalLayout {
                                                                         padding: 14px;
@@ -2031,19 +2038,19 @@ slint::slint! {
             border-width: 1px;
             border-radius: 6px;
             border-color: root.toast_feedback_tone == "error"
-                ? #d8b2b2
+                ? UiPalette.toast_tone_error_border
                 : (root.toast_feedback_tone == "warn"
-                    ? #dcc9a9
+                    ? UiPalette.toast_tone_warn_border
                     : (root.toast_feedback_tone == "success"
-                        ? #b9d5c1
-                        : #b8ccdf));
+                        ? UiPalette.toast_tone_success_border
+                        : UiPalette.toast_tone_info_border));
             background: root.toast_feedback_tone == "error"
-                ? #f8eeee
+                ? UiPalette.toast_tone_error_background
                 : (root.toast_feedback_tone == "warn"
-                    ? #fbf5e9
+                    ? UiPalette.toast_tone_warn_background
                     : (root.toast_feedback_tone == "success"
-                        ? #edf7ef
-                        : #edf4fb));
+                        ? UiPalette.toast_tone_success_background
+                        : UiPalette.toast_tone_info_background));
 
             toast_message := Text {
                 text: root.toast_feedback_text;
@@ -2052,12 +2059,12 @@ slint::slint! {
                 width: max(0px, parent.width - 28px);
                 height: parent.height;
                 color: root.toast_feedback_tone == "error"
-                    ? #7f3333
+                    ? UiPalette.toast_tone_error_text
                     : (root.toast_feedback_tone == "warn"
-                        ? #735730
+                        ? UiPalette.toast_tone_warn_text
                         : (root.toast_feedback_tone == "success"
-                            ? #315d42
-                            : #2e5579));
+                            ? UiPalette.toast_tone_success_text
+                            : UiPalette.toast_tone_info_text));
                 horizontal-alignment: center;
                 vertical-alignment: center;
                 overflow: elide;

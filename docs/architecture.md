@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.2B)
+# Folder Compare Architecture (Phase 1-15.2C)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.2B)
+## `fc-ui-slint` current architecture snapshot (Phase 15.2C)
 
 ### IA and layout contract
 
@@ -217,14 +217,29 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - timeout never mutates compare/diff/analysis business state and never auto-closes mask.
 - Minimal extra UI protection: while `diff_loading`, navigator row click is blocked to prevent selection/context drift caused by `SelectRow` racing with in-flight diff completion.
 
+### Local semantic palette boundary (Phase 15.2C)
+
+- `fc-ui-slint` now owns a local semantic palette file: `crates/fc-ui-slint/src/ui_palette.slint`.
+- This extraction is intentionally narrow and reuses existing visual hierarchy:
+  - semantic tones for `StatusPill`: `neutral/info/success/warn/error/different/equal/left/right`;
+  - shared semantic surfaces for `DiffStateShell`, Analysis result/risk sections, and Results row status border/background/text;
+  - Phase `15.2` infra colors for local `toast-controller` overlay and `loading-mask`;
+  - `context-menu` core reserve constants (not wired to a runtime menu in this phase).
+- Boundary remains local to Slint layer only:
+  - no Rust-side color struct/model was introduced;
+  - no runtime theme switching;
+  - no Provider Settings visual-system upgrade;
+  - no full-application hex cleanup outside semantic color contracts.
+
 ### Boundaries and non-goals in this phase
 
 - No IA reset.
 - No Compare View/tree-mode expansion.
 - No AI schema/provider capability expansion beyond UI-state orchestration.
 - No deep Compare Status details expansion beyond summary-first intent.
+- No runtime theme/settings upgrade or cross-surface theme controller.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.1B)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.2C)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -259,8 +274,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - added a local timeout watchdog that only downgrades UI copy and does not write back business state;
   - fixed short-lived diff loading visibility by projecting loading-mask immediately after state sync (not only on timer tick);
   - kept presenter/core/ai contracts unchanged and deferred any global loading orchestration API.
+- 15.2C:
+  - extracted a narrow Slint-layer semantic `ui_palette` for `StatusPill`, `DiffStateShell`, Results status rows, Analysis risk/section semantic surfaces, and local `toast/loading-mask`;
+  - kept tone semantics and visual hierarchy unchanged while reducing duplicated semantic hex values;
+  - explicitly deferred runtime theme switching, Provider Settings visual upgrade, and full layout/surface color cleanup.
 
-## Deferred architecture decisions (after Phase 15.2B)
+## Deferred architecture decisions (after Phase 15.2C)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -292,7 +311,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.1B fix-1)
+## Next implementation priority (after Phase 15.2C)
 
 1. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
