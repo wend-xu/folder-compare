@@ -2,6 +2,12 @@
 
 use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
+use crate::context_menu::{
+    build_action_specs, build_analysis_section_payload, build_results_row_payload,
+    build_workspace_header_payload, should_close_for_sync_transition, ContextMenuBuildResult,
+    ContextMenuCustomAction, ContextMenuInvocation, ContextMenuSyncState, ContextMenuTextPayload,
+    CONTEXT_MENU_COPY_ACTION_ID, CONTEXT_MENU_COPY_SUMMARY_ACTION_ID,
+};
 use crate::folder_picker;
 use crate::presenter::Presenter;
 use crate::state::AppState;
@@ -502,6 +508,7 @@ slint::slint! {
         in property <string> copy_value;
         in property <string> copy_feedback_label: root.section_label;
         callback copy_requested(string, string);
+        callback context_menu_requested(length, length, string, string, string, string);
 
         border-width: 1px;
         border-radius: 8px;
@@ -524,32 +531,52 @@ slint::slint! {
             padding: 14px;
             spacing: 8px;
 
-            HorizontalLayout {
-                spacing: 8px;
+            header_surface := Rectangle {
+                height: 20px;
+                background: transparent;
 
-                Text {
-                    text: root.section_label;
-                    color: #708193;
-                    font-size: 11px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                    horizontal-stretch: 1;
-                }
-
-                Rectangle {
-                    visible: root.copy_value != "";
-                    height: 20px;
-                    background: transparent;
+                HorizontalLayout {
+                    spacing: 8px;
 
                     Text {
-                        text: "Copy";
-                        color: #6d7b8b;
+                        text: root.section_label;
+                        color: #708193;
+                        font-size: 11px;
+                        font-weight: 600;
                         vertical-alignment: center;
+                        horizontal-stretch: 1;
                     }
 
-                    TouchArea {
-                        clicked => {
-                            root.copy_requested(root.copy_value, root.copy_feedback_label);
+                    Rectangle {
+                        visible: root.copy_value != "";
+                        height: 20px;
+                        background: transparent;
+
+                        Text {
+                            text: "Copy";
+                            color: #6d7b8b;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                root.copy_requested(root.copy_value, root.copy_feedback_label);
+                            }
+                        }
+                    }
+                }
+
+                TouchArea {
+                    pointer-event(event) => {
+                        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                            root.context_menu_requested(
+                                self.absolute-position.x + self.mouse-x - root.absolute-position.x,
+                                self.absolute-position.y + self.mouse-y - root.absolute-position.y,
+                                root.section_label,
+                                root.title,
+                                root.body,
+                                root.copy_value,
+                            );
                         }
                     }
                 }
@@ -593,6 +620,40 @@ slint::slint! {
             enabled: root.enabled;
             clicked => {
                 root.tapped();
+            }
+        }
+    }
+
+    component ContextMenuActionItem inherits Rectangle {
+        in property <string> label;
+        in property <string> action_id;
+        in property <bool> enabled: true;
+        callback activated(string);
+
+        property <bool> hovered: action_touch_area.has_hover && root.enabled;
+
+        height: 30px;
+        border-radius: 4px;
+        background: root.hovered ? UiPalette.context_menu_core_item_hover : transparent;
+        opacity: root.enabled ? 1 : 0.5;
+        clip: true;
+
+        Text {
+            text: root.label;
+            x: 10px;
+            y: 0px;
+            width: max(0px, parent.width - 20px);
+            height: parent.height;
+            color: UiPalette.context_menu_core_text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        action_touch_area := TouchArea {
+            clicked => {
+                if root.enabled {
+                    root.activated(root.action_id);
+                }
             }
         }
     }
@@ -666,6 +727,7 @@ slint::slint! {
         in property <[bool]> row_can_load_diff;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
+        in property <string> selected_relative_path_raw;
         in property <string> diff_summary_text;
         in property <string> diff_warning_text;
         in property <string> diff_error_text;
@@ -749,6 +811,13 @@ slint::slint! {
         in property <bool> sidebar_loading_mask_visible: false;
         in property <bool> workspace_loading_mask_visible: false;
         in property <string> loading_mask_text: "";
+        in-out property <bool> context_menu_open: false;
+        in-out property <length> context_menu_anchor_x: 0px;
+        in-out property <length> context_menu_anchor_y: 0px;
+        in property <string> context_menu_target_token: "";
+        in property <[string]> context_menu_action_labels;
+        in property <[string]> context_menu_action_ids;
+        in property <[bool]> context_menu_action_enabled;
         property <bool> has_selected_result: root.selected_row >= 0;
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
@@ -779,6 +848,11 @@ slint::slint! {
         callback provider_settings_clicked();
         callback provider_settings_save_clicked();
         callback provider_settings_cancel_clicked();
+        callback results_context_menu_requested(string, string, string, bool);
+        callback workspace_header_context_menu_requested(string, string, string, string, string);
+        callback analysis_section_context_menu_requested(string, string, string, string);
+        callback context_menu_close_requested();
+        callback context_menu_action_triggered(string);
 
         VerticalLayout {
             padding: 10px;
@@ -1250,6 +1324,18 @@ slint::slint! {
                                             clicked => {
                                                 root.row_selected(row_item.source_index);
                                             }
+                                            pointer-event(event) => {
+                                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                    root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                    root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                    root.results_context_menu_requested(
+                                                        row_path,
+                                                        row_item.row_status,
+                                                        row_item.row_unavailable ? "detailed diff unavailable" : root.row_details[index],
+                                                        row_item.row_unavailable,
+                                                    );
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1365,6 +1451,22 @@ slint::slint! {
                                                             vertical-alignment: center;
                                                             horizontal-stretch: 1;
                                                             overflow: elide;
+                                                        }
+                                                    }
+                                                }
+
+                                                TouchArea {
+                                                    pointer-event(event) => {
+                                                        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                            root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                            root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                            root.workspace_header_context_menu_requested(
+                                                                root.selected_relative_path_raw,
+                                                                root.diff_mode_label,
+                                                                root.diff_result_status_label,
+                                                                root.diff_context_summary_text,
+                                                                root.diff_context_hint_text,
+                                                            );
                                                         }
                                                     }
                                                 }
@@ -1638,45 +1740,66 @@ slint::slint! {
                                                     padding: 10px;
                                                     spacing: 10px;
 
-                                                    VerticalLayout {
-                                                        spacing: 4px;
+                                                    analysis_header_surface := Rectangle {
+                                                        horizontal-stretch: 1;
+                                                        background: transparent;
 
-                                                        Text {
-                                                            text: root.selected_relative_path == "" ? "No file selected" : root.selected_relative_path;
-                                                            color: root.selected_relative_path == "" ? #607286 : #294b6b;
-                                                            font-size: 16px;
-                                                            font-weight: 600;
-                                                            horizontal-stretch: 1;
-                                                            overflow: elide;
-                                                        }
+                                                        VerticalLayout {
+                                                            spacing: 4px;
 
-                                                        HorizontalLayout {
-                                                            spacing: 6px;
-                                                            StatusPill {
-                                                                label: "Analysis";
-                                                                tone: "neutral";
-                                                            }
-                                                            StatusPill {
-                                                                label: root.analysis_state_label;
-                                                                tone: root.analysis_state_tone;
-                                                            }
-                                                            StatusPill {
-                                                                label: root.analysis_provider_status_label;
-                                                                tone: root.analysis_provider_status_tone;
-                                                            }
                                                             Text {
-                                                                text: root.analysis_header_summary_text;
-                                                                color: #5f7184;
-                                                                font-size: 12px;
-                                                                vertical-alignment: center;
+                                                                text: root.selected_relative_path == "" ? "No file selected" : root.selected_relative_path;
+                                                                color: root.selected_relative_path == "" ? #607286 : #294b6b;
+                                                                font-size: 16px;
+                                                                font-weight: 600;
                                                                 horizontal-stretch: 1;
                                                                 overflow: elide;
+                                                            }
+
+                                                            HorizontalLayout {
+                                                                spacing: 6px;
+                                                                StatusPill {
+                                                                    label: "Analysis";
+                                                                    tone: "neutral";
+                                                                }
+                                                                StatusPill {
+                                                                    label: root.analysis_state_label;
+                                                                    tone: root.analysis_state_tone;
+                                                                }
+                                                                StatusPill {
+                                                                    label: root.analysis_provider_status_label;
+                                                                    tone: root.analysis_provider_status_tone;
+                                                                }
+                                                                Text {
+                                                                    text: root.analysis_header_summary_text;
+                                                                    color: #5f7184;
+                                                                    font-size: 12px;
+                                                                    vertical-alignment: center;
+                                                                    horizontal-stretch: 1;
+                                                                    overflow: elide;
+                                                                }
+                                                            }
+                                                        }
+
+                                                        TouchArea {
+                                                            pointer-event(event) => {
+                                                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                    root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                    root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                    root.workspace_header_context_menu_requested(
+                                                                        root.selected_relative_path_raw,
+                                                                        "Analysis",
+                                                                        root.analysis_state_label,
+                                                                        root.analysis_header_summary_text,
+                                                                        root.analysis_technical_context_text,
+                                                                    );
+                                                                }
                                                             }
                                                         }
                                                     }
 
                                                     Rectangle {
-                                                        horizontal-stretch: 1;
+                                                        width: 0px;
                                                     }
 
                                                     ToolButton {
@@ -1828,6 +1951,11 @@ slint::slint! {
                                                                     copy_requested(copy_value, feedback_label) => {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
+                                                                    context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
+                                                                        root.context_menu_anchor_x = anchor_x;
+                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
+                                                                    }
                                                                 }
 
                                                                 risk_section := Rectangle {
@@ -1856,23 +1984,43 @@ slint::slint! {
                                                                         padding: 14px;
                                                                         spacing: 8px;
 
-                                                                        HorizontalLayout {
-                                                                            spacing: 8px;
+                                                                        risk_header_surface := Rectangle {
+                                                                            height: 20px;
+                                                                            background: transparent;
 
-                                                                            Text {
-                                                                                text: "Risk Level";
-                                                                                color: #708193;
-                                                                                font-size: 11px;
-                                                                                font-weight: 600;
-                                                                                vertical-alignment: center;
-                                                                                horizontal-stretch: 1;
+                                                                            HorizontalLayout {
+                                                                                spacing: 8px;
+
+                                                                                Text {
+                                                                                    text: "Risk Level";
+                                                                                    color: #708193;
+                                                                                    font-size: 11px;
+                                                                                    font-weight: 600;
+                                                                                    vertical-alignment: center;
+                                                                                    horizontal-stretch: 1;
+                                                                                }
+
+                                                                                TextAction {
+                                                                                    visible: root.analysis_risk_copy_text != "";
+                                                                                    label: "Copy";
+                                                                                    tapped => {
+                                                                                        root.copy_requested(root.analysis_risk_copy_text, "Risk Level");
+                                                                                    }
+                                                                                }
                                                                             }
 
-                                                                            TextAction {
-                                                                                visible: root.analysis_risk_copy_text != "";
-                                                                                label: "Copy";
-                                                                                tapped => {
-                                                                                    root.copy_requested(root.analysis_risk_copy_text, "Risk Level");
+                                                                            TouchArea {
+                                                                                pointer-event(event) => {
+                                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                                        root.analysis_section_context_menu_requested(
+                                                                                            "Risk Level",
+                                                                                            root.analysis_risk_label_text,
+                                                                                            root.analysis_risk_guidance_text,
+                                                                                            root.analysis_risk_copy_text,
+                                                                                        );
+                                                                                    }
                                                                                 }
                                                                             }
                                                                         }
@@ -1903,6 +2051,11 @@ slint::slint! {
                                                                     copy_requested(copy_value, feedback_label) => {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
+                                                                    context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
+                                                                        root.context_menu_anchor_x = anchor_x;
+                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
+                                                                    }
                                                                 }
 
                                                                 key_points_section := AnalysisSectionPanel {
@@ -1916,6 +2069,11 @@ slint::slint! {
                                                                     copy_value: root.analysis_key_points_copy_text;
                                                                     copy_requested(copy_value, feedback_label) => {
                                                                         root.copy_requested(copy_value, feedback_label);
+                                                                    }
+                                                                    context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
+                                                                        root.context_menu_anchor_x = anchor_x;
+                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
                                                                     }
                                                                 }
 
@@ -1934,6 +2092,11 @@ slint::slint! {
                                                                     copy_requested(copy_value, feedback_label) => {
                                                                         root.copy_requested(copy_value, feedback_label);
                                                                     }
+                                                                    context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
+                                                                        root.context_menu_anchor_x = anchor_x;
+                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
+                                                                    }
                                                                 }
 
                                                                 notes_section := AnalysisSectionPanel {
@@ -1951,6 +2114,11 @@ slint::slint! {
                                                                     copy_value: root.analysis_notes_copy_text;
                                                                     copy_requested(copy_value, feedback_label) => {
                                                                         root.copy_requested(copy_value, feedback_label);
+                                                                    }
+                                                                    context_menu_requested(anchor_x, anchor_y, section_label, title, body, copy_value) => {
+                                                                        root.context_menu_anchor_x = anchor_x;
+                                                                        root.context_menu_anchor_y = anchor_y;
+                                                                        root.analysis_section_context_menu_requested(section_label, title, body, copy_value);
                                                                     }
                                                                 }
                                                             }
@@ -1984,6 +2152,7 @@ slint::slint! {
                                         selected_border: #d7e0ec;
                                         connector_depth: 5px;
                                         tapped => {
+                                            root.context_menu_close_requested();
                                             root.workspace_tab = 0;
                                         }
                                     }
@@ -1995,6 +2164,7 @@ slint::slint! {
                                         selected_border: #d7e0ec;
                                         connector_depth: 5px;
                                         tapped => {
+                                            root.context_menu_close_requested();
                                             root.workspace_tab = 1;
                                         }
                                     }
@@ -2022,6 +2192,66 @@ slint::slint! {
                         height: parent.height;
                         message: root.loading_mask_text;
                         corner_radius: 6px;
+                    }
+                }
+            }
+        }
+
+        if root.context_menu_open : Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            background: transparent;
+
+            TouchArea {
+                clicked => {
+                    root.context_menu_close_requested();
+                }
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.down {
+                        root.context_menu_close_requested();
+                    }
+                }
+            }
+
+            context_menu_panel := Rectangle {
+                property <length> panel_width: 220px;
+                property <length> item_height: 30px;
+                property <length> panel_padding: 5px;
+                property <length> panel_height: panel_padding * 2 + root.context_menu_action_labels.length * item_height;
+                x: max(
+                    8px,
+                    min(root.context_menu_anchor_x, max(8px, parent.width - self.width - 8px))
+                );
+                y: max(
+                    8px,
+                    min(root.context_menu_anchor_y, max(8px, parent.height - self.height - 8px))
+                );
+                width: self.panel_width;
+                height: self.panel_height;
+                border-width: 1px;
+                border-radius: 6px;
+                border-color: UiPalette.context_menu_core_border;
+                background: UiPalette.context_menu_core_background;
+                clip: true;
+
+                TouchArea {
+                    clicked => {}
+                    pointer-event(_) => {}
+                }
+
+                VerticalLayout {
+                    padding: context_menu_panel.panel_padding;
+                    spacing: 0px;
+
+                    for action_label[index] in root.context_menu_action_labels: ContextMenuActionItem {
+                        label: action_label;
+                        action_id: root.context_menu_action_ids[index];
+                        enabled: root.context_menu_action_enabled[index];
+                        activated(action_id) => {
+                            root.context_menu_action_triggered(action_id);
+                        }
                     }
                 }
             }
@@ -2403,6 +2633,190 @@ fn apply_loading_mask_projection(window: &MainWindow, projection: LoadingMaskPro
     window.set_loading_mask_text(projection.message.into());
 }
 
+#[derive(Clone)]
+struct ContextMenuController {
+    inner: Rc<RefCell<ContextMenuControllerInner>>,
+}
+
+#[derive(Default)]
+struct ContextMenuControllerInner {
+    window: slint::Weak<MainWindow>,
+    target_token: String,
+    text_payload: ContextMenuTextPayload,
+    custom_actions: Vec<ContextMenuCustomAction>,
+}
+
+struct ContextMenuOpenRequest {
+    target_token: String,
+    text_payload: ContextMenuTextPayload,
+    custom_actions: Vec<ContextMenuCustomAction>,
+}
+
+impl ContextMenuOpenRequest {
+    fn builtin_only(target_token: impl Into<String>, text_payload: ContextMenuTextPayload) -> Self {
+        Self {
+            target_token: target_token.into(),
+            text_payload,
+            custom_actions: Vec::new(),
+        }
+    }
+}
+
+impl ContextMenuController {
+    fn new(window: &MainWindow) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(ContextMenuControllerInner {
+                window: window.as_weak(),
+                ..ContextMenuControllerInner::default()
+            })),
+        }
+    }
+
+    fn open(&self, request: ContextMenuOpenRequest) {
+        let ContextMenuBuildResult {
+            actions,
+            truncated_custom_count: _,
+        } = build_action_specs(
+            &request.text_payload,
+            &request
+                .custom_actions
+                .iter()
+                .map(|action| action.descriptor.clone())
+                .collect::<Vec<_>>(),
+        );
+        let Some(window) = self.inner.borrow().window.upgrade() else {
+            return;
+        };
+        if actions.is_empty() {
+            self.close();
+            return;
+        }
+
+        let action_labels = actions
+            .iter()
+            .map(|action| SharedString::from(action.label.clone()))
+            .collect::<Vec<_>>();
+        let action_ids = actions
+            .iter()
+            .map(|action| SharedString::from(action.action_id.clone()))
+            .collect::<Vec<_>>();
+        let action_enabled = actions
+            .iter()
+            .map(|action| action.enabled)
+            .collect::<Vec<_>>();
+
+        {
+            let mut inner = self.inner.borrow_mut();
+            inner.target_token = request.target_token.clone();
+            inner.text_payload = request.text_payload;
+            inner.custom_actions = request.custom_actions;
+        }
+
+        window.set_context_menu_target_token(request.target_token.into());
+        window.set_context_menu_action_labels(ModelRc::new(VecModel::from(action_labels)));
+        window.set_context_menu_action_ids(ModelRc::new(VecModel::from(action_ids)));
+        window.set_context_menu_action_enabled(ModelRc::new(VecModel::from(action_enabled)));
+        window.set_context_menu_open(true);
+    }
+
+    fn close(&self) {
+        let Some(window) = self.inner.borrow().window.upgrade() else {
+            return;
+        };
+        {
+            let mut inner = self.inner.borrow_mut();
+            inner.target_token.clear();
+            inner.text_payload = ContextMenuTextPayload::default();
+            inner.custom_actions.clear();
+        }
+        window.set_context_menu_target_token("".into());
+        window.set_context_menu_open(false);
+        window.set_context_menu_action_labels(ModelRc::new(VecModel::from(
+            Vec::<SharedString>::new(),
+        )));
+        window
+            .set_context_menu_action_ids(ModelRc::new(VecModel::from(Vec::<SharedString>::new())));
+        window.set_context_menu_action_enabled(ModelRc::new(VecModel::from(Vec::<bool>::new())));
+    }
+
+    fn activate(&self, action_id: &str, toast_controller: &ToastController) {
+        let action_id = action_id.trim().to_string();
+        if action_id.is_empty() {
+            return;
+        }
+
+        let invocation = {
+            let inner = self.inner.borrow();
+            match action_id.as_str() {
+                CONTEXT_MENU_COPY_ACTION_ID => Some(ContextMenuInvocation {
+                    target_token: inner.target_token.clone(),
+                    action_id: action_id.clone(),
+                }),
+                CONTEXT_MENU_COPY_SUMMARY_ACTION_ID => Some(ContextMenuInvocation {
+                    target_token: inner.target_token.clone(),
+                    action_id: action_id.clone(),
+                }),
+                _ => inner.custom_actions.iter().find_map(|action| {
+                    (action.descriptor.action_id == action_id && action.descriptor.enabled).then(
+                        || ContextMenuInvocation {
+                            target_token: inner.target_token.clone(),
+                            action_id: action_id.clone(),
+                        },
+                    )
+                }),
+            }
+        };
+        if invocation.is_none() {
+            return;
+        }
+
+        let custom_handler = {
+            let inner = self.inner.borrow();
+            inner
+                .custom_actions
+                .iter()
+                .find(|action| {
+                    action.descriptor.action_id == action_id && action.descriptor.enabled
+                })
+                .map(|action| action.handler.clone())
+        };
+        let text_payload = self.inner.borrow().text_payload.clone();
+
+        self.close();
+
+        match action_id.as_str() {
+            CONTEXT_MENU_COPY_ACTION_ID if text_payload.copy_enabled() => {
+                copy_text_with_feedback(
+                    toast_controller,
+                    text_payload.copy_text.as_str(),
+                    text_payload.copy_feedback_label.as_str(),
+                );
+            }
+            CONTEXT_MENU_COPY_SUMMARY_ACTION_ID if text_payload.summary_enabled() => {
+                copy_text_with_feedback(
+                    toast_controller,
+                    text_payload.summary_text.as_str(),
+                    text_payload.summary_feedback_label.as_str(),
+                );
+            }
+            _ => {
+                if let (Some(handler), Some(invocation)) = (custom_handler, invocation) {
+                    handler(invocation);
+                }
+            }
+        }
+    }
+}
+
+fn derive_context_menu_sync_state(state: &AppState) -> ContextMenuSyncState {
+    ContextMenuSyncState {
+        selected_row: state.selected_row,
+        running: state.running,
+        diff_loading: state.diff_loading,
+        analysis_loading: state.analysis_loading,
+    }
+}
+
 // Contract: sync mode gate for editable UI fields.
 // Full mode pulls editable inputs from state; Passive mode preserves in-flight user typing.
 fn should_sync_editable_inputs(mode: SyncMode) -> bool {
@@ -2465,6 +2879,13 @@ fn sync_window_state(
     window.set_filter_stats_text(state.filter_stats_text().into());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
+    window.set_selected_relative_path_raw(
+        state
+            .selected_relative_path
+            .clone()
+            .unwrap_or_default()
+            .into(),
+    );
     window.set_diff_summary_text(
         state
             .selected_diff
@@ -2608,12 +3029,21 @@ fn sync_window_state_if_changed(
     window: &MainWindow,
     bridge: &UiBridge,
     cache: &Arc<Mutex<Option<AppState>>>,
+    context_menu_controller: &ContextMenuController,
     mode: SyncMode,
 ) {
     let state = bridge.snapshot();
     let mut cache_guard = cache.lock().expect("sync cache mutex poisoned");
     if should_skip_sync(cache_guard.as_ref(), &state) {
         return;
+    }
+    if let Some(last_state) = cache_guard.as_ref() {
+        if should_close_for_sync_transition(
+            derive_context_menu_sync_state(last_state),
+            derive_context_menu_sync_state(&state),
+        ) {
+            context_menu_controller.close();
+        }
     }
     sync_window_state(window, &state, mode, cache_guard.as_ref());
     // Keep loading-mask projection aligned with the latest synced busy flags,
@@ -2774,6 +3204,7 @@ pub fn run() -> anyhow::Result<()> {
     sync_window_state(&app, &initial_state, SyncMode::Full, None);
     let sync_cache = Arc::new(Mutex::new(Some(initial_state)));
     let toast_controller = ToastController::new(&app);
+    let context_menu_controller = ContextMenuController::new(&app);
 
     // Contract: background UI polling loop.
     // Polls presenter busy flags and performs passive sync only when runtime busy-state diverges from window state.
@@ -2783,6 +3214,7 @@ pub fn run() -> anyhow::Result<()> {
     let refresh_bridge = bridge.clone();
     let refresh_cache = Arc::clone(&sync_cache);
     let refresh_loading_mask_watchdog = Rc::clone(&loading_mask_watchdog);
+    let refresh_context_menu_controller = context_menu_controller.clone();
     ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -2798,6 +3230,7 @@ pub fn run() -> anyhow::Result<()> {
                 &window,
                 &refresh_bridge,
                 &refresh_cache,
+                &refresh_context_menu_controller,
                 SyncMode::Passive,
             );
         }
@@ -2815,15 +3248,92 @@ pub fn run() -> anyhow::Result<()> {
     // Contract: UI event dispatch and bridge binding.
     // Each callback converts UI intent into UiCommand(s), then triggers passive sync.
 
+    let close_context_menu_controller = context_menu_controller.clone();
+    app.on_context_menu_close_requested(move || {
+        close_context_menu_controller.close();
+    });
+
+    let app_weak = app.as_weak();
+    let results_context_menu_controller = context_menu_controller.clone();
+    app.on_results_context_menu_requested(move |path, status, detail, unavailable| {
+        if app_weak.upgrade().is_none() {
+            return;
+        }
+        let payload =
+            build_results_row_payload(path.as_str(), status.as_str(), detail.as_str(), unavailable);
+        let target_token = format!("results:{}", path.as_str().trim());
+        results_context_menu_controller
+            .open(ContextMenuOpenRequest::builtin_only(target_token, payload));
+    });
+
+    let app_weak = app.as_weak();
+    let header_context_menu_controller = context_menu_controller.clone();
+    app.on_workspace_header_context_menu_requested(
+        move |relative_path, mode_label, status_label, summary_text, hint_text| {
+            let Some(window) = app_weak.upgrade() else {
+                return;
+            };
+            let payload = build_workspace_header_payload(
+                relative_path.as_str(),
+                mode_label.as_str(),
+                status_label.as_str(),
+                summary_text.as_str(),
+                hint_text.as_str(),
+            );
+            let target_token = format!(
+                "workspace-header:{}:{}",
+                mode_label.as_str().trim().to_ascii_lowercase(),
+                window.get_selected_relative_path_raw().to_string()
+            );
+            header_context_menu_controller
+                .open(ContextMenuOpenRequest::builtin_only(target_token, payload));
+        },
+    );
+
+    let app_weak = app.as_weak();
+    let analysis_context_menu_controller = context_menu_controller.clone();
+    app.on_analysis_section_context_menu_requested(
+        move |section_label, title, body, copy_value| {
+            let Some(window) = app_weak.upgrade() else {
+                return;
+            };
+            let payload = build_analysis_section_payload(
+                section_label.as_str(),
+                title.as_str(),
+                body.as_str(),
+                copy_value.as_str(),
+            );
+            let target_token = format!(
+                "analysis-section:{}:{}",
+                section_label
+                    .as_str()
+                    .trim()
+                    .to_ascii_lowercase()
+                    .replace(' ', "-"),
+                window.get_selected_relative_path_raw().to_string()
+            );
+            analysis_context_menu_controller
+                .open(ContextMenuOpenRequest::builtin_only(target_token, payload));
+        },
+    );
+
+    let context_menu_toast_controller = toast_controller.clone();
+    let action_context_menu_controller = context_menu_controller.clone();
+    app.on_context_menu_action_triggered(move |action_id| {
+        action_context_menu_controller.activate(action_id.as_str(), &context_menu_toast_controller);
+    });
+
     // Compare flow callbacks.
     let app_weak = app.as_weak();
     let compare_bridge = bridge.clone();
     let compare_cache = Arc::clone(&sync_cache);
+    let compare_context_menu_controller = context_menu_controller.clone();
     app.on_compare_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
+        compare_context_menu_controller.close();
         compare_bridge.dispatch(UiCommand::UpdateLeftRoot(
             window.get_left_root().to_string(),
         ));
@@ -2831,7 +3341,13 @@ pub fn run() -> anyhow::Result<()> {
             window.get_right_root().to_string(),
         ));
         compare_bridge.dispatch(UiCommand::RunCompare);
-        sync_window_state_if_changed(&window, &compare_bridge, &compare_cache, SyncMode::Passive);
+        sync_window_state_if_changed(
+            &window,
+            &compare_bridge,
+            &compare_cache,
+            &compare_context_menu_controller,
+            SyncMode::Passive,
+        );
     });
 
     // Local folder picker callbacks (UI-only input capture, no direct presenter mutation except via compare click).
@@ -2867,6 +3383,7 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let row_bridge = bridge.clone();
     let row_cache = Arc::clone(&sync_cache);
+    let row_context_menu_controller = context_menu_controller.clone();
     app.on_row_selected(move |index| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -2874,6 +3391,7 @@ pub fn run() -> anyhow::Result<()> {
         if window.get_diff_loading() {
             return;
         }
+        row_context_menu_controller.close();
         window.set_workspace_tab(0);
         if window.get_selected_row() == index
             && (window.get_diff_loaded() || window.get_diff_loading())
@@ -2883,24 +3401,38 @@ pub fn run() -> anyhow::Result<()> {
 
         row_bridge.dispatch(UiCommand::SelectRow(index));
         row_bridge.dispatch(UiCommand::LoadSelectedDiff);
-        sync_window_state_if_changed(&window, &row_bridge, &row_cache, SyncMode::Passive);
+        sync_window_state_if_changed(
+            &window,
+            &row_bridge,
+            &row_cache,
+            &row_context_menu_controller,
+            SyncMode::Passive,
+        );
     });
 
     let app_weak = app.as_weak();
     let filter_bridge = bridge.clone();
     let filter_cache = Arc::clone(&sync_cache);
+    let filter_context_menu_controller = context_menu_controller.clone();
     app.on_filter_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         filter_bridge.dispatch(UiCommand::UpdateEntryFilter(value.to_string()));
-        sync_window_state_if_changed(&window, &filter_bridge, &filter_cache, SyncMode::Passive);
+        sync_window_state_if_changed(
+            &window,
+            &filter_bridge,
+            &filter_cache,
+            &filter_context_menu_controller,
+            SyncMode::Passive,
+        );
     });
 
     let app_weak = app.as_weak();
     let status_filter_bridge = bridge.clone();
     let status_filter_cache = Arc::clone(&sync_cache);
+    let status_filter_context_menu_controller = context_menu_controller.clone();
     app.on_status_filter_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -2911,6 +3443,7 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &status_filter_bridge,
             &status_filter_cache,
+            &status_filter_context_menu_controller,
             SyncMode::Passive,
         );
     });
@@ -2932,16 +3465,19 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let provider_settings_bridge = bridge.clone();
     let provider_settings_cache = Arc::clone(&sync_cache);
+    let provider_settings_context_menu_controller = context_menu_controller.clone();
     app.on_provider_settings_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
+        provider_settings_context_menu_controller.close();
         provider_settings_bridge.dispatch(UiCommand::ClearProviderSettingsError);
         sync_window_state_if_changed(
             &window,
             &provider_settings_bridge,
             &provider_settings_cache,
+            &provider_settings_context_menu_controller,
             SyncMode::Passive,
         );
     });
@@ -2949,16 +3485,19 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let provider_settings_cancel_bridge = bridge.clone();
     let provider_settings_cancel_cache = Arc::clone(&sync_cache);
+    let provider_settings_cancel_context_menu_controller = context_menu_controller.clone();
     app.on_provider_settings_cancel_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
+        provider_settings_cancel_context_menu_controller.close();
         provider_settings_cancel_bridge.dispatch(UiCommand::ClearProviderSettingsError);
         sync_window_state_if_changed(
             &window,
             &provider_settings_cancel_bridge,
             &provider_settings_cancel_cache,
+            &provider_settings_cancel_context_menu_controller,
             SyncMode::Passive,
         );
     });
@@ -2967,11 +3506,13 @@ pub fn run() -> anyhow::Result<()> {
     let provider_settings_save_bridge = bridge.clone();
     let provider_settings_save_cache = Arc::clone(&sync_cache);
     let provider_settings_toast_controller = toast_controller.clone();
+    let provider_settings_save_context_menu_controller = context_menu_controller.clone();
     app.on_provider_settings_save_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
+        provider_settings_save_context_menu_controller.close();
         let provider_kind = if window.get_provider_settings_mode() == 1 {
             AiProviderKind::OpenAiCompatible
         } else {
@@ -2988,6 +3529,7 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_settings_save_bridge,
             &provider_settings_save_cache,
+            &provider_settings_save_context_menu_controller,
             SyncMode::Passive,
         );
         if window.get_provider_settings_error_text().is_empty() {
@@ -3004,11 +3546,13 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let analysis_bridge = bridge.clone();
     let analysis_cache = Arc::clone(&sync_cache);
+    let analyze_context_menu_controller = context_menu_controller.clone();
     app.on_analyze_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
+        analyze_context_menu_controller.close();
         analysis_bridge.dispatch(UiCommand::UpdateAiEndpoint(
             window.get_analysis_endpoint().to_string(),
         ));
@@ -3023,6 +3567,7 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &analysis_bridge,
             &analysis_cache,
+            &analyze_context_menu_controller,
             SyncMode::Passive,
         );
     });
@@ -3031,6 +3576,7 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let provider_bridge = bridge.clone();
     let provider_cache = Arc::clone(&sync_cache);
+    let provider_mock_context_menu_controller = context_menu_controller.clone();
     app.on_analysis_provider_mock_selected(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3041,6 +3587,7 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_bridge,
             &provider_cache,
+            &provider_mock_context_menu_controller,
             SyncMode::Passive,
         );
     });
@@ -3048,6 +3595,7 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let provider_bridge = bridge.clone();
     let provider_cache = Arc::clone(&sync_cache);
+    let provider_openai_context_menu_controller = context_menu_controller.clone();
     app.on_analysis_provider_openai_selected(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3058,6 +3606,7 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_bridge,
             &provider_cache,
+            &provider_openai_context_menu_controller,
             SyncMode::Passive,
         );
     });
@@ -3066,6 +3615,7 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let endpoint_bridge = bridge.clone();
     let endpoint_cache = Arc::clone(&sync_cache);
+    let endpoint_context_menu_controller = context_menu_controller.clone();
     app.on_analysis_endpoint_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3076,6 +3626,7 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &endpoint_bridge,
             &endpoint_cache,
+            &endpoint_context_menu_controller,
             SyncMode::Passive,
         );
     });
@@ -3083,25 +3634,39 @@ pub fn run() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let api_key_bridge = bridge.clone();
     let api_key_cache = Arc::clone(&sync_cache);
+    let api_key_context_menu_controller = context_menu_controller.clone();
     app.on_analysis_api_key_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         api_key_bridge.dispatch(UiCommand::UpdateAiApiKey(value.to_string()));
-        sync_window_state_if_changed(&window, &api_key_bridge, &api_key_cache, SyncMode::Passive);
+        sync_window_state_if_changed(
+            &window,
+            &api_key_bridge,
+            &api_key_cache,
+            &api_key_context_menu_controller,
+            SyncMode::Passive,
+        );
     });
 
     let app_weak = app.as_weak();
     let model_bridge = bridge.clone();
     let model_cache = Arc::clone(&sync_cache);
+    let model_context_menu_controller = context_menu_controller.clone();
     app.on_analysis_model_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         model_bridge.dispatch(UiCommand::UpdateAiModel(value.to_string()));
-        sync_window_state_if_changed(&window, &model_bridge, &model_cache, SyncMode::Passive);
+        sync_window_state_if_changed(
+            &window,
+            &model_bridge,
+            &model_cache,
+            &model_context_menu_controller,
+            SyncMode::Passive,
+        );
     });
 
     app.run().map_err(|err| anyhow::anyhow!(err.to_string()))?;

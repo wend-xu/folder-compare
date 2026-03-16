@@ -6,40 +6,40 @@
 
 ## 本轮更新说明（2026-03-16）
 
-- 轮次定义：`Phase 15.2C: ui_palette 抽取`（基线：`Phase 15.2A toast-controller` + `Phase 15.2B loading-mask(+sync projection fix)` 已落地代码）。
+- 轮次定义：`Phase 15.2D: menu core + non-input safe surfaces`（基线：`Phase 15.2A toast-controller overlay only` + `Phase 15.2B loading-mask(+sync projection fix)` + `Phase 15.2C ui_palette` 已落地代码）。
 - 改了什么：
-  - 在 `fc-ui-slint` 新增独立 `ui_palette.slint`，集中 `StatusPill` / `DiffStateShell` / Results 状态行 / Analysis 风险区块的语义色；
-  - 将 `Phase 15.2A` `toast-controller` overlay 与 `Phase 15.2B` `loading-mask` 颜色接入 palette；
-  - 增加 `context-menu core` 预留色常量（本 phase 不接入 runtime menu）。
-- 为什么影响下一线程：后续如果继续做主题化或 UI 组件复用，应以 `ui_palette` 作为语义色边界，避免继续在 `app.rs` 扩散语义 hex。
-- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、loading scope boundary（`running`/`diff_loading`/`analysis_loading`）、以及 Provider Settings 结构均不改。
+  - 在 `fc-ui-slint` 内新增共享 `context-menu core`（window-local controller + shared menu surface），不把短生命周期菜单状态塞回 `AppState/Presenter`；
+  - 接入 `Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome 的右键 `Copy / Copy Summary`；
+  - 增加 target/context token、anchor positioning、action dispatch 和自动关闭策略（tab 切换 / compare 重跑 / selected row 变化 / action 执行后 / 外部点击）；
+  - 保持 `toast-controller` 仍为 overlay toast only，不回退为 banner 或全局通知中心。
+- 为什么影响下一线程：`15.2D` 已提供未来 input integration 可复用的最小 menu core；如果跳过 `15.2E`，主线也可以直接推进 phase 16，不再依赖 editable input 方案。
+- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、loading scope boundary（`running`/`diff_loading`/`analysis_loading`）、`SelectableSectionText`/`SelectableDiffText`、以及所有输入控件绑定结构均不改。
 
 ## 快照（Snapshot）
 
 - 日期：2026-03-16（Asia/Shanghai）
 - 分支：`dev`
-- 工作区：有改动（`fc-ui-slint` `ui_palette` 抽取 + docs 对齐，待本线程提交）
+- 工作区：有改动（`fc-ui-slint` `context-menu core` + docs 对齐，待本线程提交）
 - 最近提交：
   - `6afab36` phase 15.1B fix-3：Analysis selectable text（success sections only）
   - `8d932c1` phase 15.1B fix2: analysis success cannot scroll
   - `19388d5` Phase 15.1B fix1 ：Analysis View 产品化 收口
-- 当前架构基线：`docs/architecture.md`（`Phase 15.2C` 已补齐本地语义 palette 边界；runtime theme/settings upgrade 与全局主题工程仍 deferred）
+- 当前架构基线：`docs/architecture.md`（`Phase 15.2D` 已补齐本地 shared context-menu core baseline；editable input integration 仍 deferred）
 
 ## 当前目标（Execution Focus）
 
-1. 以 `Phase 15.1B fix-3` 为稳定基线，维持 `Diff/Analysis` 现有 shell contract。
-2. 在 `fc-ui-slint` 内建立最小可复用语义色入口（`ui_palette.slint`），不扩展 Rust 侧颜色模型。
-3. 保持 `Phase 15.2A/15.2B` tone 语义和视觉层级不变，仅替换语义色 contract 的硬编码来源。
+1. 以当前 `Phase 15.2A/15.2B/15.2C` 为稳定基线，维持 `Diff/Analysis` shell 与 local controller 边界。
+2. 在 `fc-ui-slint` 内落地共享 `context-menu core`，仅覆盖 non-input safe surfaces。
+3. 确保 `15.2D` 自身可独立成立；即使 `15.2E` 不做，也不阻塞 phase 16。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 内 `ui_palette.slint` 抽取与最小接线
-  - `StatusPill` / `DiffStateShell` / Results 状态行 / Analysis 风险区块语义色收拢
-  - `toast-controller` overlay 与 `loading-mask` 的 15.2 infra 依赖色收拢
-  - `context-menu core` 语义色预留常量（不做功能接线）
+  - `fc-ui-slint` 内共享 `context-menu core`（open/close、action dispatch、anchor positioning、target token）
+  - `Copy / Copy Summary` 公共动作与最小格式化 helper
+  - safe surface 接入：`Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome
   - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
-  - 最小回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、必要时 UI smoke）
+  - 最小回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、`cargo run -p fc-ui-slint` smoke）
 - Out of Scope：
   - IA 重置（`App Bar + Sidebar + Workspace` 保持不变）
   - runtime theme 切换、全量主题系统、全量 hex 清洗
@@ -49,6 +49,7 @@
   - `fc-core` / `fc-ai` 合约改动
   - 全局 loading/theme/notification controller
   - 超出现有边界契约的 AI provider 架构扩展
+  - 所有 editable input context-menu integration（`LineEdit` / `TextInput` / `SelectableSectionText` / `SelectableDiffText` / `Compare Inputs` / `Filter / Scope` / `Provider Settings`）
 
 ## 硬契约（Do Not Break）
 
@@ -73,11 +74,11 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - 维护 `Phase 15.2C` 语义 palette 边界（local Slint constants + 最小接线）
-  - 保持 `StatusPill` / `DiffStateShell` / toast / loading-mask 视觉与 tone 语义稳定
+  - 收口 `Phase 15.2D` shared context-menu core 与 safe surface 接线
+  - 验证自动关闭策略与 copy-family helper 不污染主线状态机
 - Next：
+  - 评估是否完全跳过 `15.2E` 直接推进 phase 16；若做 `15.2E`，仅作为 isolated editable-input pass
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
-  - 在现有 palette 边界下评估更多低风险语义色复用点（仅 contract 内）
   - 评估 Analysis success 文本选择的 native copy 快捷键回调可行性（若 Slint 提供稳定 hook 再补 toast）
 - Later：
   - 承接 `docs/architecture.md` 中 deferred 的 provider hardening 与 global notification orchestration
@@ -85,17 +86,17 @@
 ## 已知风险与评审重点（Known Risks / Review Focus）
 
 1. 不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
-2. palette 抽取不能改变既有 tone 语义映射（尤其 `different/equal/left/right` 与 `error/warn/info/success/neutral`）。
-3. `toast-controller` / `loading-mask` 颜色迁移后，15.2A/15.2B 反馈层级不能回退。
-4. 避免把纯布局修饰色误并入语义 palette，导致改动面放大或主线视觉抖动。
-5. 在 `app.rs` 中混淆 tabs/modal/sync/events 职责导致跨 tab 互相污染。
+2. `context-menu core` 必须保持 window-local；不要把 menu lifecycle 反向塞回 `AppState/Presenter`。
+3. 不要误接 editable input surface，尤其 `SelectableSectionText` / `SelectableDiffText` / `LineEdit` / `TextInput`。
+4. 右键接线不能破坏 `Results / Navigator` 左键选择、Diff 行号双击复制、Analysis success 文本选择与滚动。
+5. `toast-controller` 仍是 overlay toast only；不要回退 15.2A 的边界。
 
 ## 验证命令（Verification Commands）
 
 ```bash
 cargo check --workspace
-cargo test --workspace
 cargo test -p fc-ui-slint
+cargo run -p fc-ui-slint
 ```
 
 UI 变更可加做：
@@ -109,9 +110,9 @@ cargo run -p fc-ui-slint
 建议新线程首条消息直接使用：
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
-> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller docking` + `Phase 15.2B loading-mask(+sync projection fix)` + `Phase 15.2C ui_palette` 版本为基线。  
+> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller overlay only` + `Phase 15.2B loading-mask(+sync projection fix)` + `Phase 15.2C ui_palette` + `Phase 15.2D menu core` 版本为基线。  
 > 保持当前 IA 与 phase 边界。  
-> 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast/loading controller 重新塞进 `AppState/Presenter`。  
+> 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast/loading/menu controller 重新塞进 `AppState/Presenter`。  
 > 仅执行本次任务范围内改动，并说明对 contract 的影响。
 
 ## 更新契约（Mandatory）

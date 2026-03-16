@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.2C)
+# Folder Compare Architecture (Phase 1-15.2D)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.2C)
+## `fc-ui-slint` current architecture snapshot (Phase 15.2D)
 
 ### IA and layout contract
 
@@ -231,6 +231,37 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - no Provider Settings visual-system upgrade;
   - no full-application hex cleanup outside semantic color contracts.
 
+### Local context-menu core baseline (Phase 15.2D)
+
+- `fc-ui-slint` now owns one shared window-local context-menu core for non-input safe surfaces only.
+- Lifecycle and short-lived menu state stay in UI orchestration:
+  - menu open/close;
+  - anchor position near the right-click point;
+  - target/context token;
+  - action dispatch and custom-action handler storage.
+- Business state remains outside the menu core:
+  - no menu state was added to `AppState`;
+  - no presenter/core/ai contract was expanded for menu actions.
+- Current public baseline is intentionally narrow:
+  - built-in actions are `Copy` and `Copy Summary` only;
+  - no fake `Paste/Cut/Select All` is exposed on non-input surfaces;
+  - custom actions are supported locally with a hard cap of 10 entries per caller, truncated after the first 10.
+- Current safe-surface integration points:
+  - `Results / Navigator` item;
+  - `Workspace` file context header (`Diff` and `Analysis` header surface);
+  - `Analysis` success section header/card chrome (`Summary`, `Risk Level`, `Core Judgment`, `Key Points`, `Review Suggestions`, `Notes`).
+- Explicitly deferred to `Phase 15.2E` or later:
+  - all `LineEdit` / `TextInput`;
+  - `SelectableSectionText`;
+  - `SelectableDiffText`;
+  - `Compare Inputs`;
+  - `Filter / Scope` input;
+  - `Provider Settings` input;
+  - any editable-text wrapper/adapter/plumbing.
+- `15.2D` is designed to stand on its own:
+  - safe surfaces already get reusable menu open/close/dispatch behavior now;
+  - future input integration can reuse the same shared core without being required for phase-16 progression.
+
 ### Boundaries and non-goals in this phase
 
 - No IA reset.
@@ -238,8 +269,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No AI schema/provider capability expansion beyond UI-state orchestration.
 - No deep Compare Status details expansion beyond summary-first intent.
 - No runtime theme/settings upgrade or cross-surface theme controller.
+- No editable-input context-menu integration in this phase.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.2C)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.2D)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -278,8 +310,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - extracted a narrow Slint-layer semantic `ui_palette` for `StatusPill`, `DiffStateShell`, Results status rows, Analysis risk/section semantic surfaces, and local `toast/loading-mask`;
   - kept tone semantics and visual hierarchy unchanged while reducing duplicated semantic hex values;
   - explicitly deferred runtime theme switching, Provider Settings visual upgrade, and full layout/surface color cleanup.
+- 15.2D:
+  - added one shared window-local context-menu core with `Copy` / `Copy Summary` actions, right-click anchor positioning, outside-click close, and action dispatch by target token;
+  - connected only non-input safe surfaces (`Results / Navigator`, `Workspace` file context header, `Analysis` success section chrome);
+  - kept `SelectableSectionText` / `SelectableDiffText` / all editable inputs out of scope so the menu core remains independently stable and does not depend on `15.2E`.
 
-## Deferred architecture decisions (after Phase 15.2C)
+## Deferred architecture decisions (after Phase 15.2D)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -291,6 +327,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - trigger: when provider fallback/routing becomes a reliability requirement.
 - `P2` Multi-line copy workflow:
   - deferred because the current baseline now covers low-noise Diff row copy plus lightweight Analysis section/whole-review copy; full range selection, clipboard formatting, and richer clipboard semantics would still expand interaction scope beyond the accepted shell.
+- `P2` Editable input context-menu integration:
+  - deferred to `Phase 15.2E` or a later isolated pass;
+  - shared menu open/close/dispatch core now exists, but input wrapper/adapter/plumbing is intentionally not part of `15.2D`.
 - `P2` Analysis shell-state selectable text (non-success states):
   - not a hard requirement for `Phase 15.1B fix-3`;
   - deferred for a separate pass so shell-state interaction changes do not regress the stabilized success-body scrolling contract.
@@ -311,13 +350,15 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.2C)
+## Next implementation priority (after Phase 15.2D)
 
-1. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
+1. Either stop at `15.2D` and proceed to phase 16, or do `15.2E` only as an isolated editable-input pass.
+   - acceptance: phase-16 work does not depend on input-surface context-menu plumbing.
+2. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
-2. Carry forward provider hardening deferred items only within the existing boundaries.
+3. Carry forward provider hardening deferred items only within the existing boundaries.
    - acceptance: reliability hardening does not expand IA, schema, or workspace mode count ahead of need.
-3. Only do another Analysis fix pass if runtime smoke or screenshot review still shows geometry/copy discoverability regressions.
+4. Only do another Analysis fix pass if runtime smoke or screenshot review still shows geometry/copy discoverability regressions.
    - acceptance: fixes stay within the current shell contract and do not reopen Diff-shell or IA redesign.
 
 ## Documentation update contract (mandatory)
