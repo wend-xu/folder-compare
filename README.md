@@ -4,9 +4,10 @@
 
 当前项目状态（2026-03-17）：
 
-- 代码稳定基线：`Phase 15.2D`
-- 依赖升级路线：已接受、尚未执行
-- 当前依赖：workspace `rust-version = 1.75`，`slint = 1.8.0`
+- 代码稳定基线：`Phase 15.2D` 行为等价已恢复
+- 依赖升级路线：`Phase 15.3A` / `15.3B` / `15.4` 已完成
+- 当前依赖：workspace `rust-version = 1.94`，`slint = 1.15.1`
+- 下一阶段：`Phase 15.5`（editable input context menu integration）
 
 ![display](./docs/assets/display_0_2_15/display.gif)
 
@@ -43,25 +44,29 @@
 
 ### 当前主线（正在推进）
 
-- `Phase 15.3A` preflight：统一版本来源、补齐升级 checklist/smoke checklist、文档对齐
-- 在 `Phase 15.3A/15.3B` 完成前，不直接推进 `Phase 16`
+- `Phase 15.5`：在 `slint = 1.15.1` 基线上重开并完成 editable input context menu
+- 维持 `15.2D` shell、menu、loading、toast 边界，不把 `15.5` 与 `Phase 16` 混做
+- release version 单一事实来源已收敛到 workspace `Cargo.toml`
 
-## 3. 15.2D 后升级声明（版本限制）
+## 3. 升级收敛结果（15.3A - 15.4）
 
-由于当前稳定基线仍锁定 `slint = 1.8.0`，`15.2E`（editable input context menu）在现版本实现成本与风险过高。
+本轮已完成：
 
-因此在 `15.2D` 之后，项目将按既定路线准备升级：
+- `Phase 15.3A`：统一版本来源，补齐升级 checklist / smoke checklist
+- `Phase 15.3B`：Rust toolchain 锁定到 `1.94.0`
+- `Phase 15.4`：`slint` / `slint-build` 升级到 `1.15.1`
 
-- Rust 升级到 `1.94.0`（常见口述写法：`1.9.4`）
-- Slint 升级到 `1.15.x`（建议 pin 到 `1.15.1`）
+当前约束仍保持不变：
 
-说明：该升级路线已经在文档中确认，但当前仓库依赖尚未实际切换。
+- `15.2E`（editable input context menu）仍未在本轮顺手实现
+- `Phase 16` 结果导航增强仍未开启
+- `15.2D` 的 connected tabs / workbench seam / loading-mask / toast / non-input context menu 边界保持不变
 
 ## 4. 升级路线（Roadmap）
 
-- `Phase 15.3A`：upgrade preflight（不改依赖）
-- `Phase 15.3B`：仅升级 Rust 到 `1.94.0`（保持 Slint `1.8.0`）
-- `Phase 15.4`：升级 Slint 到 `1.15.x`，恢复 `15.2D` 行为等价
+- `Phase 15.3A`：upgrade preflight（已完成）
+- `Phase 15.3B`：仅升级 Rust 到 `1.94.0`（已完成）
+- `Phase 15.4`：升级 Slint 到 `1.15.1`，恢复 `15.2D` 行为等价（已完成）
 - `Phase 15.5`：在新基线上重开并完成 `15.2E`
 - `Phase 15.6`：升级后清理（同步机制、模型重建等）
 - `Phase 16`：恢复结果导航增强（sorting / quick jump / 更强过滤）
@@ -81,7 +86,7 @@
 
 ### 前置要求
 
-- Rust `1.75+`（当前基线）
+- Rust `1.94.0+`
 - macOS 优先（Windows / Linux 也考虑支持）
 
 ### 启动 UI
@@ -135,7 +140,7 @@ cargo test --workspace
 - `fc-ai` 不侵入 core 逻辑
 - UI 负责编排与展示，不承载核心业务规则
 - compare / diff / analysis 三层状态严格分离
-- `15.2D` 是当前稳定发货基线；`15.2E` 计划在升级后推进
+- `15.2D` 行为基线已在 `Rust 1.94.0 + Slint 1.15.1` 上恢复；`15.2E` 仍计划在后续单独推进
 
 ## 10. 后续主线（长期）
 

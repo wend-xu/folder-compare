@@ -1,21 +1,29 @@
-cd ~/code/rust/compare_rs/folder-compare
+#!/usr/bin/env bash
+
 set -euo pipefail
+
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 
 # ===== 可按需修改 =====
 BIN_NAME="fc-ui-slint"                       # release 下可执行文件名
 APP_NAME="FolderCompare"                     # 应用名
 BUNDLE_ID="cn.wendx.foldercompare"
-VERSION="0.2.15"
-TARGET_DIR="target/aarch64-apple-darwin/release"
+MIN_SYSTEM_VERSION="12.0"
+TARGET_TRIPLE="${TARGET_TRIPLE:-aarch64-apple-darwin}"
+ARCHIVE_SUFFIX="macos-arm64"
+VERSION="$(cargo pkgid -p "$BIN_NAME" | sed 's/.*@//')"
+TARGET_DIR="target/$TARGET_TRIPLE/release"
 DIST_DIR="dist"
 APP_PATH="$DIST_DIR/$APP_NAME.app"
-DMG_NAME="$APP_NAME-macos-arm64-$VERSION.dmg"
+DMG_NAME="$APP_NAME-$ARCHIVE_SUFFIX-$VERSION.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
+ZIP_NAME="$APP_NAME-$ARCHIVE_SUFFIX-$VERSION.zip"
 VOL_NAME="$APP_NAME Installer"
 # ======================
 
 # 如需先编译（已编译可注释）
-cargo build -p "$BIN_NAME" --release --target aarch64-apple-darwin
+cargo build -p "$BIN_NAME" --release --target "$TARGET_TRIPLE"
 
 test -f "$TARGET_DIR/$BIN_NAME"
 
@@ -39,7 +47,7 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleExecutable</key><string>$BIN_NAME</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>LSMinimumSystemVersion</key><string>$MIN_SYSTEM_VERSION</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>
@@ -73,7 +81,7 @@ hdiutil create \
 # codesign --force --sign "Developer ID Application: YOUR NAME (TEAMID)" "$DMG_PATH"
 
 # 4) 额外打 zip（可选）
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$DIST_DIR/$APP_NAME-macos-arm64.zip"
+ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$DIST_DIR/$ZIP_NAME"
 
 # 清理
 rm -rf "$STAGE_DIR"
@@ -81,4 +89,4 @@ rm -rf "$STAGE_DIR"
 echo "DONE:"
 echo "App: $APP_PATH"
 echo "DMG: $DMG_PATH"
-echo "ZIP: $DIST_DIR/$APP_NAME-macos-arm64.zip"
+echo "ZIP: $DIST_DIR/$ZIP_NAME"

@@ -1,6 +1,4 @@
 //! File classification service placeholder.
-
-/// Classifies file category for compare strategy routing.
-pub(crate) fn classify_placeholder() {
-    // Phase 1 placeholder.
-}
+//
+// Reserved for future compare strategy routing without introducing a dead-code warning
+// on the stable baseline.
