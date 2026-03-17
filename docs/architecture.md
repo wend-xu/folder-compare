@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.2D stable baseline + 15.2E assessment)
+# Folder Compare Architecture (Phase 1-15.2D stable baseline + dependency upgrade roadmap)
 
 ## Crate responsibilities
 
@@ -342,6 +342,38 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - verified that the locked `slint = 1.8.0` baseline does not provide a low-risk editable-input context-menu hook comparable to newer `ContextMenuArea`-based widgets;
   - intentionally kept `Compare Inputs`, `Filter / Scope -> Search`, `Provider Settings` inputs, and all selectable-text wrappers deferred rather than introducing overlay interception or custom text-edit plumbing.
 
+## Planned dependency upgrade roadmap (accepted planning baseline, not yet executed)
+
+- Why this plan exists:
+  - a meaningful share of deferred UI work is now blocked by the locked dependency baseline rather than by product uncertainty;
+  - `15.2E` is the clearest example: the current `slint = 1.8.0` baseline keeps editable-input menus too expensive/risky to ship cleanly.
+- Current shipped baseline remains unchanged until migration work lands:
+  - `15.2D` is still the stable UI contract;
+  - workspace `edition` remains `2021`;
+  - Rust baseline in source metadata is still `1.75`, and `slint` is still pinned to `1.8.0`.
+- Planned target baseline:
+  - Rust toolchain `1.94.0`;
+  - workspace `rust-version = 1.94`;
+  - `slint = 1.15.x` with an exact patch pin (preferred: `1.15.1`);
+  - macOS arm64 first; Intel Mac compatibility is not a requirement for this migration.
+- Edition decision for this roadmap:
+  - keep workspace `edition = "2021"` throughout the Rust/Slint migration;
+  - evaluate a separate `edition = "2024"` pass only after the new dependency baseline is stable and behavior-equivalent;
+  - if an edition pass is approved later, `cargo fix --edition` should be used as a starting aid, not mixed into the dependency-migration diff.
+- Planned phase train:
+  - `Phase 15.3A`: preflight, version-source cleanup, checklist/doc alignment, no dependency bump;
+  - `Phase 15.3B`: Rust `1.94.0` only, keep Slint `1.8.0`, revalidate `15.2D`;
+  - `Phase 15.4`: Slint `1.15.x` migration, restore `15.2D` behavior parity, no new UX scope;
+  - `Phase 15.5`: reopen and ship deferred editable-input context-menu integration (`15.2E`) on the new baseline, and replace temporary local input affordances with native widget capabilities where appropriate;
+  - `Phase 15.6`: post-upgrade cleanup for sync/model churn and optional Slint-file externalization;
+  - `Phase 16`: resume results-navigation enhancement on top of the upgraded baseline.
+- Detailed implementation planning now lives in:
+  - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
+- What intentionally does not change at planning time:
+  - no dependency version has been bumped yet;
+  - no accepted `15.2D` shell/menu/loading/toast contract is relaxed by this roadmap alone;
+  - `Phase 16` work should not be mixed into `Phase 15.4`.
+
 ## Deferred architecture decisions (after Phase 15.2D stable baseline)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
@@ -357,7 +389,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P2` Editable input context-menu integration:
   - re-confirmed as deferred after `15.2E` assessment on `slint = 1.8.0`;
   - shared menu open/close/dispatch core exists, but the current dependency set does not expose a stable editable-input context-menu hook;
-  - revisit only with a future Slint upgrade or another first-class editable-input menu surface that does not require overlay interception.
+  - accepted roadmap is to revisit this in `Phase 15.5` after `Phase 15.4` restores parity on `slint = 1.15.x`;
+  - do not revisit earlier unless another first-class editable-input menu surface appears that does not require overlay interception.
 - `P2` Analysis shell-state selectable text (non-success states):
   - not a hard requirement for `Phase 15.1B fix-3`;
   - deferred for a separate pass so shell-state interaction changes do not regress the stabilized success-body scrolling contract.
@@ -380,16 +413,18 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 
 ## Next implementation priority (after Phase 15.2D stable baseline)
 
-1. Proceed to phase 16 directly unless the dependency baseline changes enough to make editable-input menus low-risk.
-   - acceptance: phase-16 work does not depend on input-surface context-menu plumbing.
-2. Revisit `15.2E` only after a stable editable-input context-menu hook exists.
+1. Execute `Phase 15.3A` preflight and version-source cleanup before any new product scope.
+   - acceptance: upgrade inputs, version ownership, and smoke checklist are explicit without changing `15.2D` behavior.
+2. Execute `Phase 15.3B` and prove Rust `1.94.0` alone does not regress the stable baseline.
+   - acceptance: `cargo check --workspace`, `cargo test --workspace`, and macOS UI smoke all pass while staying on `slint = 1.8.0`.
+3. Execute `Phase 15.4` and restore `15.2D` behavior parity on `slint = 1.15.x` before reopening deferred UI scope.
+   - acceptance: shell/menu/loading/toast contracts remain equivalent and no `15.2E` product work is mixed into the migration release.
+4. Reopen `15.2E` only in `Phase 15.5` on top of the upgraded baseline.
    - acceptance: no overlay interception, no custom caret/selection logic, and `API Key` keeps the conservative hidden=`Paste` only / visible=`Select All+Copy+Paste+Cut` policy.
-3. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
-   - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
-4. Carry forward provider hardening deferred items only within the existing boundaries.
-   - acceptance: reliability hardening does not expand IA, schema, or workspace mode count ahead of need.
-5. Only do another Analysis fix pass if runtime smoke or screenshot review still shows geometry/copy discoverability regressions.
-   - acceptance: fixes stay within the current shell contract and do not reopen Diff-shell or IA redesign.
+5. Use `Phase 15.6` to reduce polling/model churn before resuming `Phase 16` navigation work.
+   - acceptance: post-upgrade cleanup reduces technical debt without expanding IA or reopening workspace-shell redesign.
+6. Resume `Phase 16` results navigation enhancement only after the upgrade line is stable.
+   - acceptance: users can locate one target file in large result sets with fewer manual scroll steps and without introducing tree mode.
 
 ## Documentation update contract (mandatory)
 
