@@ -6,42 +6,39 @@
 
 ## 本轮更新说明（2026-03-16）
 
-- 轮次定义：`Phase 15.2D: menu core + non-input safe surfaces`（基线：`Phase 15.2A toast-controller overlay only` + `Phase 15.2B loading-mask(+sync projection fix)` + `Phase 15.2C ui_palette` 已落地代码）。
+- 轮次定义：`Phase 15.2E assessment: editable input integration feasibility on top of stable 15.2D baseline`。
 - 改了什么：
-  - 在 `fc-ui-slint` 内新增共享 `context-menu core`（window-local controller + shared menu surface），不把短生命周期菜单状态塞回 `AppState/Presenter`；
-  - 接入 `Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome（`Summary` / `Core Judgment` / `Key Points` / `Review Suggestions` / `Notes`）的右键 `Copy / Copy Summary`；
-  - `Risk Level` 在本阶段仅保留显式 `Copy` 按钮，不再提供右键菜单；
-  - 增加 target/context token、anchor positioning、action dispatch 和自动关闭策略（tab 切换 / compare 重跑 / selected row 变化 / action 执行后 / 外部点击 / `Results` 与 Analysis success 滚动）；
-  - 修正 `AnalysisSectionPanel` 的 anchor 坐标归一化，避免 Analysis section 菜单错误吸附到顶部；
-  - 保持 `toast-controller` 仍为 overlay toast only，不回退为 banner 或全局通知中心。
-- 为什么影响下一线程：`15.2D` 已提供未来 input integration 可复用的最小 menu core；如果跳过 `15.2E`，主线也可以直接推进 phase 16，不再依赖 editable input 方案。
-- 保持不变：IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、loading scope boundary（`running`/`diff_loading`/`analysis_loading`）、`SelectableSectionText`/`SelectableDiffText`、以及所有输入控件绑定结构均不改。
+  - 先按要求复核 `15.2D` 已落地事实：shared `context-menu core` 仍保持 `window-local`，`Results/Navigator` 与 Analysis success `ScrollView` 滚动自动关闭菜单仍是当前基线，`AnalysisSectionPanel` anchor bug 已在现有代码中修复，`Risk Level` 仍只有显式 `Copy`；
+  - 在锁定的 `slint = 1.8.0` 依赖上评估 `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入与 `API Key` 的 editable context-menu 接入可行性；
+  - 结论是当前版本没有稳定低风险的 editable-input menu hook：`LineEdit/TextInput` 有 `select-all/copy/paste/cut`，但没有等价于后续版本 `ContextMenuArea` 的右键接入面，因此没有落地任何 `15.2E` 代码；
+  - 更新 `docs/architecture.md` 与本文件，把 `15.2E` 保持 deferred 的理由、`API Key` 的保守策略建议、以及下一线程不应尝试 overlay/private-event hack 的原因写成当前事实。
+- 为什么影响下一线程：如果继续停留在 `slint = 1.8.0`，editable input integration 不应再尝试通过 `TouchArea`/私有事件链路硬接；主线可直接推进 phase 16，或等依赖升级后再回到 `15.2E`。
+- 保持不变：`15.2D` 代码基线不变；IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、loading scope boundary、`SelectableSectionText`/`SelectableDiffText`、所有输入绑定结构、modal draft 行为、以及本地 `toast/loading/menu` controller 边界均不改。
 
 ## 快照（Snapshot）
 
 - 日期：2026-03-16（Asia/Shanghai）
 - 分支：`dev`
-- 工作区：有改动（`fc-ui-slint` `context-menu core` + docs 对齐，待本线程提交）
+- 工作区：有改动（docs 对齐本次 `15.2E` assessment；代码保持 `15.2D` 基线）
 - 最近提交：
   - `6afab36` phase 15.1B fix-3：Analysis selectable text（success sections only）
   - `8d932c1` phase 15.1B fix2: analysis success cannot scroll
   - `19388d5` Phase 15.1B fix1 ：Analysis View 产品化 收口
-- 当前架构基线：`docs/architecture.md`（`Phase 15.2D` 已补齐本地 shared context-menu core baseline；editable input integration 仍 deferred）
+- 当前架构基线：`docs/architecture.md`（`Phase 15.2D` 为稳定代码基线；`15.2E` 已完成 feasibility assessment，editable/selectable input integration 继续 deferred）
 
 ## 当前目标（Execution Focus）
 
-1. 以当前 `Phase 15.2A/15.2B/15.2C` 为稳定基线，维持 `Diff/Analysis` shell 与 local controller 边界。
-2. 在 `fc-ui-slint` 内落地共享 `context-menu core`，仅覆盖 non-input safe surfaces。
-3. 确保 `15.2D` 自身可独立成立；即使 `15.2E` 不做，也不阻塞 phase 16。
+1. 以当前 `Phase 15.2D` stable baseline 为前提，确认 editable input integration 是否能在不破坏 typing/focus/selection contract 的情况下落地。
+2. 若当前 Slint 版本缺少稳定 hook，则保持代码停留在 `15.2D` 基线，不为 `15.2E` 引入 overlay 拦截、私有事件链路或自写 caret/selection 逻辑。
+3. 把可行性结论和后续队列写清楚，避免下一线程重复走高风险实现路径。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `fc-ui-slint` 内共享 `context-menu core`（open/close、action dispatch、anchor positioning、target token）
-  - `Copy / Copy Summary` 公共动作与最小格式化 helper
-  - safe surface 接入：`Results / Navigator` item、`Workspace` file context header、`Analysis` success section chrome（`Summary` / `Core Judgment` / `Key Points` / `Review Suggestions` / `Notes`）
-  - `docs/architecture.md` / `docs/thread-context.md` 与当前 phase 事实对齐
-  - 最小回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、`cargo run -p fc-ui-slint` smoke）
+  - 基于当前 `15.2D` 代码确认 editable input integration 的真实依赖边界与风险
+  - 评估 `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入、`API Key`、以及 `SelectableSectionText`/`SelectableDiffText` 是否存在稳定低风险 hook
+  - `docs/architecture.md` / `docs/thread-context.md` 与 assessment 结果对齐
+  - 基线回归验证（`cargo check --workspace`、`cargo test -p fc-ui-slint`、`cargo run -p fc-ui-slint` smoke）
 - Out of Scope：
   - IA 重置（`App Bar + Sidebar + Workspace` 保持不变）
   - runtime theme 切换、全量主题系统、全量 hex 清洗
@@ -51,7 +48,8 @@
   - `fc-core` / `fc-ai` 合约改动
   - 全局 loading/theme/notification controller
   - 超出现有边界契约的 AI provider 架构扩展
-  - 所有 editable input context-menu integration（`LineEdit` / `TextInput` / `SelectableSectionText` / `SelectableDiffText` / `Compare Inputs` / `Filter / Scope` / `Provider Settings`）
+  - 在当前 `slint = 1.8.0` 依赖上强行落地任何 editable input context-menu wiring
+  - 通过 overlay `TouchArea`、私有事件链路、或自写 caret/selection/editing 逻辑硬接 `LineEdit` / `TextInput`
 
 ## 硬契约（Do Not Break）
 
@@ -76,12 +74,12 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - `Phase 15.2D` shared context-menu core 收口已完成，待确认是否直接推进 `15.2E`
-  - 验证滚动自动关闭、Analysis section anchor 和 copy-family helper 不污染主线状态机
+  - `15.2E` feasibility assessment 已完成：在 `slint = 1.8.0` 上保持 deferred，不落代码
+  - 维护 `15.2D` stable baseline，不把 input/menu 生命周期或风险逻辑反向污染到主线
 - Next：
-  - 评估是否完全跳过 `15.2E` 直接推进 phase 16；若做 `15.2E`，仅作为 isolated editable-input pass
+  - 直接推进 phase 16，或仅在依赖升级后再重开 `15.2E`
+  - 若未来重开 `15.2E`，优先验证是否已有类似 `ContextMenuArea` 的稳定 editable hook，再决定是否接入 `Compare Inputs` / `Search` / `Provider Settings`
   - 结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
-  - 评估 Analysis success 文本选择的 native copy 快捷键回调可行性（若 Slint 提供稳定 hook 再补 toast）
 - Later：
   - 承接 `docs/architecture.md` 中 deferred 的 provider hardening 与 global notification orchestration
 
@@ -89,7 +87,7 @@
 
 1. 不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
 2. `context-menu core` 必须保持 window-local；不要把 menu lifecycle 反向塞回 `AppState/Presenter`。
-3. 不要误接 editable input surface，尤其 `SelectableSectionText` / `SelectableDiffText` / `LineEdit` / `TextInput`。
+3. 在当前依赖版本下，不要再尝试通过 overlay `TouchArea`、私有事件拦截或自写编辑逻辑接 editable input surface。
 4. 右键接线不能破坏 `Results / Navigator` 左键选择、Diff 行号双击复制、Analysis success 文本选择与滚动；`Risk Level` 保持 `Copy` 按钮-only，不再属于 menu safe surface。
 5. `toast-controller` 仍是 overlay toast only；不要回退 15.2A 的边界。
 
@@ -113,8 +111,10 @@ cargo run -p fc-ui-slint
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller overlay only` + `Phase 15.2B loading-mask(+sync projection fix)` + `Phase 15.2C ui_palette` + `Phase 15.2D menu core` 版本为基线。  
+> 把 `15.2D` 视为当前稳定代码基线；`15.2E` 在 `slint = 1.8.0` 上已评估并保持 deferred。  
 > 保持当前 IA 与 phase 边界。  
 > 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast/loading/menu controller 重新塞进 `AppState/Presenter`。  
+> 不要用 overlay `TouchArea`、私有事件链路或自写 caret/selection/editing 去硬接 editable inputs。  
 > 仅执行本次任务范围内改动，并说明对 contract 的影响。
 
 ## 更新契约（Mandatory）

@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.2D)
+# Folder Compare Architecture (Phase 1-15.2D stable baseline + 15.2E assessment)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.2D)
+## `fc-ui-slint` current architecture snapshot (Phase 15.2D stable / 15.2E deferred)
 
 ### IA and layout contract
 
@@ -264,6 +264,27 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - safe surfaces already get reusable menu open/close/dispatch behavior now;
   - future input integration can reuse the same shared core without being required for phase-16 progression.
 
+### Editable input integration status (Phase 15.2E assessment)
+
+- No editable-input context-menu code landed in the current baseline; `15.2D` remains the accepted stable implementation.
+- Feasibility result on the pinned dependency set:
+  - the workspace is still locked to `slint = 1.8.0`;
+  - this version exposes `select-all/copy/paste/cut` on `LineEdit` / `TextInput`, but it does not expose a stable editable-input context-menu hook;
+  - newer upstream widget sources add `ContextMenuArea` around editable inputs, but that surface is not available in `1.8.0`, so using it here would require a Slint upgrade outside the allowed scope.
+- Rejected implementation paths for the current phase:
+  - overlay-style `TouchArea` interception would risk left-click caret placement, drag selection, IME behavior, and native shortcut flow;
+  - private/global pointer interception would leak menu lifecycle outside the current UI-local boundary and raise focus/passive-sync risk;
+  - custom caret/selection plumbing would duplicate editor behavior and violate the “reuse Slint editing logic” constraint.
+- Therefore the following remain deferred:
+  - Stage 1 targets: `Compare Inputs -> left/right` and `Filter / Scope -> Search`;
+  - Stage 2 targets: `Provider Settings -> Endpoint / Model / Timeout`;
+  - Stage 3 target: `Provider Settings -> API Key`;
+  - `SelectableSectionText` and `SelectableDiffText`.
+- Conservative `API Key` menu policy for any future revisit after a stable hook exists:
+  - hidden state: `Paste` only;
+  - visible state: `Select All`, `Copy`, `Paste`, `Cut`;
+  - rationale: hidden state should not imply masked text is safely copyable/cuttable, while `Paste` remains the least surprising secret-entry action.
+
 ### Boundaries and non-goals in this phase
 
 - No IA reset.
@@ -271,9 +292,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No AI schema/provider capability expansion beyond UI-state orchestration.
 - No deep Compare Status details expansion beyond summary-first intent.
 - No runtime theme/settings upgrade or cross-surface theme controller.
-- No editable-input context-menu integration in this phase.
+- No editable-input context-menu integration in the shipped baseline.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.2D)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.2D stable baseline)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -317,8 +338,11 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - connected only non-input safe surfaces (`Results / Navigator`, `Workspace` file context header, `Analysis` success section chrome except `Risk Level`);
   - normalized `AnalysisSectionPanel` anchor coordinates so section menus open near the actual pointer location;
   - kept `SelectableSectionText` / `SelectableDiffText` / all editable inputs out of scope so the menu core remains independently stable and does not depend on `15.2E`.
+- 15.2E assessment:
+  - verified that the locked `slint = 1.8.0` baseline does not provide a low-risk editable-input context-menu hook comparable to newer `ContextMenuArea`-based widgets;
+  - intentionally kept `Compare Inputs`, `Filter / Scope -> Search`, `Provider Settings` inputs, and all selectable-text wrappers deferred rather than introducing overlay interception or custom text-edit plumbing.
 
-## Deferred architecture decisions (after Phase 15.2D)
+## Deferred architecture decisions (after Phase 15.2D stable baseline)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -331,8 +355,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P2` Multi-line copy workflow:
   - deferred because the current baseline now covers low-noise Diff row copy plus lightweight Analysis section/whole-review copy; full range selection, clipboard formatting, and richer clipboard semantics would still expand interaction scope beyond the accepted shell.
 - `P2` Editable input context-menu integration:
-  - deferred to `Phase 15.2E` or a later isolated pass;
-  - shared menu open/close/dispatch core now exists, but input wrapper/adapter/plumbing is intentionally not part of `15.2D`.
+  - re-confirmed as deferred after `15.2E` assessment on `slint = 1.8.0`;
+  - shared menu open/close/dispatch core exists, but the current dependency set does not expose a stable editable-input context-menu hook;
+  - revisit only with a future Slint upgrade or another first-class editable-input menu surface that does not require overlay interception.
 - `P2` Analysis shell-state selectable text (non-success states):
   - not a hard requirement for `Phase 15.1B fix-3`;
   - deferred for a separate pass so shell-state interaction changes do not regress the stabilized success-body scrolling contract.
@@ -353,15 +378,17 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.2D)
+## Next implementation priority (after Phase 15.2D stable baseline)
 
-1. Either stop at `15.2D` and proceed to phase 16, or do `15.2E` only as an isolated editable-input pass.
+1. Proceed to phase 16 directly unless the dependency baseline changes enough to make editable-input menus low-risk.
    - acceptance: phase-16 work does not depend on input-surface context-menu plumbing.
-2. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
+2. Revisit `15.2E` only after a stable editable-input context-menu hook exists.
+   - acceptance: no overlay interception, no custom caret/selection logic, and `API Key` keeps the conservative hidden=`Paste` only / visible=`Select All+Copy+Paste+Cut` policy.
+3. Improve results navigation efficiency (sorting/quick-jump/filter ergonomics) without introducing tree mode.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps.
-3. Carry forward provider hardening deferred items only within the existing boundaries.
+4. Carry forward provider hardening deferred items only within the existing boundaries.
    - acceptance: reliability hardening does not expand IA, schema, or workspace mode count ahead of need.
-4. Only do another Analysis fix pass if runtime smoke or screenshot review still shows geometry/copy discoverability regressions.
+5. Only do another Analysis fix pass if runtime smoke or screenshot review still shows geometry/copy discoverability regressions.
    - acceptance: fixes stay within the current shell contract and do not reopen Diff-shell or IA redesign.
 
 ## Documentation update contract (mandatory)
