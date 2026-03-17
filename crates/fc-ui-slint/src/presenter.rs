@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-const BACKGROUND_START_DELAY: Duration = Duration::from_millis(10);
+const BACKGROUND_START_DELAY: Duration = Duration::from_millis(4);
 
 /// Presenter that manages compare-oriented UI state.
 #[derive(Clone)]
@@ -26,6 +26,12 @@ impl Presenter {
     /// Returns a snapshot copy of current app state.
     pub fn state_snapshot(&self) -> AppState {
         self.state.lock().expect("state mutex poisoned").clone()
+    }
+
+    /// Returns coarse busy flags used by UI polling loop to avoid heavy snapshots.
+    pub fn busy_flags(&self) -> (bool, bool, bool) {
+        let state = self.state.lock().expect("state mutex poisoned");
+        (state.running, state.diff_loading, state.analysis_loading)
     }
 
     /// Handles one UI command.
@@ -241,20 +247,59 @@ impl Presenter {
             if state.diff_loading {
                 return;
             }
-            state.diff_loading = true;
+
+            let selected_row = state
+                .selected_row
+                .and_then(|idx| state.entry_rows.get(idx).cloned());
+            let Some(row) = selected_row else {
+                state.diff_loading = false;
+                state.diff_error_message =
+                    Some("select one compare row before loading detailed diff".to_string());
+                state.selected_diff = None;
+                state.diff_warning = None;
+                state.diff_truncated = false;
+                state.analysis_available = false;
+                state.clear_analysis_panel();
+                state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
+                state.status_text = "Detailed diff unavailable".to_string();
+                return;
+            };
+
+            state.selected_relative_path = Some(row.relative_path.clone());
             state.diff_error_message = None;
             state.selected_diff = None;
             state.diff_warning = None;
             state.diff_truncated = false;
             state.analysis_available = false;
             state.clear_analysis_panel();
-            state.analysis_hint = Some("Detailed diff is loading...".to_string());
+            let is_preview_mode =
+                row.status == "left-only" || row.status == "right-only" || row.status == "equal";
+            if !row.can_load_diff {
+                let reason = row.diff_blocked_reason.clone().unwrap_or_else(|| {
+                    "selected row does not support detailed text diff".to_string()
+                });
+                state.diff_loading = false;
+                state.diff_warning = Some(reason);
+                state.analysis_hint =
+                    Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
+                state.status_text = if is_preview_mode {
+                    "File preview unavailable for selected row".to_string()
+                } else {
+                    "Detailed diff unavailable for selected row".to_string()
+                };
+                return;
+            }
+
+            state.diff_loading = true;
+            state.analysis_hint = Some(if is_preview_mode {
+                "File preview is loading...".to_string()
+            } else {
+                "Detailed diff is loading...".to_string()
+            });
             (
                 state.left_root.clone(),
                 state.right_root.clone(),
-                state
-                    .selected_row
-                    .and_then(|idx| state.entry_rows.get(idx).cloned()),
+                Some(row),
                 Arc::clone(&self.state),
             )
         };
@@ -266,6 +311,14 @@ impl Presenter {
             let result = selected_row
                 .ok_or_else(|| "select one compare row before loading detailed diff".to_string())
                 .and_then(|row| {
+                    if row.status == "left-only"
+                        || row.status == "right-only"
+                        || row.status == "equal"
+                    {
+                        let preview_vm =
+                            bridge::map_single_side_file_preview(&left_root, &right_root, &row);
+                        return Ok((row, preview_vm));
+                    }
                     let relative_path = row.relative_path.clone();
                     bridge::build_text_diff_request(&left_root, &right_root, &row)
                         .and_then(run_text_diff)
@@ -281,6 +334,9 @@ impl Presenter {
             state.diff_loading = false;
             match result {
                 Ok((row, diff_vm)) => {
+                    let is_preview_mode = row.status == "left-only"
+                        || row.status == "right-only"
+                        || row.status == "equal";
                     state.selected_relative_path = Some(diff_vm.relative_path.clone());
                     state.diff_warning = diff_vm.warning.clone();
                     state.diff_truncated = diff_vm.truncated;
@@ -297,7 +353,11 @@ impl Presenter {
                             "selected row does not support AI analysis".to_string()
                         })
                     });
-                    state.status_text = "Detailed diff loaded".to_string();
+                    state.status_text = if is_preview_mode {
+                        "File preview loaded".to_string()
+                    } else {
+                        "Detailed diff loaded".to_string()
+                    };
                 }
                 Err(message) => {
                     state.diff_error_message = Some(message);
@@ -638,11 +698,11 @@ mod tests {
     }
 
     #[test]
-    fn load_selected_diff_for_non_diffable_row_sets_diff_error_only() {
+    fn load_selected_diff_for_non_diffable_row_sets_unavailable_state() {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
-        fs::write(left.path().join("left_only.txt"), "left\n")
-            .expect("left file should be written");
+        fs::create_dir(left.path().join("left_only_dir"))
+            .expect("left-only directory should be created");
 
         let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
         presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
@@ -656,8 +716,71 @@ mod tests {
         let snapshot = wait_until(&presenter, |state| !state.diff_loading);
 
         assert!(snapshot.error_message.is_none());
-        assert!(snapshot.diff_error_message.is_some());
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.diff_warning.is_some());
         assert!(snapshot.selected_diff.is_none());
+        assert_eq!(
+            snapshot.status_text,
+            "File preview unavailable for selected row"
+        );
+    }
+
+    #[test]
+    fn load_selected_diff_for_left_only_file_opens_single_side_preview() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("left_only.txt"), "line-1\nline-2\n")
+            .expect("left file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        let snapshot = wait_until(&presenter, |state| !state.diff_loading);
+
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.selected_diff.is_some());
+        assert!(snapshot
+            .selected_diff
+            .as_ref()
+            .map(|value| value.summary_text.contains("left-only preview"))
+            .unwrap_or(false));
+        assert_eq!(snapshot.analysis_available, false);
+    }
+
+    #[test]
+    fn load_selected_diff_for_equal_file_opens_equal_preview() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("equal.txt"), "same\nline\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("equal.txt"), "same\nline\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        let snapshot = wait_until(&presenter, |state| !state.diff_loading);
+
+        assert!(snapshot.diff_error_message.is_none());
+        assert!(snapshot.selected_diff.is_some());
+        assert!(snapshot
+            .selected_diff
+            .as_ref()
+            .map(|value| value.summary_text.contains("equal preview"))
+            .unwrap_or(false));
+        assert_eq!(snapshot.analysis_available, false);
     }
 
     #[test]

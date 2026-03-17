@@ -13,6 +13,7 @@ slint.workspace = true
 smol_str.workspace = true
 tracing.workspace = true
 serde.workspace = true
+copypasta = "0.10.2"
 toml = "0.8"
 
 [build-dependencies]
