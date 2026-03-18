@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4` 已完成；本文件继续作为 `Phase 15.5`、`Phase 15.6`、`Phase 16` 的约束与提示词入口。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5` 已完成；本文件继续作为 `Phase 15.6`、`Phase 16` 的约束与提示词入口。
 
 原始升级目标是把当时基线：
 
@@ -38,7 +38,7 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.4`)
+### Current baseline (after `Phase 15.5`)
 
 - `Cargo.toml`
   - workspace `version = "0.2.15"`
@@ -51,13 +51,16 @@
   - crate version、bundle version、DMG / ZIP version 已统一从 workspace manifest 派生
 - UI 基线
   - `fc-ui-slint` 仍使用 `src/app.rs` 内联 `slint::slint!`
-  - editable input context menu 仍 deferred 到 `Phase 15.5`
+  - `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入框已直接使用 `slint 1.15.1` `LineEdit` 自带 editable-input context menu
+  - `Provider Settings -> API Key` 已落地专用 `ApiKeyLineEdit`，hidden=`Paste` only、visible=`Copy/Cut/Paste/Select All`
+  - `API Key` hidden 状态额外阻断 `Cmd/Ctrl+A/C/X`，避免 masked secret 走复制/剪切捷径
+  - `API Key` 外置 `Show/Hide` 按钮已收敛为字段内 reveal toggle
+  - `Search` 手工 `Clear` 按钮暂时保留，因为当前 macOS native `cupertino` `LineEdit` 没有稳定 clear affordance
   - UI 同步仍保留 `50ms` 轮询，作为 `Phase 15.6` 清理目标
   - `15.2D` 行为已在新依赖下恢复等价
 
 ### Remaining target
 
-- 在下一小版本完成 `15.2E`
 - 在后续清理轮次收敛 `50ms` 轮询与 model churn
 - 再在稳定升级基线上推进 `Phase 16`
 
@@ -73,7 +76,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.4`
+### Actually changed in `Phase 15.3A` - `Phase 15.5`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -85,23 +88,24 @@
   - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
   - `docs/macos_dmg.sh`
   - `README.md`
+- UI 输入菜单补票
+  - `crates/fc-ui-slint/src/app.rs`
 - 兼容性清理
   - `crates/fc-core/src/services/classifier.rs`
 
-### Notably unchanged during the migration
+### Notably unchanged during / after the migration train
 
-- `crates/fc-ui-slint/src/app.rs`
 - `crates/fc-ui-slint/src/context_menu.rs`
 - `crates/fc-ui-slint/src/presenter.rs`
 - `crates/fc-ui-slint/build.rs`
 
-### Likely hotspots for `Phase 15.5` - `Phase 15.6`
+### Likely hotspots for `Phase 15.6`
 
 - `crates/fc-ui-slint/src/app.rs`
-  - editable input context-menu 接入点
-  - 可能的原生 clear / password affordance 收敛
+  - `50ms` polling + snapshot sync 清理接入点
+  - `Search` clear affordance 后续是否还能进一步收敛
 - `crates/fc-ui-slint/src/context_menu.rs`
-  - non-input safe surfaces 与 editable-input 策略分层
+  - non-input safe surfaces 与 editable-input 分层保持不回退
 - `crates/fc-ui-slint/src/presenter.rs` + `src/app.rs`
   - `50ms` polling + snapshot sync 清理与局部收敛
 - `crates/fc-ui-slint/build.rs`
@@ -218,6 +222,10 @@
 
 ### `Phase 15.5` - Reopen and ship `15.2E`
 
+执行状态：
+
+- 已完成（`2026-03-18`）
+
 目标：
 
 - 基于新 Slint 基线正式完成 editable input context-menu integration
@@ -242,6 +250,18 @@
 - 输入菜单不会破坏 typing、focus、selection、paste、cut、select-all contract
 - `API Key` 在 hidden/visible 状态下行为符合预期
 - 原有 non-input context menu 行为不回退
+
+实际结果：
+
+- `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入框继续使用 `slint 1.15.1` `LineEdit` 原生 `ContextMenuArea`，未引入 overlay、私有事件链路或自写 caret/selection/editing
+- `Provider Settings -> API Key` 改为专用 `ApiKeyLineEdit`：
+  - hidden 状态菜单仅保留 `Paste`
+  - visible 状态提供 `Copy`、`Cut`、`Paste`、`Select All`
+  - hidden 状态额外阻断 `Cmd/Ctrl+A/C/X`
+- `API Key` 原有外置 `Show/Hide` 按钮已收敛为字段内 toggle，并在切换后保持输入焦点
+- `Search` 手工 `Clear` 按钮本轮保留；原因是当前 macOS native `cupertino` `LineEdit` 还没有稳定 clear affordance，因此不强行引入非原生替代
+- 现有 non-input context menu core 保持 window-local，`Risk Level` 仍保持 explicit `Copy` button-only
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` 启动级 smoke 通过
 
 ### `Phase 15.6` - Post-upgrade cleanup
 
@@ -280,11 +300,12 @@
 - 不引入 tree mode
 - 不破坏 `15.x` 已收敛的 workspace shell
 
-## 7. Upgrade Benefits Expected After `Phase 15.5`
+## 7. Upgrade Benefits Realized After `Phase 15.5`
 
 - `15.2E` 不再长期 deferred
 - 输入与非输入菜单策略分层更清晰
-- `API Key` 和 Search 输入更接近原生控件语义
+- `API Key` 输入回到原生 `TextInput` 编辑语义，同时保留保守的 secret-menu contract
+- Search 输入菜单已回到原生 editable-input surface，且 clear affordance 的保留理由已明确
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
@@ -306,9 +327,8 @@
 ## 9. Work That Requires Human Ownership
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
-  - `API Key` 的 Show/Hide 按钮
-  - `Search` 的 Clear 按钮
-- `Phase 15.5` 完成后的最终人工 smoke 与视觉验收
+  - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
+- `Phase 15.5` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
 

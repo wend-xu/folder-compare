@@ -500,6 +500,140 @@ slint::slint! {
         }
     }
 
+    component ApiKeyLineEdit inherits Rectangle {
+        in-out property <string> text;
+        in-out property <bool> revealed: false;
+        in property <bool> enabled: true;
+        in property <bool> read_only: false;
+        out property <bool> has_focus: text_input.has-focus;
+        property <bool> toggle_hovered: toggle_touch_area.has-hover && root.enabled;
+        property <length> horizontal_padding: 10px;
+        property <length> toggle_slot_width: 40px;
+        property <length> toggle_gap: 8px;
+        property <length> text_lane_width: max(1px, root.width - 2 * root.horizontal_padding - root.toggle_gap - root.toggle_slot_width);
+
+        border-width: 1px;
+        border-radius: 4px;
+        border-color: root.has_focus ? #9bb7d3 : #d7dde7;
+        background: root.enabled ? #ffffff : #f3f6fa;
+        opacity: root.enabled ? 1 : 0.6;
+        clip: true;
+        forward-focus: text_input;
+        accessible-role: AccessibleRole.text-input;
+        accessible-enabled: root.enabled;
+        accessible-read-only: root.read_only;
+        accessible-value <=> text;
+        accessible-action-set-value(v) => {
+            text = v;
+        }
+
+        // Contract: API key input keeps native TextInput editing behavior,
+        // but narrows hidden-state secret actions to paste-only.
+        ContextMenuArea {
+            enabled: root.enabled;
+
+            Menu {
+                if root.revealed : MenuItem {
+                    title: @tr("Cut");
+                    enabled: !root.read_only && root.enabled && !root.text.is-empty;
+                    activated => {
+                        text_input.cut();
+                    }
+                }
+
+                if root.revealed : MenuItem {
+                    title: @tr("Copy");
+                    enabled: !root.text.is-empty;
+                    activated => {
+                        text_input.copy();
+                    }
+                }
+
+                MenuItem {
+                    title: @tr("Paste");
+                    enabled: !root.read_only && root.enabled;
+                    activated => {
+                        text_input.paste();
+                    }
+                }
+
+                if root.revealed : MenuItem {
+                    title: @tr("Select All");
+                    enabled: !root.text.is-empty;
+                    activated => {
+                        text_input.select-all();
+                    }
+                }
+            }
+
+            text_input := TextInput {
+                property <length> computed_x;
+
+                x: root.horizontal_padding + min(
+                    0px,
+                    max(root.text_lane_width - self.width - self.text-cursor-width, self.computed_x)
+                );
+                y: 0px;
+                width: max(root.text_lane_width - self.text-cursor-width, self.preferred-width);
+                height: parent.height;
+                text <=> root.text;
+                enabled: root.enabled;
+                read-only: root.read_only;
+                single-line: true;
+                vertical-alignment: center;
+                input-type: root.revealed ? InputType.text : InputType.password;
+                color: #33485d;
+                font-size: 13px;
+                selection-background-color: #c9daec;
+                selection-foreground-color: #23384d;
+                accessible-role: none;
+
+                cursor-position-changed(cursor-position) => {
+                    if cursor-position.x + self.computed_x < 0px {
+                        self.computed_x = -cursor-position.x;
+                    } else if cursor-position.x + self.computed_x > root.text_lane_width - self.text-cursor-width {
+                        self.computed_x = root.text_lane_width - cursor-position.x - self.text-cursor-width;
+                    }
+                }
+
+                key-pressed(event) => {
+                    if !root.revealed && event.modifiers.control
+                        && (event.text == "a" || event.text == "A"
+                            || event.text == "c" || event.text == "C"
+                            || event.text == "x" || event.text == "X") {
+                        return accept;
+                    }
+                    reject
+                }
+            }
+
+            toggle_label := Text {
+                x: parent.width - root.horizontal_padding - root.toggle_slot_width;
+                y: 0px;
+                width: root.toggle_slot_width;
+                height: parent.height;
+                text: root.revealed ? "Hide" : "Show";
+                color: root.toggle_hovered ? #2f5a83 : #5d6f82;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            toggle_touch_area := TouchArea {
+                x: toggle_label.x;
+                y: 0px;
+                width: toggle_label.width;
+                height: parent.height;
+                enabled: root.enabled;
+                clicked => {
+                    root.revealed = !root.revealed;
+                    text_input.focus();
+                }
+            }
+        }
+    }
+
     component AnalysisSectionPanel inherits Rectangle {
         in property <string> section_label;
         in property <string> title;
@@ -2412,19 +2546,11 @@ slint::slint! {
                                 color: #4f6074;
                                 vertical-alignment: center;
                             }
-                            LineEdit {
+                            ApiKeyLineEdit {
                                 text <=> root.provider_settings_api_key;
-                                input-type: root.provider_settings_show_api_key ? InputType.text : InputType.password;
                                 horizontal-stretch: 1;
                                 height: 28px;
-                            }
-                            ToolButton {
-                                label: root.provider_settings_show_api_key ? "Hide" : "Show";
-                                button_min_width: 62px;
-                                control_height: 27px;
-                                tapped => {
-                                    root.provider_settings_show_api_key = !root.provider_settings_show_api_key;
-                                }
+                                revealed <=> root.provider_settings_show_api_key;
                             }
                         }
                         HorizontalLayout {
