@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5` 已完成；本文件继续作为 `Phase 15.6`、`Phase 16` 的约束与提示词入口。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1` 已完成；本文件继续作为 `Phase 15.6`、`Phase 16` 的约束与提示词入口。
 
 原始升级目标是把当时基线：
 
@@ -38,10 +38,10 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.5`)
+### Current baseline (after `Phase 15.5 fix-1`)
 
 - `Cargo.toml`
-  - workspace `version = "0.2.15"`
+  - workspace `version = "0.2.16"`
   - `rust-version = "1.94"`
   - `slint = "=1.15.1"`
   - `slint-build = "=1.15.1"`
@@ -56,6 +56,7 @@
   - `API Key` hidden 状态额外阻断 `Cmd/Ctrl+A/C/X`，避免 masked secret 走复制/剪切捷径
   - `API Key` 外置 `Show/Hide` 按钮已收敛为字段内 reveal toggle
   - `Search` 手工 `Clear` 按钮暂时保留，因为当前 macOS native `cupertino` `LineEdit` 没有稳定 clear affordance
+  - `SelectableDiffText` / `SelectableSectionText` 现已显式绑定 window-local selectable-content `font-family`，优先落到 `PingFang SC`，用于修复 `slint 1.15.1` `TextInput` 在 mixed Latin+CJK 文本里把全角标点渲染成 tofu 的回归
   - UI 同步仍保留 `50ms` 轮询，作为 `Phase 15.6` 清理目标
   - `15.2D` 行为已在新依赖下恢复等价
 
@@ -76,7 +77,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.5`
+### Actually changed in `Phase 15.3A` - `Phase 15.5 fix-1`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -263,6 +264,38 @@
 - 现有 non-input context menu core 保持 window-local，`Risk Level` 仍保持 explicit `Copy` button-only
 - `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` 启动级 smoke 通过
 
+### `Phase 15.5 fix-1` - Workspace Diff detail line glyph fallback stabilization
+
+执行状态：
+
+- 已完成（`2026-03-18`）
+
+目标：
+
+- 修复依赖升级后 `Workspace Diff detail line` 把原始全角标点渲染成方框的问题
+- 明确根因属于 `fc-ui-slint` 文本渲染层，而不是 `fc-core` 编码/解码边界
+
+要做的事：
+
+- 用真实异常样本确认原始文本未损坏、编码未损坏、diff 数据未损坏
+- 对照 `slint 1.8.0` -> `1.15.1` 的文本/字体运行时变化，定位回归层级
+- 在不破坏 `SelectableDiffText` / `SelectableSectionText` 可选中、可复制 contract 的前提下做最小 UI 修复
+
+人工验收标准：
+
+- `Workspace Diff detail line` 中原始全角冒号 `：` 不再显示为方框
+- 现有 diff 行文本选择、系统复制快捷键、行号双击复制不回退
+- Analysis success sections 的 selectable text 不因同一修复产生高度/选择/滚动回退
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` smoke 通过
+
+实际结果：
+
+- 使用原始样本确认异常字符本体是文件内容里的全角冒号 `：`，不是乱码或编码破坏
+- 升级提交 `c90f746` 本身没有改 `Diff` 面板代码；回归来自 `slint 1.15.1` 的 `TextInput` 文本引擎/字体回退路径变化
+- `SelectableDiffText` 与 `SelectableSectionText` 现已显式绑定 window-local selectable-content `font-family`，优先使用 `PingFang SC`，并保留 Slint 默认 generic fallback
+- 修复保持在 `fc-ui-slint/src/app.rs`，未改 `fc-core` 文本加载、解码、diff 构造逻辑
+- workspace 版本随本轮收敛到 `0.2.16`
+
 ### `Phase 15.6` - Post-upgrade cleanup
 
 目标：
@@ -300,12 +333,13 @@
 - 不引入 tree mode
 - 不破坏 `15.x` 已收敛的 workspace shell
 
-## 7. Upgrade Benefits Realized After `Phase 15.5`
+## 7. Upgrade Benefits Realized After `Phase 15.5` / `fix-1`
 
 - `15.2E` 不再长期 deferred
 - 输入与非输入菜单策略分层更清晰
 - `API Key` 输入回到原生 `TextInput` 编辑语义，同时保留保守的 secret-menu contract
 - Search 输入菜单已回到原生 editable-input surface，且 clear affordance 的保留理由已明确
+- 升级引入的 read-only selectable text glyph fallback 回归已被局部收敛，不再阻断真实 mixed Latin/CJK 文本阅读
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
@@ -328,7 +362,7 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
-- `Phase 15.5` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- `Phase 15.5` / `fix-1` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
 
@@ -436,8 +470,8 @@
 
 ```text
 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
-以 `Phase 15.5` 已稳定为前提，本次只执行 `Phase 15.6`：做升级后的同步与结构清理。
-把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5` 视为已完成，不要回头重做前置阶段。
+以 `Phase 15.5` 与 `Phase 15.5 fix-1` 已稳定为前提，本次只执行 `Phase 15.6`：做升级后的同步与结构清理。
+把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1` 视为已完成，不要回头重做前置阶段。
 目标：
 - 识别并收窄 `50ms` UI polling 的主路径
 - 降低结果列表 / diff 列表的整批 model 重建
@@ -445,6 +479,7 @@
 约束：
 - 不新增 Phase 16 功能
 - 不回退 `15.x` 已稳定的 shell contract
+- 不移除 `SelectableDiffText` / `SelectableSectionText` 当前的 glyph fallback 保护，除非已有真实 mixed Latin+CJK 样本验证默认 `TextInput` 路径不再出现 tofu
 - 不为“清理”引入一次大规模 UI rewrite
 - 执行同时同步更新 `docs/architecture.md`、`docs/thread-context.md`、`docs/upgrade-plan-rust-1.94-slint-1.15.md`
 - 不再创建额外 phase checklist 文档

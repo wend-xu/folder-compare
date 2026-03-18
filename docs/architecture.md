@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.5 editable-input baseline)
+## `fc-ui-slint` current architecture snapshot (Phase 15.5 editable-input baseline + fix-1 glyph stabilization)
 
 ### IA and layout contract
 
@@ -154,6 +154,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - section cards expose inline `Copy` actions instead of persistent button walls;
   - `Copy All` exports the current structured review conclusion;
   - success sections (`Summary/Core Judgment/Key Points/Review Suggestions/Notes`) support direct text selection and native system copy shortcuts;
+  - the read-only selectable wrappers behind these success sections now pin a local `font-family` for CJK-safe rendering, so mixed Latin/CJK text does not regress to tofu glyphs after the `slint 1.15.1` text-engine migration;
   - explicit copy actions (`Copy` / `Copy All`) now trigger top-center overlay `toast` feedback;
   - native shortcut copy for selected success text currently keeps system-default behavior; toast feedback for this path is deferred until Slint exposes a stable native copy callback surface in this shell;
   - Analysis shell-state body text selection (`no-selection/not-started/loading/error`) is not a hard requirement in `Phase 15.1B fix-3` and remains out of scope for this round;
@@ -170,6 +171,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - preview table columns are side-aware (`left/right`) instead of always `old/new`.
 - Diff content keeps the `column header -> rows` structure but now guarantees baseline review ergonomics:
   - line content is selectable/copyable;
+  - read-only selectable diff rows use the same local `font-family` guard as Analysis success text, because `slint 1.15.1` changed `TextInput` font fallback behavior and otherwise rendered some full-width punctuation in mixed Latin/CJK lines as tofu on macOS;
   - the workbench panel owns `header -> helper strip -> state/table` as one surface, so Diff detail reads as a single workstation instead of nested cards;
   - the table can scroll horizontally for long lines with persistent in-surface guidance;
   - the diff body `ListView` owns vertical scrolling while the column header mirrors its horizontal viewport, keeping the vertical scrollbar visible without depending on horizontal position;
@@ -267,10 +269,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
   - workspace `slint` / `slint-build` are pinned to `1.15.1`;
+  - workspace version is now `0.2.16` after `Phase 15.5 fix-1`;
   - release version, macOS bundle version, and DMG/ZIP artifact version now derive from the workspace manifest version.
 - Product outcome:
   - `15.2D` shell/menu/loading/toast boundaries remained behavior-equivalent on the new dependency baseline;
   - editable-input menu coverage is now live on `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings`;
+  - read-only selectable content (`SelectableDiffText` / `SelectableSectionText`) now carries a local glyph-fallback guard so full-width punctuation from real workspace text stays readable after the Slint upgrade;
   - macOS arm64 manual smoke passed after `Phase 15.4`, and launch-level smoke also passed after `Phase 15.5`;
   - diff loading still feels perceptibly faster on the upgraded baseline even though `15.3A`-`15.5` did not intentionally add new diff-loading product scope.
 - Rejected implementation paths remain rejected after `15.5`:
