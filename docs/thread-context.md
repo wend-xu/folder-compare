@@ -6,9 +6,9 @@
 
 ## 本轮更新说明（2026-03-18）
 
-- 轮次定义：`Dependency upgrade executed through Phase 15.8; Phase 15 closeout is complete; Phase 16 returns to mainline afterwards`。
+- 轮次定义：`Dependency upgrade executed through Phase 15.8 fix-1; Phase 15 closeout is complete; Phase 16 returns to mainline afterwards`。
 - 改了什么：
-  - 实际完成 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`；
+  - 实际完成 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`；
   - workspace 版本继续保持 `0.2.17`；依赖与工具链继续保持 `rust-toolchain = 1.94.0`、workspace `rust-version = 1.94`、`slint = 1.15.1`、`slint-build = 1.15.1`；
   - 版本号单一事实来源继续落在 workspace `Cargo.toml`，`docs/macos_dmg.sh` 继续从 manifest 派生 bundle / DMG / ZIP 版本；
   - `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入框继续走 `slint 1.15.1` 原生 editable-input context menu；`Provider Settings -> API Key` 继续保持专用 `ApiKeyLineEdit` 的保守 secret contract；
@@ -20,31 +20,32 @@
   - 本轮 `Phase 15.8` 已完成：`Analysis success` 的 `SelectableSectionText` 现已直接使用 Slint native text surface，`Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 的正文文本支持最小化 `Copy` / `Select All` 右键菜单，菜单对象仍是当前选中文本；
   - `Phase 15.8` 保持了原约束：section header / chrome 继续走现有 window-local `Copy` / `Copy Summary` 菜单，`Risk Level` 继续保持显式 `Copy` 按钮-only，没有改 `context_menu.rs`，也没有扩张到 Analysis shell-state text、`SelectableDiffText` 或 editable inputs；
   - `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 右上角 inline `Copy` 按钮此前失效的根因已确认并修复：原先 `AnalysisSectionPanel` header 的整块右键命中层覆盖了按钮区域，本轮已把命中层收敛到 header label lane，不再遮挡 copy action；
+  - 本轮 `Phase 15.8 fix-1` 已完成：除 `Risk Level` 外各 section header 标题现已恢复左对齐；root cause 已确认是 `Phase 15.8` 把标题 `Text` 从 `HorizontalLayout` 直接子项迁入 `header_context_lane` 普通 `Rectangle` 后，丢失了显式 `width/height + horizontal-alignment:left`，导致文本退回默认居中布局语义；本轮仅补回这组 geometry/alignment contract；
   - `cargo check --workspace`、`cargo test --workspace` 已通过；`cargo run -p fc-ui-slint` 启动级 smoke 已进入运行态。真实 macOS arm64 最终人工视觉验收仍待人工确认。
-- 为什么影响下一线程：如果下一线程仍把 `15.8` 当作未完成，就可能重复实现已落地的 native text-surface right-click，或者错误地再次把这条正文文本右键路径接回 window-local menu core；如果忽略“`Phase 15` 现已完成 closeout、`Phase 16` 已回主线”这一边界，就容易把导航增强、edition 升级或 phase15 总结重新混进同一轮；如果忽略“`.slint` 外置收益仍不足”这一结论，则容易再次打开高 churn 的 UI 结构迁移。
+- 为什么影响下一线程：如果下一线程仍把 `15.8` / `15.8 fix-1` 当作未完成，就可能重复实现已落地的 native text-surface right-click，或者在继续调整 header 命中区时再次把标题文本的显式 left-alignment geometry 丢掉；如果忽略“`Phase 15` 现已完成 closeout、`Phase 16` 已回主线”这一边界，就容易把导航增强、edition 升级或 phase15 总结重新混进同一轮；如果忽略“`.slint` 外置收益仍不足”这一结论，则容易再次打开高 churn 的 UI 结构迁移。
 - 保持不变：`15.2D` 的 IA 与 shell contract 不变；`Diff/Analysis` shell、connected tabs、loading scope boundary、`SelectableSectionText` / `SelectableDiffText` 的可选中文本边界、modal draft 行为、以及本地 `toast/loading/menu` controller 边界均不改；普通输入继续走 Slint 原生菜单，`API Key` 继续 hidden=`Paste` only；workspace `edition` 仍是 `2021`；UI 继续使用内联 `slint::slint!`。
 
 ## 快照（Snapshot）
 
 - 日期：2026-03-18（Asia/Shanghai）
 - 分支：`dev-phase15_3_to_6_upgrade_plan`
-- 工作区：有改动（`Phase 15.8` 代码与三份主文档同步更新，待提交）
+- 工作区：有改动（`Phase 15.8 fix-1` 代码与三份主文档同步更新，待提交）
 - 最近提交：
   - `3b13629` phase 15.5
   - `e8bb75a` Phase 15.3A / 15.3B / 15.4 doc sync
   - `c90f746` Phase 15.3A / 15.3B / 15.4
-- 当前架构基线：`docs/architecture.md`（`15.2E` 已在 `rust 1.94.0 + slint 1.15.1` 基线上落地，`Phase 15.5 fix-1` / `fix-2` / `fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8` 已完成；Analysis success 正文文本 right-click 已收敛为 native text surface，`Phase 16` 回主线）
+- 当前架构基线：`docs/architecture.md`（`15.2E` 已在 `rust 1.94.0 + slint 1.15.1` 基线上落地，`Phase 15.5 fix-1` / `fix-2` / `fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1` 已完成；Analysis success 正文文本 right-click 已收敛为 native text surface，section header 标题左对齐已恢复，`Phase 16` 回主线）
 
 ## 当前目标（Execution Focus）
 
-1. 把 `Phase 15.3A` 到 `Phase 15.8` 视为已完成；下一线程默认回主线 `Phase 16` 或其他独立里程碑，不要重开 phase15 closeout。
-2. 保持 phase train 分层：不要回头重做 `15.3A/15.3B/15.4/15.5/15.5 fix-1/15.5 fix-2/15.5 fix-3/15.6/15.7/15.8`，也不要把 selectable-text menu、edition `2024` 升级或 phase15 总结混进同一轮。
+1. 把 `Phase 15.3A` 到 `Phase 15.8 fix-1` 视为已完成；下一线程默认回主线 `Phase 16` 或其他独立里程碑，不要重开 phase15 closeout。
+2. 保持 phase train 分层：不要回头重做 `15.3A/15.3B/15.4/15.5/15.5 fix-1/15.5 fix-2/15.5 fix-3/15.6/15.7/15.8/15.8 fix-1`，也不要把 selectable-text menu、edition `2024` 升级或 phase15 总结混进同一轮。
 3. 后续每个 phase / 里程碑执行时同步更新 `architecture.md`、`thread-context.md`、`upgrade-plan-rust-1.94-slint-1.15.md`，不再创建额外 phase checklist 文档。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - 以 `rust 1.94.0 + slint 1.15.1 + 15.5/15.5 fix-1/15.5 fix-2/15.5 fix-3/15.6/15.7/15.8 已完成` 为基线，推进后续 mainline 工作
+  - 以 `rust 1.94.0 + slint 1.15.1 + 15.5/15.5 fix-1/15.5 fix-2/15.5 fix-3/15.6/15.7/15.8/15.8 fix-1 已完成` 为基线，推进后续 mainline 工作
   - 后续阶段执行时同步更新三份主文档
   - 继续维持 `15.x` 已收敛的 shell/menu/loading/toast 边界
 - Out of Scope：
@@ -53,6 +54,7 @@
   - 重复执行 `Phase 15.6`
   - 重复执行 `Phase 15.7`
   - 重复执行 `Phase 15.8`
+  - 重复执行 `Phase 15.8 fix-1`
   - `edition = "2024"` 迁移
   - phase15 总结 / `architecture.md` 去历史化清理
   - IA 重置、tree mode、Compare View 新模式
@@ -66,7 +68,7 @@
 3. `fc-ui-slint` 负责 orchestration/presentation，不承载 core 业务规则。
 4. Workspace 结构保持 `Tabs -> Header -> Content`，connected workspace tabs + attached workbench surface 是当前 accepted baseline，同一时刻仅一个主分支激活。
 5. Compare Status 保持 summary-first，不演化为重型第二详情面板。
-6. 依赖升级路线已完成到 `Phase 15.8`；`Phase 16` 与 edition 升级均在后续独立里程碑推进，并在各自轮次同步主文档。
+6. 依赖升级路线已完成到 `Phase 15.8 fix-1`；`Phase 16` 与 edition 升级均在后续独立里程碑推进，并在各自轮次同步主文档。
 
 ## 开始前优先阅读文件（Key Files）
 
@@ -84,9 +86,9 @@
 ## 当前工作队列（Active Work Queue）
 
 - Now：
-  - `Phase 15.3A` / `15.3B` / `15.4` / `15.5` / `15.5 fix-1` / `15.5 fix-2` / `15.5 fix-3` / `15.6` / `15.7` / `15.8` 已完成并通过验证
+  - `Phase 15.3A` / `15.3B` / `15.4` / `15.5` / `15.5 fix-1` / `15.5 fix-2` / `15.5 fix-3` / `15.6` / `15.7` / `15.8` / `15.8 fix-1` 已完成并通过验证
   - 当前稳定基线是 `15.2E` 已落地 + `rust 1.94.0 + slint 1.15.1 + workspace version 0.2.17 + event-driven sync + context-menu visual polish + Analysis success native text-surface right-click`
-  - Analysis success 的 `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 正文文本现已原生支持 `Copy` / `Select All` 右键菜单，section inline `Copy` 按钮也已恢复可点击
+  - Analysis success 的 `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 正文文本现已原生支持 `Copy` / `Select All` 右键菜单，section inline `Copy` 按钮也已恢复可点击，section header 标题也已恢复左对齐
   - `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` 已通过
 - Next：
   - `Phase 16`：结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
@@ -107,8 +109,8 @@
 6. `toast-controller` 仍是 overlay toast only，`loading-mask` 仍保持当前范围；不要因为后续 phase 而回退这些边界。
 7. 不要重新引入 broad `50ms` polling 作为 UI 主同步路径；若未来新增轮询，必须给出明确且局部的保留理由。
 8. 不要移除 `UiTypography.selectable_content_font_family` 当前的 glyph fallback 收敛，也不要把 `Diff detail` 的显式 `ScrollView` 回退到升级后的 `ListView` 路径，除非已有真实样本验证新路径稳定。
-9. `Phase 15.8` 已把 Analysis success 正文文本 right-click 固定在 native text surface；不要把这条可选中文本路径接回 window-local menu core，也不要用 undocumented selection API、overlay interception 或自写 caret/selection 去追求“更严格”的 selection-aware contract。
-10. 不要重新打开 `Phase 15.7` / `Phase 15.8` 的菜单 closeout 话题，也不要把 `Phase 16`、edition 升级、phase15 总结、残留输入 affordance 评估或新的菜单 controller 方案混成同一轮；也不要重新开临时 checklist 文档绕开主文档同步。
+9. `Phase 15.8` 已把 Analysis success 正文文本 right-click 固定在 native text surface；`Phase 15.8 fix-1` 又把 section header 标题左对齐 contract 明确收回来。后续不要把这条可选中文本路径接回 window-local menu core，也不要在继续调整 header lane 时丢掉显式 `Text` 几何与 `horizontal-alignment:left`。
+10. 不要重新打开 `Phase 15.7` / `Phase 15.8` / `Phase 15.8 fix-1` 的菜单 closeout 话题，也不要把 `Phase 16`、edition 升级、phase15 总结、残留输入 affordance 评估或新的菜单 controller 方案混成同一轮；也不要重新开临时 checklist 文档绕开主文档同步。
 
 ## 验证命令（Verification Commands）
 
@@ -124,11 +126,11 @@ cargo run -p fc-ui-slint
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > 再阅读 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。  
-> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8` 视为已完成。  
-> 把当前基线视为：`15.2E` 已在 `rust 1.94.0 + slint 1.15.1` 上落地，read-only selectable content 的 glyph fallback 回归已修复并收敛到共享 `UiTypography` token，`Diff detail` 横向滚动条已切到显式 `ScrollView` 路径恢复稳定，UI 主同步路径已从 `50ms` polling 收敛为 event-driven sync，non-input context menu 的 visual polish 已完成，Analysis success `SelectableSectionText` 也已原生支持 text-surface `Copy` / `Select All` right-click。  
+> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1` 视为已完成。  
+> 把当前基线视为：`15.2E` 已在 `rust 1.94.0 + slint 1.15.1` 上落地，read-only selectable content 的 glyph fallback 回归已修复并收敛到共享 `UiTypography` token，`Diff detail` 横向滚动条已切到显式 `ScrollView` 路径恢复稳定，UI 主同步路径已从 `50ms` polling 收敛为 event-driven sync，non-input context menu 的 visual polish 已完成，Analysis success `SelectableSectionText` 也已原生支持 text-surface `Copy` / `Select All` right-click，section inline `Copy` 按钮可点击，section header 标题保持左对齐。  
 > 不要重开 `Phase 15.8`；默认进入 `Phase 16` 或其他独立主线里程碑。  
 > 保持 Analysis success 正文文本继续走 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`），不要把 selectable-text right-click 接回 window-local non-input menu core。  
-> 保持 section header / chrome 继续使用现有 window-local `Copy` / `Copy Summary` 菜单；`Risk Level` 继续保持显式 `Copy` 按钮-only；Analysis success section inline `Copy` 按钮不要再被 header 右键命中层遮挡。  
+> 保持 section header / chrome 继续使用现有 window-local `Copy` / `Copy Summary` 菜单；`Risk Level` 继续保持显式 `Copy` 按钮-only；Analysis success section inline `Copy` 按钮不要再被 header 右键命中层遮挡，section label `Text` 也不要在 `header_context_lane` 里回退成默认居中布局。  
 > 接受无 selection 时保持 Slint / 系统一致的 disable 或 no-op 行为，不要为了“严格 selection-aware menu”引入 undocumented selection API、overlay `TouchArea`、私有事件链路或自写 caret/selection/editing。  
 > 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast/loading/menu controller 重新塞进 `AppState/Presenter`。  
 > 不要回退 `Phase 15.5` 已落地的输入菜单 contract。  

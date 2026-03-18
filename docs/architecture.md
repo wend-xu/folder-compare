@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.8 closeout shipped; Phase 16 back on mainline)
+## `fc-ui-slint` current architecture snapshot (Phase 15.8 fix-1 shipped; Phase 16 back on mainline)
 
 ### IA and layout contract
 
@@ -159,6 +159,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - native shortcut copy for selected success text currently keeps system-default behavior; toast feedback for this path is deferred until Slint exposes a stable native copy callback surface in this shell;
   - success-body `SelectableSectionText` now ships its own Slint-native text-surface right-click menu with `Copy` / `Select All` on the current selected text only, while section header/chrome keeps the existing window-local `Copy` / `Copy Summary` menu;
   - Analysis success section inline `Copy` actions remain lightweight buttons and are no longer blocked by the header right-click hotspot; the hotspot now stays on the header label lane instead of covering the whole header row;
+  - Analysis success section header labels (`Summary/Core Judgment/Key Points/Review Suggestions/Notes`) remain explicitly left-aligned inside that narrowed header label lane; `Phase 15.8 fix-1` restored this after the `15.8` hotspot refactor accidentally dropped the label text geometry/alignment contract and let the text fall back to centered layout inside a plain container;
   - Analysis shell-state body text selection (`no-selection/not-started/loading/error`) is not a hard requirement in `Phase 15.1B fix-3` and remains out of scope for this round;
   - if shell-state text selection is revisited, evaluate it as an isolated pass and do not couple it with success-body scroll stabilization changes.
 - Analysis non-success states now reuse the same embedded `DiffStateShell` visual grammar as Diff, so shell hierarchy stays consistent without reintroducing detached cards.
@@ -267,27 +268,28 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - Even after `Phase 15.5`, this shared controller remains non-input only:
   - editable inputs do not route through the window-local `Copy / Copy Summary` controller;
   - `SelectableSectionText` and `SelectableDiffText` still remain outside this menu core;
-  - optional `Phase 15.8` must keep Analysis success text-body right-click outside this controller as well.
+  - `Phase 15.8` kept Analysis success text-body right-click outside this controller as well, and `Phase 15.8 fix-1` did not change that boundary.
 - `15.2D` is designed to stand on its own:
   - safe surfaces already get reusable menu open/close/dispatch behavior now;
   - future input integration can reuse the same shared core without being required for phase-16 progression.
 
-### Editable input integration status (post-15.8 baseline)
+### Editable input integration status (post-15.8 fix-1 baseline)
 
 - `15.2E` is now shipped on top of the upgraded dependency baseline without expanding the existing non-input menu controller.
-- Dependency and packaging baseline after `Phase 15.8`:
+- Dependency and packaging baseline after `Phase 15.8 fix-1`:
   - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
   - workspace `slint` / `slint-build` are pinned to `1.15.1`;
-  - workspace version remains `0.2.17` after `Phase 15.8`;
+  - workspace version remains `0.2.17` after `Phase 15.8 fix-1`;
   - release version, macOS bundle version, and DMG/ZIP artifact version now derive from the workspace manifest version.
 - Product outcome:
   - `15.2D` shell/menu/loading/toast boundaries remained behavior-equivalent on the new dependency baseline;
   - editable-input menu coverage is now live on `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings`;
   - non-input context menu has now completed one style-only visual polish pass without changing controller ownership or menu scope;
   - Analysis success `SelectableSectionText` now exposes native text-surface `Copy` / `Select All` coverage on the selected text only, without changing the window-local non-input menu controller;
+  - Analysis success section header labels now keep explicit left alignment after the `15.8` header-hotspot narrowing; `15.8 fix-1` was a geometry-only regression repair, not a new menu-scope change;
   - read-only selectable content (`SelectableDiffText` / `SelectableSectionText`) now carries one shared `UiTypography` glyph-fallback token so full-width punctuation from real workspace text stays readable after the Slint upgrade without repeated view-level prop threading;
-  - macOS arm64 manual smoke passed after `Phase 15.4`, and launch-level smoke also passed after `Phase 15.5`, `Phase 15.6`, `Phase 15.7`, and `Phase 15.8`;
+  - macOS arm64 manual smoke passed after `Phase 15.4`, and launch-level smoke also passed after `Phase 15.5`, `Phase 15.6`, `Phase 15.7`, `Phase 15.8`, and `Phase 15.8 fix-1`;
   - diff loading still feels perceptibly faster on the upgraded baseline, and `Phase 15.6` removed the old high-frequency sync path without adding new product scope.
 - Rejected implementation paths remain rejected after `15.5`:
   - overlay-style `TouchArea` interception would risk left-click caret placement, drag selection, IME behavior, and native shortcut flow;
@@ -321,7 +323,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No runtime theme/settings upgrade or cross-surface theme controller.
 - No selectable-text-wrapper context-menu expansion beyond the shipped editable-input scope.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.8 shipped)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.8 fix-1 shipped)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -391,8 +393,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - kept section header/chrome on the existing window-local menu and did not reopen controller ownership or menu-scope decisions;
   - fixed the accidental regression where Analysis success section inline `Copy` buttons were blocked by the header-wide right-click hotspot by narrowing that hotspot to the header label lane only;
   - kept `SelectableDiffText`, Analysis shell-state text, editable inputs, and Phase 16 navigation work out of scope.
+- 15.8 fix-1:
+  - fixed the follow-up layout regression where section header labels became centered after that hotspot narrowing;
+  - restored explicit `Text` geometry plus `horizontal-alignment:left` inside the narrowed header label lane instead of changing any menu/controller boundary;
+  - kept `SelectableSectionText` native text-surface right-click, header/chrome window-local menu coverage, and inline `Copy` action behavior unchanged.
 
-## Dependency upgrade roadmap status (Phase 15.3A -> 15.8 completed)
+## Dependency upgrade roadmap status (Phase 15.3A -> 15.8 fix-1 completed)
 
 - Why this upgrade line was executed:
   - a meaningful share of deferred UI work was blocked by the old dependency baseline rather than by product uncertainty;
@@ -411,6 +417,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - results/diff models now reuse persistent `VecModel` instances;
   - non-input context-menu visual layer now uses the accepted `15.7` polished panel/item treatment while keeping the same controller ownership and menu scope;
   - Analysis success `SelectableSectionText` now keeps selection + system-copy baseline and also exposes native text-surface `Copy` / `Select All` right-click on the selected text only;
+  - Analysis success section header labels remain explicitly left-aligned inside the narrowed header label lane after `Phase 15.8 fix-1`;
   - macOS arm64 remains the primary validation platform.
 - Completed phase train:
   - `Phase 15.3A`: version-source cleanup plus doc/checklist alignment, completed;
@@ -421,21 +428,22 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `Phase 15.5 fix-3`: diff detail horizontal scrollbar regression moved off the upgraded `ListView` path onto an explicit `ScrollView` viewport with bottom safe spacer, completed;
   - `Phase 15.6`: sync/model-churn cleanup shipped without expanding product scope, completed;
   - `Phase 15.7`: non-input context-menu visual polish shipped as a style-only pass on top of the existing window-local controller, completed;
-  - `Phase 15.8`: Analysis success `SelectableSectionText` native text-surface right-click shipped without reopening menu-controller scope, completed.
-- What intentionally still did not change after `15.8`:
+  - `Phase 15.8`: Analysis success `SelectableSectionText` native text-surface right-click shipped without reopening menu-controller scope, completed;
+  - `Phase 15.8 fix-1`: Analysis success section header left-alignment regression fixed without changing the `15.8` menu scope, completed.
+- What intentionally still did not change after `15.8 fix-1`:
   - no `Phase 16` navigation work was mixed into the menu polish pass;
   - `Search` keeps its explicit `Clear` button because the current native `cupertino` style still lacks a stable clear affordance;
   - the large inline `slint::slint!` surface was not externalized because the cleanup benefit was still below migration cost;
   - no `edition = "2024"` pass was combined with the dependency diff;
-  - no native platform menu bridge or new menu controller was introduced for `15.7` / `15.8`;
-  - `Phase 15.8` remains text-body-native-only scope and is not a reason to route `SelectableSectionText` back into the window-local menu core;
+  - no native platform menu bridge or new menu controller was introduced for `15.7` / `15.8` / `15.8 fix-1`;
+  - `Phase 15.8` remains text-body-native-only scope and `15.8 fix-1` is not a reason to route `SelectableSectionText` back into the window-local menu core;
   - `SelectableDiffText` row-level context-menu coverage remains deferred.
 - Remaining phase train:
   - `Phase 16` returns to mainline progression and is no longer part of this dependency-upgrade phase train.
 - Detailed implementation planning now lives in:
   - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
 
-## Deferred architecture decisions (after Phase 15.8 shipped)
+## Deferred architecture decisions (after Phase 15.8 fix-1 shipped)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -474,12 +482,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.8 shipped)
+## Next implementation priority (after Phase 15.8 fix-1 shipped)
 
 1. Resume `Phase 16` results navigation enhancement in mainline mode.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps and without introducing tree mode or regressing the accepted workspace shell.
 2. Keep `Phase 15.8` narrowness intact while future work lands around it.
-   - acceptance: Analysis success body text stays on the shipped native text surface path, section header/chrome stays on the window-local menu path, `Risk Level` remains explicit `Copy` button-only, and no broader selectable-text menu scope is reintroduced accidentally.
+   - acceptance: Analysis success body text stays on the shipped native text surface path, section header/chrome stays on the window-local menu path, section labels stay left-aligned inside the narrowed header lane, `Risk Level` remains explicit `Copy` button-only, and no broader selectable-text menu scope is reintroduced accidentally.
 3. Revisit `.slint` externalization only when it delivers concrete maintainability or compile-time payoff beyond the now-accepted inline baseline.
    - acceptance: do not reopen this just for cleanup aesthetics; any future extraction must justify the new `slint-build` churn and preserve the current shell/runtime contracts.
 

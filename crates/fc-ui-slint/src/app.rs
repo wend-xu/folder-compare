@@ -704,10 +704,15 @@ slint::slint! {
                         horizontal-stretch: 1;
 
                         Text {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            height: parent.height;
                             text: root.section_label;
                             color: #708193;
                             font-size: 11px;
                             font-weight: 600;
+                            horizontal-alignment: left;
                             vertical-alignment: center;
                         }
 

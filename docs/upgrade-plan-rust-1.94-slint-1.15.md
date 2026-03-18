@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8` 已完成；依赖升级 closeout 至此收束，`Phase 16` 与后续里程碑回归主线推进模式，不再作为本升级计划的默认执行阶段。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1` 已完成；依赖升级 closeout 至此收束，`Phase 16` 与后续里程碑回归主线推进模式，不再作为本升级计划的默认执行阶段。
 
 原始升级目标是把当时基线：
 
@@ -38,7 +38,7 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.8`)
+### Current baseline (after `Phase 15.8 fix-1`)
 
 - `Cargo.toml`
   - workspace `version = "0.2.17"`
@@ -65,12 +65,13 @@
   - `Analysis success` 的 `SelectableSectionText` 现已直接复用 Slint native text surface：`Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 的正文文本支持 `ContextMenuArea` 原生右键菜单，动作最小化为 `Copy` / `Select All`
   - Analysis success section header / chrome 继续使用现有 window-local `Copy` / `Copy Summary` 菜单；`Risk Level` 继续保持显式 `Copy` 按钮-only
   - `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 右上角 inline `Copy` 按钮现已恢复可点击；根因是原先 `AnalysisSectionPanel` header 的整块右键命中层覆盖了按钮区域，本轮已把命中层收敛到 header label lane，不再遮挡 copy action
+  - `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` section header 标题现已恢复左对齐；`Phase 15.8` 中把标题 `Text` 挪入 `header_context_lane` 普通 `Rectangle` 时丢失了显式 `width/height + horizontal-alignment:left`，导致文本退回居中，`Phase 15.8 fix-1` 已补回这组 geometry/alignment contract
   - `Phase 15.6` 已评估外置 `.slint`；当前收益不足以覆盖 churn，因此继续保留内联 `slint::slint!`，`build.rs` 不变
   - `15.2D` 行为已在新依赖下恢复等价
 
 ### Mainline follow-up
 
-- 依赖升级 closeout 已完成到 `Phase 15.8`
+- 依赖升级 closeout 已完成到 `Phase 15.8 fix-1`
 - `Phase 16` 回归主线推进模式，不继续在本升级计划模式中展开
 
 ## 4. Why This Upgrade Is Worth Doing
@@ -85,7 +86,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.8`
+### Actually changed in `Phase 15.3A` - `Phase 15.8 fix-1`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -118,11 +119,12 @@
 - `crates/fc-ui-slint/src/context_menu.rs`
 - `crates/fc-ui-slint/build.rs`
 
-### Likely hotspots after `Phase 15.8`
+### Likely hotspots after `Phase 15.8 fix-1`
 
 - `crates/fc-ui-slint/src/app.rs`
   - `Phase 15.8` 已通过 `SelectableSectionText` 上的 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`）落地；后续不要把这条正文文本右键路径回退到现有 non-input menu core
   - `AnalysisSectionPanel` header 现已把 window-local 右键命中层限制在 header label lane，以避免继续遮挡右上角 inline `Copy` action；后续不要通过 overlay 热区重新覆盖该按钮
+  - `Phase 15.8 fix-1` 已把 section label 的 `Text` 几何和 `horizontal-alignment:left` 显式写回 `header_context_lane`；后续若继续调整 header hit target，不要再依赖普通 `Rectangle` 下的默认文本布局
   - `Phase 16` 若执行，继续沿用当前 event-driven sync + persistent `VecModel` 基线
 - `crates/fc-ui-slint/src/context_menu.rs`
   - non-input safe surfaces 与 editable-input 分层保持不回退；`15.7` 已完成 style-only polish，后续不要把 visual layer 反向升级成新 controller
@@ -482,6 +484,36 @@
 - `cargo check --workspace`、`cargo test --workspace` 通过；`cargo run -p fc-ui-slint` 启动级 smoke 通过
 - workspace 版本保持 `0.2.17`，本轮不增加版本号
 
+### `Phase 15.8 fix-1` - Analysis section header left-alignment regression
+
+执行状态：
+
+- 已完成（`2026-03-18`）
+
+目标：
+
+- 恢复 `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` section header 标题左对齐
+- 不回退 `Phase 15.8` 刚落地的 native text-surface right-click 与 inline `Copy` 按钮修复
+
+要做的事：
+
+- 分析 `AnalysisSectionPanel` header 标题从左对齐变为居中对齐的 root cause
+- 仅做最小布局修复，把标题文本恢复到显式 left-alignment geometry contract
+- 保持 `header_context_lane` 的右键命中范围与 `Copy` 按钮 clickability 不变
+
+人工验收标准：
+
+- 除 `Risk Level` 外，`Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 的 section header 标题重新左对齐
+- `Phase 15.8` 的正文文本 right-click、header window-local menu、inline `Copy` 按钮与滚动行为均不回退
+
+实际结果：
+
+- root cause 已确认：`Phase 15.8` 为了把 header 的右键命中层限制到 `header_context_lane`，把标题 `Text` 从 `HorizontalLayout` 直接子项挪进了普通 `Rectangle`；该 `Text` 未再声明显式 `width/height + horizontal-alignment:left`，因此退回了 `Rectangle` 下的默认居中布局语义
+- `Phase 15.8 fix-1` 已在 `header_context_lane` 内为标题文本补回 `x/y/width/height` 与 `horizontal-alignment:left`，恢复左对齐
+- `header_context_lane` 的 window-local 右键命中层、正文原生 `Copy/Select All`、以及右上角 inline `Copy` 按钮 clickability 保持不变
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` 通过
+- workspace 版本保持 `0.2.17`，本轮不增加版本号
+
 ### `Phase 16`（主线参考，不再在本升级计划模式中执行）
 
 目标：
@@ -515,6 +547,7 @@
 - non-input context menu 视觉层已与当前 desktop shell 更一致，不需要为 `Phase 16` 再混入菜单 polish 噪音
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
 - `Phase 15.8` 已证明 Analysis success 正文文本可以直接建立在同一升级完成基线上接入原生 right-click，而不需要重新打开 window-local menu controller 设计
+- `Phase 15.8 fix-1` 已补齐一个真实回归经验：当 section label 从 layout 直接子项迁入普通容器时，必须显式保留文本几何与 left-alignment contract，否则很容易出现默认居中布局回归
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
 
@@ -536,8 +569,9 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
-- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` / `15.7` / `15.8` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` / `15.7` / `15.8` / `15.8 fix-1` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
 - 补做一次 Analysis success text-selection/native-menu/section-copy-action 人工 smoke，确认系统菜单语义与当前滚动行为在真实桌面环境下稳定
+- 补做一次 Analysis success section header alignment 人工 smoke，确认除 `Risk Level` 外各 section 标题重新左对齐
 - 决定 `Phase 16` 的结果导航优先级与交互切线
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
@@ -724,6 +758,33 @@
 - 选中文本右键后可复制当前选中文本
 - 无 selection 时行为与 Slint / 系统一致
 - header window-local menu、`Risk Level` 显式 `Copy` 按钮、成功态滚动与 section copy action 不回退
+- 三份主文档与当前事实同步
+```
+
+### Prompt for `Phase 15.8 fix-1`
+
+```text
+先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
+把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8` 视为已完成。
+本次只执行 `Phase 15.8 fix-1`：修复 Analysis success section header 标题从左对齐回退为居中对齐的问题。
+目标：
+- 恢复 `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 的 section header 标题左对齐
+- 保持 `Phase 15.8` 的 native text-surface right-click 与 inline `Copy` 按钮修复不回退
+约束：
+- 只做最小布局修复
+- 不改 `crates/fc-ui-slint/src/context_menu.rs`
+- 不改变 `header_context_lane` 的 window-local menu coverage
+- 不把 `SelectableSectionText` 正文文本 right-click 接回 non-input menu core
+- 不扩张到 `Risk Level`、Analysis shell-state text、`SelectableDiffText`、editable inputs
+- 不把 `Phase 16`、`edition = "2024"` 升级或 phase15 总结混进同一轮
+验证：
+- `cargo check --workspace`
+- `cargo test --workspace`
+- `cargo run -p fc-ui-slint`
+- 人工 smoke 覆盖 Analysis success section header alignment、text selection、right-click、section copy action
+人工验收标准：
+- 除 `Risk Level` 外各 section header 标题恢复左对齐
+- `Phase 15.8` 的正文文本 native menu、header window-local menu、inline `Copy` 按钮与成功态滚动均不回退
 - 三份主文档与当前事实同步
 ```
 
