@@ -134,3 +134,9 @@ export global UiPalette {
     out property <brush> context_menu_core_text: #3d4e62;
     out property <brush> context_menu_core_separator: #e2e9f2;
 }
+
+export global UiTypography {
+    // Shared typography token for read-only selectable content that must keep
+    // mixed Latin/CJK punctuation stable across Slint text-engine upgrades.
+    out property <string> selectable_content_font_family: "PingFang SC";
+}

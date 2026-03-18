@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
-    import { UiPalette } from "src/ui_palette.slint";
+    import { UiPalette, UiTypography } from "src/ui_palette.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
     // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
@@ -436,7 +436,6 @@ slint::slint! {
         in property <brush> foreground: #2f4357;
         in property <int> font_weight: 400;
         in property <length> content_padding: 6px;
-        in property <string> font_family: "";
 
         background: transparent;
         clip: true;
@@ -453,7 +452,7 @@ slint::slint! {
             color: root.foreground;
             font-size: 13px;
             font-weight: root.font_weight;
-            font-family: root.font_family;
+            font-family: UiTypography.selectable_content_font_family;
             horizontal-alignment: left;
             vertical-alignment: center;
             selection-background-color: #c9daec;
@@ -466,7 +465,6 @@ slint::slint! {
         in property <brush> foreground: #4d6176;
         in property <length> font_size: 13px;
         in property <int> font_weight: 400;
-        in property <string> font_family: "";
 
         background: transparent;
         clip: true;
@@ -481,7 +479,7 @@ slint::slint! {
             color: transparent;
             font-size: root.font_size;
             font-weight: root.font_weight;
-            font-family: root.font_family;
+            font-family: UiTypography.selectable_content_font_family;
             wrap: word-wrap;
         }
 
@@ -497,7 +495,7 @@ slint::slint! {
             color: root.foreground;
             font-size: root.font_size;
             font-weight: root.font_weight;
-            font-family: root.font_family;
+            font-family: UiTypography.selectable_content_font_family;
             horizontal-alignment: left;
             vertical-alignment: top;
             selection-background-color: #c9daec;
@@ -646,7 +644,6 @@ slint::slint! {
         in property <string> tone: "neutral";
         in property <string> copy_value;
         in property <string> copy_feedback_label: root.section_label;
-        in property <string> content_font_family: "";
         callback copy_requested(string, string);
         callback context_menu_requested(length, length, string, string, string, string);
 
@@ -728,7 +725,6 @@ slint::slint! {
                 foreground: #2f4a63;
                 font-size: 18px;
                 font-weight: 600;
-                font_family: root.content_font_family;
                 horizontal-stretch: 1;
             }
 
@@ -737,7 +733,6 @@ slint::slint! {
                 value: root.body;
                 foreground: #4d6176;
                 font-size: 13px;
-                font_family: root.content_font_family;
                 horizontal-stretch: 1;
             }
         }
@@ -846,7 +841,6 @@ slint::slint! {
         background: #f2f4f7;
         in property <length> sidebar_form_label_width: 52px;
         in property <length> sidebar_action_button_width: 72px;
-        in property <string> selectable_content_font_family: "PingFang SC";
 
         in-out property <string> left_root;
         in-out property <string> right_root;
@@ -1836,7 +1830,6 @@ slint::slint! {
                                                                             : #2f4357;
                                                                         font_weight: row_line.is_hunk ? 600 : 400;
                                                                         content_padding: 8px;
-                                                                        font_family: root.selectable_content_font_family;
                                                                         horizontal-stretch: 1;
                                                                     }
                                                                 }
@@ -2094,7 +2087,6 @@ slint::slint! {
                                                                     y: analysis_success_scroll.viewport_top_padding;
                                                                     width: analysis_success_scroll.content_width;
                                                                     height: self.preferred-height;
-                                                                    content_font_family: root.selectable_content_font_family;
                                                                     section_label: "Summary";
                                                                     title: root.analysis_title_text != "" ? root.analysis_title_text : "Analysis Summary";
                                                                     body: root.analysis_summary_text;
@@ -2182,7 +2174,6 @@ slint::slint! {
                                                                     y: risk_section.y + risk_section.height + analysis_success_scroll.section_spacing;
                                                                     width: analysis_success_scroll.content_width;
                                                                     height: self.preferred-height;
-                                                                    content_font_family: root.selectable_content_font_family;
                                                                     section_label: "Core Judgment";
                                                                     body: root.analysis_core_judgment_text;
                                                                     copy_value: root.analysis_core_judgment_copy_text;
@@ -2202,7 +2193,6 @@ slint::slint! {
                                                                     width: analysis_success_scroll.content_width;
                                                                     height: self.preferred-height;
                                                                     visible: root.analysis_key_points_text != "";
-                                                                    content_font_family: root.selectable_content_font_family;
                                                                     section_label: "Key Points";
                                                                     body: root.analysis_key_points_text;
                                                                     copy_value: root.analysis_key_points_copy_text;
@@ -2225,7 +2215,6 @@ slint::slint! {
                                                                     width: analysis_success_scroll.content_width;
                                                                     height: self.preferred-height;
                                                                     visible: root.analysis_review_suggestions_text != "";
-                                                                    content_font_family: root.selectable_content_font_family;
                                                                     section_label: "Review Suggestions";
                                                                     body: root.analysis_review_suggestions_text;
                                                                     copy_value: root.analysis_review_suggestions_copy_text;
@@ -2248,7 +2237,6 @@ slint::slint! {
                                                                     width: analysis_success_scroll.content_width;
                                                                     height: self.preferred-height;
                                                                     visible: root.analysis_result_notes_text != "";
-                                                                    content_font_family: root.selectable_content_font_family;
                                                                     section_label: "Notes";
                                                                     body: root.analysis_result_notes_text;
                                                                     tone: "warn";

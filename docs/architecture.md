@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.5 editable-input baseline + fix-1 glyph stabilization)
+## `fc-ui-slint` current architecture snapshot (Phase 15.5 editable-input baseline + fix-2 typography cleanup)
 
 ### IA and layout contract
 
@@ -154,7 +154,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - section cards expose inline `Copy` actions instead of persistent button walls;
   - `Copy All` exports the current structured review conclusion;
   - success sections (`Summary/Core Judgment/Key Points/Review Suggestions/Notes`) support direct text selection and native system copy shortcuts;
-  - the read-only selectable wrappers behind these success sections now pin a local `font-family` for CJK-safe rendering, so mixed Latin/CJK text does not regress to tofu glyphs after the `slint 1.15.1` text-engine migration;
+  - the read-only selectable wrappers behind these success sections now consume one shared `UiTypography.selectable_content_font_family` token, so mixed Latin/CJK text does not regress to tofu glyphs after the `slint 1.15.1` text-engine migration without repeated prop plumbing;
   - explicit copy actions (`Copy` / `Copy All`) now trigger top-center overlay `toast` feedback;
   - native shortcut copy for selected success text currently keeps system-default behavior; toast feedback for this path is deferred until Slint exposes a stable native copy callback surface in this shell;
   - Analysis shell-state body text selection (`no-selection/not-started/loading/error`) is not a hard requirement in `Phase 15.1B fix-3` and remains out of scope for this round;
@@ -171,7 +171,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - preview table columns are side-aware (`left/right`) instead of always `old/new`.
 - Diff content keeps the `column header -> rows` structure but now guarantees baseline review ergonomics:
   - line content is selectable/copyable;
-  - read-only selectable diff rows use the same local `font-family` guard as Analysis success text, because `slint 1.15.1` changed `TextInput` font fallback behavior and otherwise rendered some full-width punctuation in mixed Latin/CJK lines as tofu on macOS;
+  - read-only selectable diff rows use the same shared `UiTypography.selectable_content_font_family` token as Analysis success text, because `slint 1.15.1` changed `TextInput` font fallback behavior and otherwise rendered some full-width punctuation in mixed Latin/CJK lines as tofu on macOS;
   - the workbench panel owns `header -> helper strip -> state/table` as one surface, so Diff detail reads as a single workstation instead of nested cards;
   - the table can scroll horizontally for long lines with persistent in-surface guidance;
   - the diff body `ListView` owns vertical scrolling while the column header mirrors its horizontal viewport, keeping the vertical scrollbar visible without depending on horizontal position;
@@ -222,10 +222,11 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 
 ### Local semantic palette boundary (Phase 15.2C)
 
-- `fc-ui-slint` now owns a local semantic palette file: `crates/fc-ui-slint/src/ui_palette.slint`.
+- `fc-ui-slint` now owns a local semantic palette + typography token file: `crates/fc-ui-slint/src/ui_palette.slint`.
 - This extraction is intentionally narrow and reuses existing visual hierarchy:
   - semantic tones for `StatusPill`: `neutral/info/success/warn/error/different/equal/left/right`;
   - shared semantic surfaces for `DiffStateShell`, Analysis result/risk sections, and Results row status border/background/text;
+  - one shared typography token for read-only selectable content (`UiTypography.selectable_content_font_family`);
   - Phase `15.2` infra colors for local `toast-controller` overlay and `loading-mask`;
   - `context-menu` core reserve constants (not wired to a runtime menu in this phase).
 - Boundary remains local to Slint layer only:
@@ -269,12 +270,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
   - workspace `slint` / `slint-build` are pinned to `1.15.1`;
-  - workspace version is now `0.2.16` after `Phase 15.5 fix-1`;
+  - workspace version is now `0.2.17` after `Phase 15.5 fix-2`;
   - release version, macOS bundle version, and DMG/ZIP artifact version now derive from the workspace manifest version.
 - Product outcome:
   - `15.2D` shell/menu/loading/toast boundaries remained behavior-equivalent on the new dependency baseline;
   - editable-input menu coverage is now live on `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings`;
-  - read-only selectable content (`SelectableDiffText` / `SelectableSectionText`) now carries a local glyph-fallback guard so full-width punctuation from real workspace text stays readable after the Slint upgrade;
+  - read-only selectable content (`SelectableDiffText` / `SelectableSectionText`) now carries one shared `UiTypography` glyph-fallback token so full-width punctuation from real workspace text stays readable after the Slint upgrade without repeated view-level prop threading;
   - macOS arm64 manual smoke passed after `Phase 15.4`, and launch-level smoke also passed after `Phase 15.5`;
   - diff loading still feels perceptibly faster on the upgraded baseline even though `15.3A`-`15.5` did not intentionally add new diff-loading product scope.
 - Rejected implementation paths remain rejected after `15.5`:
@@ -385,13 +386,15 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `Phase 15.3A`: version-source cleanup plus doc/checklist alignment, completed;
   - `Phase 15.3B`: Rust `1.94.0` migration with no `15.2D` regression, completed;
   - `Phase 15.4`: Slint `1.15.1` migration with behavior parity restored, completed;
-  - `Phase 15.5`: editable-input context-menu integration shipped with conservative `API Key` secret handling, completed.
+  - `Phase 15.5`: editable-input context-menu integration shipped with conservative `API Key` secret handling, completed;
+  - `Phase 15.5 fix-2`: read-only selectable-content typography cleanup moved from window/panel prop threading to a shared Slint global token, completed.
 - What intentionally still did not change after `15.5`:
   - no `Phase 16` navigation work was mixed into the editable-input pass;
   - `Search` keeps its explicit `Clear` button because the current native `cupertino` style still lacks a stable clear affordance;
   - no `edition = "2024"` pass was combined with the dependency diff.
 - Remaining phase train:
   - `Phase 15.6`: post-upgrade cleanup for sync/model churn and optional Slint-file externalization;
+  - `Phase 15.7`: optional context-menu visual polish, kept separate from sync cleanup and navigation work;
   - `Phase 16`: resume results-navigation enhancement on top of the upgraded baseline.
 - Detailed implementation planning now lives in:
   - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -408,10 +411,14 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - trigger: when provider fallback/routing becomes a reliability requirement.
 - `P2` Multi-line copy workflow:
   - deferred because the current baseline now covers low-noise Diff row copy plus lightweight Analysis section/whole-review copy; full range selection, clipboard formatting, and richer clipboard semantics would still expand interaction scope beyond the accepted shell.
-- `P2` Selectable-text context-menu coverage (`SelectableSectionText` / `SelectableDiffText`):
+- `P2` Selectable-text context-menu coverage (`SelectableSectionText` in Analysis success sections):
   - deferred because `Phase 15.5` intentionally stopped at editable inputs and did not expand menu scope to read-only text wrappers;
   - trigger: only revisit if the product needs parity menus for long-form review text beyond current selection + system copy behavior;
   - do not revisit with overlay interception, private pointer plumbing, or custom caret/selection logic.
+- `P3` Optional Workspace Diff detail line selectable-row context-menu (`SelectableDiffText`):
+  - deferred and explicitly optional for now; current baseline keeps keyboard copy plus line-number/hunk double-click copy as the accepted low-risk path;
+  - trigger: only revisit if mouse-driven row copy becomes a demonstrated productivity gap that existing selection + copy shortcuts do not cover;
+  - do not schedule before `Phase 15.6`, and do not revisit with overlay interception, private pointer plumbing, or custom caret/selection logic.
 - `P2` Search clear-affordance convergence:
   - deferred because the current macOS native `cupertino` `LineEdit` style still lacks a stable built-in clear action, so the accepted `15.5` baseline keeps an explicit `Clear` button;
   - trigger: revisit only if Slint native style support changes or the application deliberately adopts a different desktop widget style.
@@ -441,8 +448,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
    - acceptance: main sync path no longer relies on broad high-frequency polling, or the remaining polling scope is materially smaller and explicitly justified; results/diff refresh avoids unnecessary full rebuilds.
 2. Resume `Phase 16` results navigation enhancement only after `15.6` is stable.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps and without introducing tree mode or regressing the accepted workspace shell.
-3. Revisit narrower input affordance follow-ups only as isolated scope.
-   - acceptance: any future `Search` clear or selectable-text menu work must stay separated from `15.6` sync cleanup and must continue to avoid overlay interception or custom editor plumbing.
+3. Keep `Phase 15.7` context-menu visual polish and any selectable-text menu experiments as isolated follow-up scope.
+   - acceptance: any future menu polish or selectable-text menu work must stay separated from `15.6` sync cleanup and `Phase 16` navigation changes, and must continue to avoid overlay interception or custom editor plumbing.
 
 ## Documentation update contract (mandatory)
 

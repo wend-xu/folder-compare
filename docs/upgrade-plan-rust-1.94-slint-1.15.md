@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1` 已完成；本文件继续作为 `Phase 15.6`、`Phase 16` 的约束与提示词入口。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2` 已完成；本文件继续作为 `Phase 15.6`、`Phase 15.7`、`Phase 16` 的约束与提示词入口。
 
 原始升级目标是把当时基线：
 
@@ -38,10 +38,10 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.5 fix-1`)
+### Current baseline (after `Phase 15.5 fix-2`)
 
 - `Cargo.toml`
-  - workspace `version = "0.2.16"`
+  - workspace `version = "0.2.17"`
   - `rust-version = "1.94"`
   - `slint = "=1.15.1"`
   - `slint-build = "=1.15.1"`
@@ -56,7 +56,7 @@
   - `API Key` hidden 状态额外阻断 `Cmd/Ctrl+A/C/X`，避免 masked secret 走复制/剪切捷径
   - `API Key` 外置 `Show/Hide` 按钮已收敛为字段内 reveal toggle
   - `Search` 手工 `Clear` 按钮暂时保留，因为当前 macOS native `cupertino` `LineEdit` 没有稳定 clear affordance
-  - `SelectableDiffText` / `SelectableSectionText` 现已显式绑定 window-local selectable-content `font-family`，优先落到 `PingFang SC`，用于修复 `slint 1.15.1` `TextInput` 在 mixed Latin+CJK 文本里把全角标点渲染成 tofu 的回归
+  - `SelectableDiffText` / `SelectableSectionText` 现已通过共享 Slint global token `UiTypography.selectable_content_font_family` 消费同一套 selectable-content `font-family`，优先落到 `PingFang SC`，用于修复 `slint 1.15.1` `TextInput` 在 mixed Latin+CJK 文本里把全角标点渲染成 tofu 的回归
   - UI 同步仍保留 `50ms` 轮询，作为 `Phase 15.6` 清理目标
   - `15.2D` 行为已在新依赖下恢复等价
 
@@ -77,7 +77,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.5 fix-1`
+### Actually changed in `Phase 15.3A` - `Phase 15.5 fix-2`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -91,6 +91,8 @@
   - `README.md`
 - UI 输入菜单补票
   - `crates/fc-ui-slint/src/app.rs`
+- UI typography token 收敛
+  - `crates/fc-ui-slint/src/ui_palette.slint`
 - 兼容性清理
   - `crates/fc-core/src/services/classifier.rs`
 
@@ -296,6 +298,36 @@
 - 修复保持在 `fc-ui-slint/src/app.rs`，未改 `fc-core` 文本加载、解码、diff 构造逻辑
 - workspace 版本随本轮收敛到 `0.2.16`
 
+### `Phase 15.5 fix-2` - Selectable content typography token cleanup
+
+执行状态：
+
+- 已完成（`2026-03-18`）
+
+目标：
+
+- 在不改变 glyph fallback 修复效果的前提下，把 read-only selectable content 的字体策略从多层 prop threading 收敛为共享 token
+- 为后续 `Phase 15.6` 清理保留更小、更稳定的 UI 边界
+
+要做的事：
+
+- 把 selectable content 的 `font-family` 单一事实来源提到共享 Slint global
+- 删除 `MainWindow` / `AnalysisSectionPanel` 对同一字体策略的中转属性
+- 同步更新三份主文档，明确 `Phase 15.7` 是菜单样式优化而不是当前默认目标
+
+人工验收标准：
+
+- `Workspace Diff detail line` 的全角标点显示继续正确
+- `SelectableSectionText` / `SelectableDiffText` 的文本选择、系统复制快捷键、行号双击复制不回退
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` smoke 通过
+
+实际结果：
+
+- 新增共享 Slint global token：`UiTypography.selectable_content_font_family`
+- `SelectableDiffText` 与 `SelectableSectionText` 改为直接消费该 token，不再依赖 `MainWindow` / `AnalysisSectionPanel` 透传
+- 行为保持与 `Phase 15.5 fix-1` 一致，只做结构收敛，不扩张菜单范围
+- workspace 版本随本轮收敛到 `0.2.17`
+
 ### `Phase 15.6` - Post-upgrade cleanup
 
 目标：
@@ -315,6 +347,28 @@
 - 结果列表 / diff 列表不再因为无关状态变更而全量重建
 - 交互与视觉不回退
 
+### `Phase 15.7` - Context-menu visual polish
+
+执行状态：
+
+- planned / not started
+
+目标：
+
+- 在不改变当前菜单生命周期和 safe-surface 边界的前提下，改善 non-input context menu 的视觉质量
+
+要做的事：
+
+- 保持现有 window-local context-menu controller，只调整菜单视觉层
+- 收敛菜单面板的圆角、阴影、边框、内边距、item 高度与 hover/disabled 态
+- 如需增加图标或分隔，只做 style-only 级别增强，不引入平台桥接或新的 controller
+
+人工验收标准：
+
+- 菜单整体观感明显优于当前版本，但交互 contract 不变
+- `Results / Navigator`、Workspace header、Analysis success section 的现有右键行为不回退
+- 不把 `Phase 15.6` 同步清理或 `Phase 16` 导航增强混进同一轮
+
 ### `Phase 16`
 
 目标：
@@ -333,13 +387,14 @@
 - 不引入 tree mode
 - 不破坏 `15.x` 已收敛的 workspace shell
 
-## 7. Upgrade Benefits Realized After `Phase 15.5` / `fix-1`
+## 7. Upgrade Benefits Realized After `Phase 15.5` / `fix-2`
 
 - `15.2E` 不再长期 deferred
 - 输入与非输入菜单策略分层更清晰
 - `API Key` 输入回到原生 `TextInput` 编辑语义，同时保留保守的 secret-menu contract
 - Search 输入菜单已回到原生 editable-input surface，且 clear affordance 的保留理由已明确
 - 升级引入的 read-only selectable text glyph fallback 回归已被局部收敛，不再阻断真实 mixed Latin/CJK 文本阅读
+- glyph fallback 修复现已收敛到共享 `UiTypography` token，后续维护不再需要多层 view-level prop threading
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
@@ -362,7 +417,8 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
-- `Phase 15.5` / `fix-1` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- `Phase 15.5` / `fix-1` / `fix-2` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- 决定 `Phase 15.7` context-menu visual polish 是否在 `Phase 15.6` 之后立即执行，还是继续保持 optional later work
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
 
@@ -470,8 +526,8 @@
 
 ```text
 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
-以 `Phase 15.5` 与 `Phase 15.5 fix-1` 已稳定为前提，本次只执行 `Phase 15.6`：做升级后的同步与结构清理。
-把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1` 视为已完成，不要回头重做前置阶段。
+以 `Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2` 已稳定为前提，本次只执行 `Phase 15.6`：做升级后的同步与结构清理。
+把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2` 视为已完成，不要回头重做前置阶段。
 目标：
 - 识别并收窄 `50ms` UI polling 的主路径
 - 降低结果列表 / diff 列表的整批 model 重建
@@ -479,7 +535,8 @@
 约束：
 - 不新增 Phase 16 功能
 - 不回退 `15.x` 已稳定的 shell contract
-- 不移除 `SelectableDiffText` / `SelectableSectionText` 当前的 glyph fallback 保护，除非已有真实 mixed Latin+CJK 样本验证默认 `TextInput` 路径不再出现 tofu
+- 不移除 `UiTypography.selectable_content_font_family` 当前的 glyph fallback 保护，除非已有真实 mixed Latin+CJK 样本验证默认 `TextInput` 路径不再出现 tofu
+- 不顺手推进 `Phase 15.7` 菜单美化
 - 不为“清理”引入一次大规模 UI rewrite
 - 执行同时同步更新 `docs/architecture.md`、`docs/thread-context.md`、`docs/upgrade-plan-rust-1.94-slint-1.15.md`
 - 不再创建额外 phase checklist 文档
@@ -493,6 +550,29 @@
 - 列表刷新颗粒度更合理
 - 大结果集或连续切换时，diff/loading 体感进一步改善
 - 视觉与交互不回退
+- 三份主文档与当前事实同步
+```
+
+### Prompt for `Phase 15.7`
+
+```text
+先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
+以 `Phase 15.6` 已稳定为前提，本次只执行 `Phase 15.7`：做 non-input context menu 的 style-only visual polish。
+目标：
+- 改善菜单的圆角、阴影、边框、内边距、hover/disabled 态
+- 保持现有 window-local menu lifecycle、action dispatch、safe-surface coverage 不变
+约束：
+- 不新增新的 controller
+- 不引入平台原生菜单桥接
+- 不扩张到 `SelectableDiffText` 行级右键菜单
+- 不把 `Phase 16` 导航增强混进同一轮
+验证：
+- `cargo check --workspace`
+- `cargo test --workspace`
+- `cargo run -p fc-ui-slint`
+人工验收标准：
+- 菜单观感明显提升
+- Results / Workspace header / Analysis success section 现有右键交互不回退
 - 三份主文档与当前事实同步
 ```
 
