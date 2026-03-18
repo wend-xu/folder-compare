@@ -3,10 +3,10 @@
 use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
 use crate::context_menu::{
-    build_action_specs, build_analysis_section_payload, build_results_row_payload,
-    build_workspace_header_payload, should_close_for_sync_transition, ContextMenuBuildResult,
+    CONTEXT_MENU_COPY_ACTION_ID, CONTEXT_MENU_COPY_SUMMARY_ACTION_ID, ContextMenuBuildResult,
     ContextMenuCustomAction, ContextMenuInvocation, ContextMenuSyncState, ContextMenuTextPayload,
-    CONTEXT_MENU_COPY_ACTION_ID, CONTEXT_MENU_COPY_SUMMARY_ACTION_ID,
+    build_action_specs, build_analysis_section_payload, build_results_row_payload,
+    build_workspace_header_payload, should_close_for_sync_transition,
 };
 use crate::folder_picker;
 use crate::presenter::Presenter;

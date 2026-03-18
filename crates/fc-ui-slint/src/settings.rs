@@ -4,9 +4,16 @@ use anyhow::Context;
 use fc_ai::AiProviderKind;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 const SETTINGS_FILE_NAME: &str = "provider_settings.toml";
 const SETTINGS_VERSION: u32 = 1;
+
+#[cfg(test)]
+static TEST_SETTINGS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+#[cfg(test)]
+static TEST_SETTINGS_DIR_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 
 /// Persisted provider settings payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +116,47 @@ pub fn save_provider_settings(settings: &ProviderSettings) -> anyhow::Result<Pat
     Ok(path)
 }
 
+#[cfg(test)]
+pub(crate) struct TestSettingsDirGuard {
+    _lock: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl TestSettingsDirGuard {
+    pub(crate) fn new(path: &std::path::Path) -> Self {
+        let lock = TEST_SETTINGS_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("test settings lock should not be poisoned");
+        *TEST_SETTINGS_DIR_OVERRIDE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("test settings dir override should not be poisoned") = Some(path.to_path_buf());
+        Self { _lock: lock }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestSettingsDirGuard {
+    fn drop(&mut self) {
+        *TEST_SETTINGS_DIR_OVERRIDE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("test settings dir override should not be poisoned") = None;
+    }
+}
+
 fn provider_settings_dir() -> PathBuf {
+    #[cfg(test)]
+    if let Some(dir) = TEST_SETTINGS_DIR_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .expect("test settings dir override should not be poisoned")
+        .clone()
+    {
+        return dir;
+    }
+
     if let Some(dir) = std::env::var_os("FOLDER_COMPARE_CONFIG_DIR") {
         return PathBuf::from(dir);
     }
@@ -145,33 +192,20 @@ fn provider_settings_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     #[test]
     fn load_returns_none_when_file_does_not_exist() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock should not be poisoned");
         let dir = tempfile::tempdir().expect("temp dir should be created");
-        std::env::set_var("FOLDER_COMPARE_CONFIG_DIR", dir.path());
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
 
         let loaded = load_provider_settings().expect("loading should succeed");
         assert!(loaded.is_none());
-
-        std::env::remove_var("FOLDER_COMPARE_CONFIG_DIR");
     }
 
     #[test]
     fn save_then_load_round_trip() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock should not be poisoned");
         let dir = tempfile::tempdir().expect("temp dir should be created");
-        std::env::set_var("FOLDER_COMPARE_CONFIG_DIR", dir.path());
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
 
         let settings = ProviderSettings {
             provider_kind: AiProviderKind::OpenAiCompatible,
@@ -187,7 +221,5 @@ mod tests {
             .expect("load should succeed")
             .expect("settings should exist");
         assert_eq!(loaded, settings);
-
-        std::env::remove_var("FOLDER_COMPARE_CONFIG_DIR");
     }
 }

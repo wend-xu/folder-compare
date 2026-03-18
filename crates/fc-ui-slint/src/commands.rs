@@ -4,7 +4,7 @@ use fc_ai::providers::openai_compatible::OpenAiCompatibleProvider;
 use fc_ai::services::analyzer::Analyzer;
 use fc_ai::{AiProviderKind, AnalyzeDiffRequest, AnalyzeDiffResponse, MockAiProvider};
 use fc_core::{
-    compare_dirs, diff_text_file, CompareReport, CompareRequest, TextDiffRequest, TextDiffResult,
+    CompareReport, CompareRequest, TextDiffRequest, TextDiffResult, compare_dirs, diff_text_file,
 };
 
 /// Commands emitted by UI interactions.

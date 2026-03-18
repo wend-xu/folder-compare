@@ -1327,7 +1327,7 @@ dependencies = [
 
 [[package]]
 name = "fc-ai"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "anyhow",
  "fc-core",
@@ -1340,7 +1340,7 @@ dependencies = [
 
 [[package]]
 name = "fc-core"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "anyhow",
  "serde",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "fc-ui-slint"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "anyhow",
  "copypasta",

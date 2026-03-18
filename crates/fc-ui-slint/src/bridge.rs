@@ -679,7 +679,7 @@ mod tests {
     use super::*;
     use fc_core::{DiffHunk, DiffLine, TextDiffSummary};
     use std::path::PathBuf;
-    use tempfile::{tempdir, NamedTempFile};
+    use tempfile::{NamedTempFile, tempdir};
 
     #[test]
     fn build_compare_request_validates_required_paths() {
@@ -688,11 +688,13 @@ mod tests {
 
         assert!(build_compare_request("", right.path().to_string_lossy().as_ref()).is_err());
         assert!(build_compare_request(left.path().to_string_lossy().as_ref(), "").is_err());
-        assert!(build_compare_request(
-            left.path().to_string_lossy().as_ref(),
-            right.path().to_string_lossy().as_ref()
-        )
-        .is_ok());
+        assert!(
+            build_compare_request(
+                left.path().to_string_lossy().as_ref(),
+                right.path().to_string_lossy().as_ref()
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -901,10 +903,11 @@ mod tests {
             req.summary.as_ref().map(|summary| summary.hunk_count),
             Some(1)
         );
-        assert!(req
-            .truncation_note
-            .expect("note should exist")
-            .contains("line limit reached"));
+        assert!(
+            req.truncation_note
+                .expect("note should exist")
+                .contains("line limit reached")
+        );
     }
 
     #[test]

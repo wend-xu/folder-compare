@@ -46,9 +46,15 @@ impl Presenter {
     pub fn handle_command(&self, command: UiCommand) {
         match command {
             UiCommand::Initialize => {
+                {
+                    let mut state = self.state.lock().expect("state mutex poisoned");
+                    state.status_text = "Ready".to_string();
+                }
+                // Keep settings I/O outside the state mutex so edition-2024
+                // temporary drop-order changes cannot extend the lock lifetime.
+                let loaded_settings = settings::load_provider_settings();
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.status_text = "Ready".to_string();
-                match settings::load_provider_settings() {
+                match loaded_settings {
                     Ok(Some(saved)) => {
                         state.analysis_provider_kind = saved.provider_kind;
                         state.analysis_openai_endpoint = saved.openai_endpoint;
@@ -145,38 +151,48 @@ impl Presenter {
                 model,
                 timeout_secs_text,
             } => {
-                let mut state = self.state.lock().expect("state mutex poisoned");
                 let timeout_secs = match parse_timeout_secs(&timeout_secs_text) {
                     Ok(value) => value,
                     Err(err) => {
+                        let mut state = self.state.lock().expect("state mutex poisoned");
                         state.provider_settings_error_message = Some(err);
                         return;
                     }
                 };
 
-                state.analysis_provider_kind = provider_kind;
-                state.analysis_openai_endpoint = endpoint.trim().to_string();
-                state.analysis_openai_api_key = api_key.trim().to_string();
-                state.analysis_openai_model = model.trim().to_string();
-                state.analysis_request_timeout_secs = timeout_secs;
-                state.clear_analysis_panel();
-                state.analysis_hint = Some(match provider_kind {
-                    fc_ai::AiProviderKind::Mock => {
-                        "Using mock provider. No remote request will be sent.".to_string()
-                    }
-                    fc_ai::AiProviderKind::OpenAiCompatible => {
-                        "Using remote provider. Configure endpoint/api key/model.".to_string()
-                    }
-                });
+                let endpoint = endpoint.trim().to_string();
+                let api_key = api_key.trim().to_string();
+                let model = model.trim().to_string();
+                let settings = {
+                    let mut state = self.state.lock().expect("state mutex poisoned");
+                    state.analysis_provider_kind = provider_kind;
+                    state.analysis_openai_endpoint = endpoint;
+                    state.analysis_openai_api_key = api_key;
+                    state.analysis_openai_model = model;
+                    state.analysis_request_timeout_secs = timeout_secs;
+                    state.clear_analysis_panel();
+                    state.analysis_hint = Some(match provider_kind {
+                        fc_ai::AiProviderKind::Mock => {
+                            "Using mock provider. No remote request will be sent.".to_string()
+                        }
+                        fc_ai::AiProviderKind::OpenAiCompatible => {
+                            "Using remote provider. Configure endpoint/api key/model.".to_string()
+                        }
+                    });
 
-                let settings = ProviderSettings {
-                    provider_kind,
-                    openai_endpoint: state.analysis_openai_endpoint.clone(),
-                    openai_api_key: state.analysis_openai_api_key.clone(),
-                    openai_model: state.analysis_openai_model.clone(),
-                    timeout_secs: state.analysis_request_timeout_secs,
+                    ProviderSettings {
+                        provider_kind,
+                        openai_endpoint: state.analysis_openai_endpoint.clone(),
+                        openai_api_key: state.analysis_openai_api_key.clone(),
+                        openai_model: state.analysis_openai_model.clone(),
+                        timeout_secs: state.analysis_request_timeout_secs,
+                    }
                 };
-                match settings::save_provider_settings(&settings) {
+                // Keep settings I/O outside the state mutex so edition-2024
+                // temporary drop-order changes cannot extend the lock lifetime.
+                let save_result = settings::save_provider_settings(&settings);
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                match save_result {
                     Ok(_) => {
                         state.provider_settings_error_message = None;
                         state.status_text = "Provider settings saved".to_string();
@@ -545,11 +561,9 @@ fn parse_timeout_secs(raw: &str) -> Result<u64, String> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn wait_until<F>(presenter: &Presenter, predicate: F) -> AppState
     where
@@ -598,10 +612,12 @@ mod tests {
         assert!(!snapshot.summary_text.is_empty());
         assert!(!snapshot.entry_rows.is_empty());
         assert!(snapshot.status_text.contains("Compare finished"));
-        assert!(snapshot
-            .entry_rows
-            .iter()
-            .any(|row| row.relative_path.contains("a.txt")));
+        assert!(
+            snapshot
+                .entry_rows
+                .iter()
+                .any(|row| row.relative_path.contains("a.txt"))
+        );
     }
 
     #[test]
@@ -783,11 +799,13 @@ mod tests {
 
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.selected_diff.is_some());
-        assert!(snapshot
-            .selected_diff
-            .as_ref()
-            .map(|value| value.summary_text.contains("left-only preview"))
-            .unwrap_or(false));
+        assert!(
+            snapshot
+                .selected_diff
+                .as_ref()
+                .map(|value| value.summary_text.contains("left-only preview"))
+                .unwrap_or(false)
+        );
         assert_eq!(snapshot.analysis_available, false);
     }
 
@@ -813,11 +831,13 @@ mod tests {
 
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.selected_diff.is_some());
-        assert!(snapshot
-            .selected_diff
-            .as_ref()
-            .map(|value| value.summary_text.contains("equal preview"))
-            .unwrap_or(false));
+        assert!(
+            snapshot
+                .selected_diff
+                .as_ref()
+                .map(|value| value.summary_text.contains("equal preview"))
+                .unwrap_or(false)
+        );
         assert_eq!(snapshot.analysis_available, false);
     }
 
@@ -998,11 +1018,13 @@ mod tests {
         assert!(snapshot.error_message.is_none());
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.analysis_error_message.is_some());
-        assert!(snapshot
-            .analysis_error_message
-            .as_deref()
-            .unwrap_or_default()
-            .contains("incomplete"));
+        assert!(
+            snapshot
+                .analysis_error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("incomplete")
+        );
     }
 
     #[test]
@@ -1153,12 +1175,8 @@ mod tests {
 
     #[test]
     fn initialize_loads_provider_settings_from_disk() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock should not be poisoned");
         let temp = tempfile::tempdir().expect("temp dir should be created");
-        std::env::set_var("FOLDER_COMPARE_CONFIG_DIR", temp.path());
+        let _settings_guard = crate::settings::TestSettingsDirGuard::new(temp.path());
         crate::settings::save_provider_settings(&ProviderSettings {
             provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
             openai_endpoint: "https://api.example.com/v1".to_string(),
@@ -1182,7 +1200,5 @@ mod tests {
         assert_eq!(snapshot.analysis_openai_api_key, "sk-test");
         assert_eq!(snapshot.analysis_openai_model, "gpt-4o-mini");
         assert_eq!(snapshot.analysis_request_timeout_secs, 55);
-
-        std::env::remove_var("FOLDER_COMPARE_CONFIG_DIR");
     }
 }

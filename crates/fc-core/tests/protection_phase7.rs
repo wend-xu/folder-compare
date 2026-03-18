@@ -1,6 +1,6 @@
 use fc_core::{
-    compare_dirs, diff_text_file, CompareError, CompareOptions, CompareRequest, EntryDetail,
-    EntryStatus, LargeDirPolicy, TextDetailDeferredReason, TextDiffOptions, TextDiffRequest,
+    CompareError, CompareOptions, CompareRequest, EntryDetail, EntryStatus, LargeDirPolicy,
+    TextDetailDeferredReason, TextDiffOptions, TextDiffRequest, compare_dirs, diff_text_file,
 };
 use std::fs;
 use std::path::Path;
@@ -44,10 +44,12 @@ fn compare_dirs_soft_entry_limit_enables_large_mode_and_keeps_report_usable() {
     assert!(report.summary.large_mode);
     assert!(report.summary.summary_first_mode);
     assert!(!report.entries.is_empty());
-    assert!(report
-        .warnings
-        .iter()
-        .any(|w| w.contains("soft limits reached")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("soft limits reached"))
+    );
     assert!(report.entries.iter().any(|entry| matches!(
         entry.detail,
         EntryDetail::TextDetailDeferred {
@@ -79,10 +81,12 @@ fn compare_dirs_soft_total_bytes_limit_enables_large_mode() {
     .expect("compare should succeed under soft bytes limit");
 
     assert!(report.summary.large_mode);
-    assert!(report
-        .warnings
-        .iter()
-        .any(|w| w.contains("soft limits reached")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("soft limits reached"))
+    );
 }
 
 #[test]
@@ -148,10 +152,12 @@ fn compare_dirs_hard_limit_summary_first_truncates_output() {
     assert_eq!(report.entries.len(), 2);
     assert!(report.summary.large_mode);
     assert!(report.summary.summary_first_mode);
-    assert!(report
-        .warnings
-        .iter()
-        .any(|w| w.contains("report truncated by large directory policy")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("report truncated by large directory policy"))
+    );
 }
 
 #[test]
@@ -190,10 +196,12 @@ fn compare_dirs_oversized_text_file_defers_text_detail_but_keeps_file_status() {
             ..
         }
     ));
-    assert!(report
-        .warnings
-        .iter()
-        .any(|w| w.contains("oversized text entries")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("oversized text entries"))
+    );
 }
 
 #[test]

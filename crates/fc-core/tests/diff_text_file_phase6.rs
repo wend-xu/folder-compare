@@ -1,6 +1,6 @@
 use fc_core::{
-    compare_dirs, diff_text_file, CompareError, CompareOptions, CompareRequest, EntryDetail,
-    TextDiffOptions, TextDiffRequest, TextPathUnavailableReason,
+    CompareError, CompareOptions, CompareRequest, EntryDetail, TextDiffOptions, TextDiffRequest,
+    TextPathUnavailableReason, compare_dirs, diff_text_file,
 };
 use std::fs;
 use std::path::Path;

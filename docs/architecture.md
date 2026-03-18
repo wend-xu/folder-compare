@@ -1,4 +1,4 @@
-# Folder Compare Architecture (Phase 1-15.2D stable baseline + dependency-upgrade closeout roadmap)
+# Folder Compare Architecture (Phase 1-15.2D stable baseline + dependency-upgrade closeout + edition-2024 milestone)
 
 ## Crate responsibilities
 
@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.8 fix-1 shipped; Phase 16 back on mainline)
+## `fc-ui-slint` current architecture snapshot (Phase 15.8 fix-1 + edition-2024 milestone shipped; phase15 summary next)
 
 ### IA and layout contract
 
@@ -273,14 +273,15 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - safe surfaces already get reusable menu open/close/dispatch behavior now;
   - future input integration can reuse the same shared core without being required for phase-16 progression.
 
-### Editable input integration status (post-15.8 fix-1 baseline)
+### Editable input integration status (post-edition-2024 baseline)
 
 - `15.2E` is now shipped on top of the upgraded dependency baseline without expanding the existing non-input menu controller.
-- Dependency and packaging baseline after `Phase 15.8 fix-1`:
+- Dependency and packaging baseline after the independent `edition = "2024"` milestone:
   - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
+  - workspace `edition = "2024"`;
   - workspace `slint` / `slint-build` are pinned to `1.15.1`;
-  - workspace version remains `0.2.17` after `Phase 15.8 fix-1`;
+  - workspace version is now `0.2.18`;
   - release version, macOS bundle version, and DMG/ZIP artifact version now derive from the workspace manifest version.
 - Product outcome:
   - `15.2D` shell/menu/loading/toast boundaries remained behavior-equivalent on the new dependency baseline;
@@ -289,6 +290,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - Analysis success `SelectableSectionText` now exposes native text-surface `Copy` / `Select All` coverage on the selected text only, without changing the window-local non-input menu controller;
   - Analysis success section header labels now keep explicit left alignment after the `15.8` header-hotspot narrowing; `15.8 fix-1` was a geometry-only regression repair, not a new menu-scope change;
   - read-only selectable content (`SelectableDiffText` / `SelectableSectionText`) now carries one shared `UiTypography` glyph-fallback token so full-width punctuation from real workspace text stays readable after the Slint upgrade without repeated view-level prop threading;
+  - provider-settings load/save still keeps the same UI contract while avoiding any dependency on pre-2024 temporary tail-expression drop order around the app-state mutex;
   - macOS arm64 manual smoke passed after `Phase 15.4`, and launch-level smoke also passed after `Phase 15.5`, `Phase 15.6`, `Phase 15.7`, `Phase 15.8`, and `Phase 15.8 fix-1`;
   - diff loading still feels perceptibly faster on the upgraded baseline, and `Phase 15.6` removed the old high-frequency sync path without adding new product scope.
 - Rejected implementation paths remain rejected after `15.5`:
@@ -397,8 +399,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - fixed the follow-up layout regression where section header labels became centered after that hotspot narrowing;
   - restored explicit `Text` geometry plus `horizontal-alignment:left` inside the narrowed header label lane instead of changing any menu/controller boundary;
   - kept `SelectableSectionText` native text-surface right-click, header/chrome window-local menu coverage, and inline `Copy` action behavior unchanged.
+- edition-2024 milestone:
+  - moved the workspace manifest to `edition = "2024"` without changing `rust-version`, `slint`, or shipped UI product scope;
+  - used `cargo fix --edition --workspace` as the migration starting point, then kept only direct compatibility edits for lock lifetime and test-only environment mutation;
+  - bumped the workspace version to `0.2.18` while preserving the existing shell/menu/loading/toast and provider-settings contracts.
 
-## Dependency upgrade roadmap status (Phase 15.3A -> 15.8 fix-1 completed)
+## Dependency upgrade roadmap status (Phase 15.3A -> 15.8 fix-1 completed; edition-2024 milestone archived separately)
 
 - Why this upgrade line was executed:
   - a meaningful share of deferred UI work was blocked by the old dependency baseline rather than by product uncertainty;
@@ -406,11 +412,12 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - Current upgraded baseline:
   - `15.2D` remains the stable UI contract;
   - `15.2E` is now shipped on the upgraded baseline;
-  - workspace `edition` remains `2021`;
+  - workspace `edition = "2024"` is now shipped as a separate follow-up milestone on the same dependency baseline;
   - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
   - `slint` / `slint-build` are pinned to `1.15.1`;
   - `fc-ui-slint` still uses inline `slint::slint!`;
+  - workspace version is now `0.2.18`;
   - release version ownership now lives in the workspace manifest and packaging derives bundle/DMG/ZIP version from that source;
   - main UI sync no longer relies on repeated `50ms` polling; async completion is pushed back to the UI thread on demand;
   - loading-mask timeout copy is phase-driven UI-local timer behavior only;
@@ -430,20 +437,23 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `Phase 15.7`: non-input context-menu visual polish shipped as a style-only pass on top of the existing window-local controller, completed;
   - `Phase 15.8`: Analysis success `SelectableSectionText` native text-surface right-click shipped without reopening menu-controller scope, completed;
   - `Phase 15.8 fix-1`: Analysis success section header left-alignment regression fixed without changing the `15.8` menu scope, completed.
+- Independent follow-up milestone:
+  - `edition = "2024"`: workspace manifest moved to Rust 2024, version bumped to `0.2.18`, and only direct compatibility fixes were retained, completed.
 - What intentionally still did not change after `15.8 fix-1`:
   - no `Phase 16` navigation work was mixed into the menu polish pass;
   - `Search` keeps its explicit `Clear` button because the current native `cupertino` style still lacks a stable clear affordance;
   - the large inline `slint::slint!` surface was not externalized because the cleanup benefit was still below migration cost;
-  - no `edition = "2024"` pass was combined with the dependency diff;
+  - the dependency diff itself still did not include `edition = "2024"`; that pass shipped later as a separate milestone without widening product scope;
   - no native platform menu bridge or new menu controller was introduced for `15.7` / `15.8` / `15.8 fix-1`;
   - `Phase 15.8` remains text-body-native-only scope and `15.8 fix-1` is not a reason to route `SelectableSectionText` back into the window-local menu core;
   - `SelectableDiffText` row-level context-menu coverage remains deferred.
 - Remaining phase train:
-  - `Phase 16` returns to mainline progression and is no longer part of this dependency-upgrade phase train.
+  - phase15 summary / documentation closeout runs next on top of the completed dependency + edition baseline;
+  - `Phase 16` returns afterwards and is not part of this dependency-upgrade phase train.
 - Detailed implementation planning now lives in:
   - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
 
-## Deferred architecture decisions (after Phase 15.8 fix-1 shipped)
+## Deferred architecture decisions (after Phase 15.8 fix-1 + edition-2024 milestone shipped)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -482,14 +492,14 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.8 fix-1 shipped)
+## Next implementation priority (after the edition-2024 milestone shipped)
 
-1. Resume `Phase 16` results navigation enhancement in mainline mode.
+1. Execute phase15 summary / architecture de-historicization on top of the completed dependency + edition baseline.
+   - acceptance: the three main docs describe one consistent `version 0.2.18 + edition 2024` baseline without reopening shipped product-scope debates.
+2. Keep `Phase 15.8` narrowness and the edition-2024 compatibility boundary intact while future work lands around them.
+   - acceptance: Analysis success body text stays on the shipped native text surface path, section header/chrome stays on the window-local menu path, section labels stay left-aligned inside the narrowed header lane, `Risk Level` remains explicit `Copy` button-only, and no broader selectable-text menu scope or unrelated cleanup churn is reintroduced accidentally.
+3. Resume `Phase 16` results navigation enhancement only after the summary closeout.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps and without introducing tree mode or regressing the accepted workspace shell.
-2. Keep `Phase 15.8` narrowness intact while future work lands around it.
-   - acceptance: Analysis success body text stays on the shipped native text surface path, section header/chrome stays on the window-local menu path, section labels stay left-aligned inside the narrowed header lane, `Risk Level` remains explicit `Copy` button-only, and no broader selectable-text menu scope is reintroduced accidentally.
-3. Revisit `.slint` externalization only when it delivers concrete maintainability or compile-time payoff beyond the now-accepted inline baseline.
-   - acceptance: do not reopen this just for cleanup aesthetics; any future extraction must justify the new `slint-build` churn and preserve the current shell/runtime contracts.
 
 ## Documentation update contract (mandatory)
 

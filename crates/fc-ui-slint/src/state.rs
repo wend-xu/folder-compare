@@ -1753,15 +1753,21 @@ mod tests {
         };
 
         assert_eq!(state.analysis_risk_tone(), "error");
-        assert!(state
-            .analysis_summary_text()
-            .starts_with("This change updates"));
-        assert!(state
-            .analysis_result_notes_text()
-            .contains("truncated diff context"));
-        assert!(state
-            .analysis_result_notes_text()
-            .contains("input excerpt trimmed"));
+        assert!(
+            state
+                .analysis_summary_text()
+                .starts_with("This change updates")
+        );
+        assert!(
+            state
+                .analysis_result_notes_text()
+                .contains("truncated diff context")
+        );
+        assert!(
+            state
+                .analysis_result_notes_text()
+                .contains("input excerpt trimmed")
+        );
     }
 
     #[test]
@@ -1785,19 +1791,27 @@ mod tests {
             ..AppState::default()
         };
 
-        assert!(state
-            .analysis_summary_copy_text()
-            .starts_with("Summary\nRegression risk"));
+        assert!(
+            state
+                .analysis_summary_copy_text()
+                .starts_with("Summary\nRegression risk")
+        );
         assert!(state.analysis_risk_copy_text().contains("High risk"));
-        assert!(state
-            .analysis_full_copy_text()
-            .contains("File\nsrc/main.rs"));
-        assert!(state
-            .analysis_full_copy_text()
-            .contains("Review Suggestions"));
-        assert!(state
-            .analysis_full_copy_text()
-            .contains("context excerpt trimmed"));
+        assert!(
+            state
+                .analysis_full_copy_text()
+                .contains("File\nsrc/main.rs")
+        );
+        assert!(
+            state
+                .analysis_full_copy_text()
+                .contains("Review Suggestions")
+        );
+        assert!(
+            state
+                .analysis_full_copy_text()
+                .contains("context excerpt trimmed")
+        );
     }
 
     #[test]

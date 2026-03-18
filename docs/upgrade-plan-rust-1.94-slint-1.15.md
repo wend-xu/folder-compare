@@ -4,6 +4,8 @@
 
 本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1` 已完成；依赖升级 closeout 至此收束，`Phase 16` 与后续里程碑回归主线推进模式，不再作为本升级计划的默认执行阶段。
 
+补充归档：workspace `edition = "2024"` 已在同日作为独立里程碑执行，并将 workspace 版本 bump 到 `0.2.18`；该改动不属于本依赖升级 phase train，也不把本文件重新变回执行计划。
+
 原始升级目标是把当时基线：
 
 - Rust `1.75.0`
