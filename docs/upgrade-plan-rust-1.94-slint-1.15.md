@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6` 已完成；本文件继续作为 `Phase 15.7`、`Phase 16` 的约束与提示词入口。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7` 已完成；本文件继续作为 `Phase 16` 的约束与提示词入口。
 
 原始升级目标是把当时基线：
 
@@ -38,7 +38,7 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.6`)
+### Current baseline (after `Phase 15.7`)
 
 - `Cargo.toml`
   - workspace `version = "0.2.17"`
@@ -61,12 +61,12 @@
   - compare / diff / analysis 后台完成态现已通过 presenter notifier + `slint::Weak::upgrade_in_event_loop` 回推 UI，主同步路径不再依赖常驻 `50ms` 轮询
   - loading-mask timeout 文案现已改为按 busy phase 切换调度的一次性 timer，不再依赖 repeated watchdog tick
   - `Results / Navigator` 与 `Diff` 行模型现已初始化为持久 `VecModel`，只在相关 payload 变化时 `set_vec()` 更新，避免重复 `ModelRc::new(VecModel::from(...))`
+  - non-input context menu 现已完成 `Phase 15.7` visual polish：菜单面板使用分层阴影、收敛圆角与内边距，hover item 改为 inset surface + accent strip，disabled item 使用更柔和的禁用态文本
   - `Phase 15.6` 已评估外置 `.slint`；当前收益不足以覆盖 churn，因此继续保留内联 `slint::slint!`，`build.rs` 不变
   - `15.2D` 行为已在新依赖下恢复等价
 
 ### Remaining target
 
-- 可选执行 `Phase 15.7` 的 non-input context-menu visual polish
 - 在当前稳定升级基线上推进 `Phase 16`
 
 ## 4. Why This Upgrade Is Worth Doing
@@ -81,7 +81,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.6`
+### Actually changed in `Phase 15.3A` - `Phase 15.7`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -97,6 +97,9 @@
   - `crates/fc-ui-slint/src/app.rs`
 - UI typography token 收敛
   - `crates/fc-ui-slint/src/ui_palette.slint`
+- UI context-menu visual polish
+  - `crates/fc-ui-slint/src/app.rs`
+  - `crates/fc-ui-slint/src/ui_palette.slint`
 - Diff detail scroll stabilization
   - `crates/fc-ui-slint/src/app.rs`
 - UI sync / model churn cleanup
@@ -111,13 +114,12 @@
 - `crates/fc-ui-slint/src/context_menu.rs`
 - `crates/fc-ui-slint/build.rs`
 
-### Likely hotspots after `Phase 15.6`
+### Likely hotspots after `Phase 15.7`
 
 - `crates/fc-ui-slint/src/app.rs`
-  - `Phase 15.7` 若执行，仍从现有 window-local menu visual layer 切，不动当前 sync/runtime 边界
   - `Phase 16` 若执行，继续沿用当前 event-driven sync + persistent `VecModel` 基线
 - `crates/fc-ui-slint/src/context_menu.rs`
-  - non-input safe surfaces 与 editable-input 分层保持不回退；`15.7` 仅做 style-only polish
+  - non-input safe surfaces 与 editable-input 分层保持不回退；`15.7` 已完成 style-only polish，后续不要把 visual layer 反向升级成新 controller
 - `crates/fc-ui-slint/build.rs`
   - 除非后续 `.slint` 外置收益明确，否则继续不接入额外编译链路 churn
 
@@ -403,7 +405,7 @@
 
 执行状态：
 
-- planned / not started
+- 已完成（`2026-03-18`）
 
 目标：
 
@@ -420,6 +422,15 @@
 - 菜单整体观感明显优于当前版本，但交互 contract 不变
 - `Results / Navigator`、Workspace header、Analysis success section 的现有右键行为不回退
 - 不把 `Phase 15.6` 同步清理或 `Phase 16` 导航增强混进同一轮
+
+实际结果：
+
+- 保持现有 window-local context-menu controller、`context_menu.rs` action build / dispatch / close contract 不变，只调整 `fc-ui-slint` 的菜单视觉层
+- non-input context menu 面板现已收敛为更紧凑的圆角、内边距与 item 高度，并增加分层阴影与顶层高光，整体层次明显优于 `Phase 15.6`
+- hover item 现已使用 inset hover surface + 左侧 accent strip，disabled item 改为更柔和的禁用态文本，但 action id、safe-surface coverage、触发路径均未变化
+- 本轮未扩张到 `SelectableDiffText` 行级右键菜单、editable-input 菜单、平台原生菜单桥接或新的 controller
+- `cargo check --workspace`、`cargo test --workspace` 通过；`cargo run -p fc-ui-slint` 启动级 smoke 已进入运行态
+- workspace 版本保持 `0.2.17`，本轮不增加版本号
 
 ### `Phase 16`
 
@@ -439,7 +450,7 @@
 - 不引入 tree mode
 - 不破坏 `15.x` 已收敛的 workspace shell
 
-## 7. Upgrade Benefits Realized After `Phase 15.6`
+## 7. Upgrade Benefits Realized After `Phase 15.7`
 
 - `15.2E` 不再长期 deferred
 - 输入与非输入菜单策略分层更清晰
@@ -451,6 +462,7 @@
 - 升级后遗留的 `50ms` UI polling 主路径已被事件驱动同步替代，后台完成态能直接回推 UI 线程
 - loading-mask timeout 文案不再依赖 repeated watchdog tick，runtime sync contract 更收敛
 - 结果列表 / diff 列表模型已改为持久 `VecModel`，后续阶段不必在每次相关刷新时重新分配 `ModelRc`
+- non-input context menu 视觉层已与当前 desktop shell 更一致，不需要为 `Phase 16` 再混入菜单 polish 噪音
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
@@ -473,8 +485,8 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
-- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
-- 决定下一步是直接进入 `Phase 16`，还是先执行可选的 `Phase 15.7` context-menu visual polish
+- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` / `15.7` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- 决定 `Phase 16` 的结果导航优先级与交互切线
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
 

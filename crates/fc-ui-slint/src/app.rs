@@ -769,22 +769,47 @@ slint::slint! {
         callback activated(string);
 
         property <bool> hovered: action_touch_area.has_hover && root.enabled;
+        property <length> item_inset: 2px;
 
-        height: 30px;
-        border-radius: 4px;
-        background: root.hovered ? UiPalette.context_menu_core_item_hover : transparent;
-        opacity: root.enabled ? 1 : 0.5;
-        clip: true;
+        height: 36px;
+        background: transparent;
+        opacity: root.enabled ? 1 : 0.94;
 
-        Text {
-            text: root.label;
-            x: 10px;
-            y: 0px;
-            width: max(0px, parent.width - 20px);
-            height: parent.height;
-            color: UiPalette.context_menu_core_text;
-            vertical-alignment: center;
-            overflow: elide;
+        item_surface := Rectangle {
+            x: root.item_inset;
+            y: 2px;
+            width: max(0px, parent.width - 2 * root.item_inset);
+            height: max(0px, parent.height - 4px);
+            border-width: root.hovered ? 1px : 0px;
+            border-radius: 8px;
+            border-color: UiPalette.context_menu_core_item_hover_border;
+            background: root.hovered ? UiPalette.context_menu_core_item_hover : transparent;
+            clip: true;
+
+            Rectangle {
+                visible: root.hovered;
+                x: 0px;
+                y: 7px;
+                width: 3px;
+                height: max(0px, parent.height - 14px);
+                border-radius: 2px;
+                background: UiPalette.context_menu_core_item_active_accent;
+            }
+
+            Text {
+                text: root.label;
+                x: 15px;
+                y: 0px;
+                width: max(0px, parent.width - 30px);
+                height: parent.height;
+                color: root.enabled
+                    ? UiPalette.context_menu_core_text
+                    : UiPalette.context_menu_core_disabled_text;
+                vertical-alignment: center;
+                overflow: elide;
+                font-size: 13px;
+                font-weight: root.hovered ? 600 : 500;
+            }
         }
 
         action_touch_area := TouchArea {
@@ -2344,42 +2369,89 @@ slint::slint! {
                 }
             }
 
-            context_menu_panel := Rectangle {
-                property <length> panel_width: 220px;
-                property <length> item_height: 30px;
-                property <length> panel_padding: 5px;
+            context_menu_stack := Rectangle {
+                property <length> panel_width: 228px;
+                property <length> item_height: 36px;
+                property <length> panel_padding: 8px;
+                property <length> panel_margin: 10px;
+                property <length> shadow_margin: 16px;
                 property <length> panel_height: panel_padding * 2 + root.context_menu_action_labels.length * item_height;
-                x: max(
-                    8px,
-                    min(root.context_menu_anchor_x, max(8px, parent.width - self.width - 8px))
+                property <length> panel_x: max(
+                    panel_margin,
+                    min(root.context_menu_anchor_x, max(panel_margin, parent.width - panel_width - panel_margin))
                 );
-                y: max(
-                    8px,
-                    min(root.context_menu_anchor_y, max(8px, parent.height - self.height - 8px))
+                property <length> panel_y: max(
+                    panel_margin,
+                    min(root.context_menu_anchor_y, max(panel_margin, parent.height - panel_height - panel_margin))
                 );
-                width: self.panel_width;
-                height: self.panel_height;
-                border-width: 1px;
-                border-radius: 6px;
-                border-color: UiPalette.context_menu_core_border;
-                background: UiPalette.context_menu_core_background;
-                clip: true;
+                x: self.panel_x - self.shadow_margin;
+                y: self.panel_y - self.shadow_margin;
+                width: self.panel_width + self.shadow_margin * 2;
+                height: self.panel_height + self.shadow_margin * 2;
+                background: transparent;
 
-                TouchArea {
-                    clicked => {}
-                    pointer-event(_) => {}
+                Rectangle {
+                    x: context_menu_stack.shadow_margin + 1px;
+                    y: context_menu_stack.shadow_margin + 7px;
+                    width: context_menu_stack.panel_width;
+                    height: context_menu_stack.panel_height + 6px;
+                    border-radius: 14px;
+                    background: UiPalette.context_menu_core_shadow_soft;
                 }
 
-                VerticalLayout {
-                    padding: context_menu_panel.panel_padding;
-                    spacing: 0px;
+                Rectangle {
+                    x: context_menu_stack.shadow_margin;
+                    y: context_menu_stack.shadow_margin + 3px;
+                    width: context_menu_stack.panel_width;
+                    height: context_menu_stack.panel_height + 3px;
+                    border-radius: 12px;
+                    background: UiPalette.context_menu_core_shadow_strong;
+                }
 
-                    for action_label[index] in root.context_menu_action_labels: ContextMenuActionItem {
-                        label: action_label;
-                        action_id: root.context_menu_action_ids[index];
-                        enabled: root.context_menu_action_enabled[index];
-                        activated(action_id) => {
-                            root.context_menu_action_triggered(action_id);
+                context_menu_panel := Rectangle {
+                    x: context_menu_stack.shadow_margin;
+                    y: context_menu_stack.shadow_margin;
+                    width: context_menu_stack.panel_width;
+                    height: context_menu_stack.panel_height;
+                    border-width: 1px;
+                    border-radius: 10px;
+                    border-color: UiPalette.context_menu_core_border;
+                    background: UiPalette.context_menu_core_background;
+                    clip: true;
+
+                    Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: max(0px, parent.width - 2px);
+                        height: min(22px, max(0px, parent.height - 2px));
+                        border-radius: 9px;
+                        background: UiPalette.context_menu_core_inner_highlight;
+                    }
+
+                    Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: parent.width;
+                        height: 1px;
+                        background: rgba(255, 255, 255, 0.78);
+                    }
+
+                    TouchArea {
+                        clicked => {}
+                        pointer-event(_) => {}
+                    }
+
+                    VerticalLayout {
+                        padding: context_menu_stack.panel_padding;
+                        spacing: 0px;
+
+                        for action_label[index] in root.context_menu_action_labels: ContextMenuActionItem {
+                            label: action_label;
+                            action_id: root.context_menu_action_ids[index];
+                            enabled: root.context_menu_action_enabled[index];
+                            activated(action_id) => {
+                                root.context_menu_action_triggered(action_id);
+                            }
                         }
                     }
                 }
