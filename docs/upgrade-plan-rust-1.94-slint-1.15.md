@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7` 已完成；本文件继续作为可选收尾 `Phase 15.8` 的约束与提示词入口，`Phase 16` 则回归主线推进模式，不再作为本升级计划的默认执行阶段。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8` 已完成；依赖升级 closeout 至此收束，`Phase 16` 与后续里程碑回归主线推进模式，不再作为本升级计划的默认执行阶段。
 
 原始升级目标是把当时基线：
 
@@ -38,7 +38,7 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.7`)
+### Current baseline (after `Phase 15.8`)
 
 - `Cargo.toml`
   - workspace `version = "0.2.17"`
@@ -62,13 +62,15 @@
   - loading-mask timeout 文案现已改为按 busy phase 切换调度的一次性 timer，不再依赖 repeated watchdog tick
   - `Results / Navigator` 与 `Diff` 行模型现已初始化为持久 `VecModel`，只在相关 payload 变化时 `set_vec()` 更新，避免重复 `ModelRc::new(VecModel::from(...))`
   - non-input context menu 现已完成 `Phase 15.7` visual polish：菜单面板使用分层阴影、收敛圆角与内边距，hover item 改为 inset surface + accent strip，disabled item 使用更柔和的禁用态文本
-  - `Analysis success` 中 `SelectableSectionText` 目前仍保持“可选中文本 + 系统复制快捷键”基线，尚未为文本本体接入 native text-surface right-click；如继续收尾 `15.x`，下一候选小轮次是可选的 `Phase 15.8`
+  - `Analysis success` 的 `SelectableSectionText` 现已直接复用 Slint native text surface：`Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 的正文文本支持 `ContextMenuArea` 原生右键菜单，动作最小化为 `Copy` / `Select All`
+  - Analysis success section header / chrome 继续使用现有 window-local `Copy` / `Copy Summary` 菜单；`Risk Level` 继续保持显式 `Copy` 按钮-only
+  - `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 右上角 inline `Copy` 按钮现已恢复可点击；根因是原先 `AnalysisSectionPanel` header 的整块右键命中层覆盖了按钮区域，本轮已把命中层收敛到 header label lane，不再遮挡 copy action
   - `Phase 15.6` 已评估外置 `.slint`；当前收益不足以覆盖 churn，因此继续保留内联 `slint::slint!`，`build.rs` 不变
   - `15.2D` 行为已在新依赖下恢复等价
 
-### Remaining target
+### Mainline follow-up
 
-- 可选执行 `Phase 15.8`：为 `Workspace Analysis success` 的 `SelectableSectionText` 接入 native text-surface right-click
+- 依赖升级 closeout 已完成到 `Phase 15.8`
 - `Phase 16` 回归主线推进模式，不继续在本升级计划模式中展开
 
 ## 4. Why This Upgrade Is Worth Doing
@@ -83,7 +85,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.7`
+### Actually changed in `Phase 15.3A` - `Phase 15.8`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -99,7 +101,7 @@
   - `crates/fc-ui-slint/src/app.rs`
 - UI typography token 收敛
   - `crates/fc-ui-slint/src/ui_palette.slint`
-- UI context-menu visual polish
+- UI context-menu visual polish + Analysis success native text-surface closeout
   - `crates/fc-ui-slint/src/app.rs`
   - `crates/fc-ui-slint/src/ui_palette.slint`
 - Diff detail scroll stabilization
@@ -116,11 +118,11 @@
 - `crates/fc-ui-slint/src/context_menu.rs`
 - `crates/fc-ui-slint/build.rs`
 
-### Likely hotspots after `Phase 15.7`
+### Likely hotspots after `Phase 15.8`
 
 - `crates/fc-ui-slint/src/app.rs`
-  - `Phase 15.8` 若执行，主要落点会是 `SelectableSectionText` / `AnalysisSectionPanel` / Analysis success section 挂接，不应改动 `context_menu.rs` 的 window-local controller contract
-  - `Phase 15.8` 若执行，应优先复用 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`），而不是把可选中文本右键接回现有 non-input menu core
+  - `Phase 15.8` 已通过 `SelectableSectionText` 上的 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`）落地；后续不要把这条正文文本右键路径回退到现有 non-input menu core
+  - `AnalysisSectionPanel` header 现已把 window-local 右键命中层限制在 header label lane，以避免继续遮挡右上角 inline `Copy` action；后续不要通过 overlay 热区重新覆盖该按钮
   - `Phase 16` 若执行，继续沿用当前 event-driven sync + persistent `VecModel` 基线
 - `crates/fc-ui-slint/src/context_menu.rs`
   - non-input safe surfaces 与 editable-input 分层保持不回退；`15.7` 已完成 style-only polish，后续不要把 visual layer 反向升级成新 controller
@@ -440,7 +442,7 @@
 
 执行状态：
 
-- 已完成可行性评估，尚未执行（`2026-03-18`）
+- 已完成（`2026-03-18`）
 
 目标：
 
@@ -469,6 +471,16 @@
 - 不引入 overlay 拦截、私有事件链路或自写 caret/selection/editing
 - 不扩张到 `SelectableDiffText`、Analysis shell-state text、editable inputs
 - 不与 `Phase 16`、`edition = "2024"` 升级或 phase15 总结混在同一轮
+
+实际结果：
+
+- `SelectableSectionText` 现已直接使用 Slint native text surface：`ContextMenuArea` 挂在正文 `TextInput` 外层，菜单项收敛为 `Copy`、`Select All`
+- 覆盖范围仅限 Analysis success 的 `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes`，未扩张到 `Risk Level`、Analysis shell-state text、`SelectableDiffText` 或 editable inputs
+- 菜单对象继续是当前选中文本；本轮没有引入 undocumented selection API，也没有人为扩张 selection-aware enabled contract
+- section header / chrome 继续走现有 window-local `Copy` / `Copy Summary` 菜单；`context_menu.rs` 未改动
+- `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 右上角 inline `Copy` 按钮现已恢复可点击；根因是 `AnalysisSectionPanel` header 的整块右键命中层覆盖了按钮区域，本轮已改为仅覆盖 header label lane
+- `cargo check --workspace`、`cargo test --workspace` 通过；`cargo run -p fc-ui-slint` 启动级 smoke 通过
+- workspace 版本保持 `0.2.17`，本轮不增加版本号
 
 ### `Phase 16`（主线参考，不再在本升级计划模式中执行）
 
@@ -502,7 +514,7 @@
 - 结果列表 / diff 列表模型已改为持久 `VecModel`，后续阶段不必在每次相关刷新时重新分配 `ModelRc`
 - non-input context menu 视觉层已与当前 desktop shell 更一致，不需要为 `Phase 16` 再混入菜单 polish 噪音
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
-- 如执行可选 `Phase 15.8`，也能继续建立在同一升级完成基线之上，而不需要重新打开 window-local menu controller 设计
+- `Phase 15.8` 已证明 Analysis success 正文文本可以直接建立在同一升级完成基线上接入原生 right-click，而不需要重新打开 window-local menu controller 设计
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
 
@@ -524,9 +536,8 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
-- 决定可选 `Phase 15.8` 是否在 `edition = "2024"` 升级与 phase15 总结前单独执行
-- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` / `15.7` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
-- 若执行 `Phase 15.8`，补做一次 Analysis success text-selection/native-menu 人工 smoke
+- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` / `15.7` / `15.8` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- 补做一次 Analysis success text-selection/native-menu/section-copy-action 人工 smoke，确认系统菜单语义与当前滚动行为在真实桌面环境下稳定
 - 决定 `Phase 16` 的结果导航优先级与交互切线
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑

@@ -484,23 +484,46 @@ slint::slint! {
             wrap: word-wrap;
         }
 
-        TextInput {
-            x: 0px;
-            y: 0px;
-            width: parent.width;
-            height: parent.height;
-            text: root.value;
-            read-only: true;
-            single-line: false;
-            wrap: word-wrap;
-            color: root.foreground;
-            font-size: root.font_size;
-            font-weight: root.font_weight;
-            font-family: UiTypography.selectable_content_font_family;
-            horizontal-alignment: left;
-            vertical-alignment: top;
-            selection-background-color: #c9daec;
-            selection-foreground-color: #23384d;
+        ContextMenuArea {
+            enabled: !root.value.is-empty;
+
+            Menu {
+                MenuItem {
+                    title: @tr("Copy");
+                    enabled: !root.value.is-empty;
+                    activated => {
+                        text_input.copy();
+                    }
+                }
+
+                MenuItem {
+                    title: @tr("Select All");
+                    enabled: !root.value.is-empty;
+                    activated => {
+                        text_input.focus();
+                        text_input.select-all();
+                    }
+                }
+            }
+
+            text_input := TextInput {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                text: root.value;
+                read-only: true;
+                single-line: false;
+                wrap: word-wrap;
+                color: root.foreground;
+                font-size: root.font_size;
+                font-weight: root.font_weight;
+                font-family: UiTypography.selectable_content_font_family;
+                horizontal-alignment: left;
+                vertical-alignment: top;
+                selection-background-color: #c9daec;
+                selection-foreground-color: #23384d;
+            }
         }
     }
 
@@ -676,21 +699,41 @@ slint::slint! {
                 HorizontalLayout {
                     spacing: 8px;
 
-                    Text {
-                        text: root.section_label;
-                        color: #708193;
-                        font-size: 11px;
-                        font-weight: 600;
-                        vertical-alignment: center;
+                    header_context_lane := Rectangle {
+                        background: transparent;
                         horizontal-stretch: 1;
+
+                        Text {
+                            text: root.section_label;
+                            color: #708193;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            pointer-event(event) => {
+                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                    root.context_menu_requested(
+                                        self.absolute-position.x + self.mouse-x,
+                                        self.absolute-position.y + self.mouse-y,
+                                        root.section_label,
+                                        root.title,
+                                        root.body,
+                                        root.copy_value,
+                                    );
+                                }
+                            }
+                        }
                     }
 
                     Rectangle {
                         visible: root.copy_value != "";
+                        width: copy_text.preferred-width;
                         height: 20px;
                         background: transparent;
 
-                        Text {
+                        copy_text := Text {
                             text: "Copy";
                             color: #6d7b8b;
                             vertical-alignment: center;
@@ -700,21 +743,6 @@ slint::slint! {
                             clicked => {
                                 root.copy_requested(root.copy_value, root.copy_feedback_label);
                             }
-                        }
-                    }
-                }
-
-                TouchArea {
-                    pointer-event(event) => {
-                        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                            root.context_menu_requested(
-                                self.absolute-position.x + self.mouse-x,
-                                self.absolute-position.y + self.mouse-y,
-                                root.section_label,
-                                root.title,
-                                root.body,
-                                root.copy_value,
-                            );
                         }
                     }
                 }
