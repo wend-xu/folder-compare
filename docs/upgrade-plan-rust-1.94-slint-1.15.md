@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7` 已完成；本文件继续作为 `Phase 16` 的约束与提示词入口。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7` 已完成；本文件继续作为可选收尾 `Phase 15.8` 的约束与提示词入口，`Phase 16` 则回归主线推进模式，不再作为本升级计划的默认执行阶段。
 
 原始升级目标是把当时基线：
 
@@ -62,12 +62,14 @@
   - loading-mask timeout 文案现已改为按 busy phase 切换调度的一次性 timer，不再依赖 repeated watchdog tick
   - `Results / Navigator` 与 `Diff` 行模型现已初始化为持久 `VecModel`，只在相关 payload 变化时 `set_vec()` 更新，避免重复 `ModelRc::new(VecModel::from(...))`
   - non-input context menu 现已完成 `Phase 15.7` visual polish：菜单面板使用分层阴影、收敛圆角与内边距，hover item 改为 inset surface + accent strip，disabled item 使用更柔和的禁用态文本
+  - `Analysis success` 中 `SelectableSectionText` 目前仍保持“可选中文本 + 系统复制快捷键”基线，尚未为文本本体接入 native text-surface right-click；如继续收尾 `15.x`，下一候选小轮次是可选的 `Phase 15.8`
   - `Phase 15.6` 已评估外置 `.slint`；当前收益不足以覆盖 churn，因此继续保留内联 `slint::slint!`，`build.rs` 不变
   - `15.2D` 行为已在新依赖下恢复等价
 
 ### Remaining target
 
-- 在当前稳定升级基线上推进 `Phase 16`
+- 可选执行 `Phase 15.8`：为 `Workspace Analysis success` 的 `SelectableSectionText` 接入 native text-surface right-click
+- `Phase 16` 回归主线推进模式，不继续在本升级计划模式中展开
 
 ## 4. Why This Upgrade Is Worth Doing
 
@@ -117,6 +119,8 @@
 ### Likely hotspots after `Phase 15.7`
 
 - `crates/fc-ui-slint/src/app.rs`
+  - `Phase 15.8` 若执行，主要落点会是 `SelectableSectionText` / `AnalysisSectionPanel` / Analysis success section 挂接，不应改动 `context_menu.rs` 的 window-local controller contract
+  - `Phase 15.8` 若执行，应优先复用 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`），而不是把可选中文本右键接回现有 non-input menu core
   - `Phase 16` 若执行，继续沿用当前 event-driven sync + persistent `VecModel` 基线
 - `crates/fc-ui-slint/src/context_menu.rs`
   - non-input safe surfaces 与 editable-input 分层保持不回退；`15.7` 已完成 style-only polish，后续不要把 visual layer 反向升级成新 controller
@@ -432,7 +436,41 @@
 - `cargo check --workspace`、`cargo test --workspace` 通过；`cargo run -p fc-ui-slint` 启动级 smoke 已进入运行态
 - workspace 版本保持 `0.2.17`，本轮不增加版本号
 
-### `Phase 16`
+### `Phase 15.8` - Analysis success native text-surface context menu
+
+执行状态：
+
+- 已完成可行性评估，尚未执行（`2026-03-18`）
+
+目标：
+
+- 为 `Workspace Analysis success` 的 `SelectableSectionText` 接入 native text-surface right-click
+- 菜单对象是当前选中文本，覆盖 `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes`
+- 保持 section header / chrome 继续使用现有 window-local `Copy` / `Copy Summary` 菜单
+
+要做的事：
+
+- 在 `SelectableSectionText` 上复用 Slint 原生 text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`）
+- 菜单项最小化为 `Copy`、`Select All`
+- 保持正文文本选择、系统复制快捷键、成功态独立滚动、section-level copy action 不回退
+- 接受 native/no-selection 默认语义：无 selection 时不强造新的 enabled contract，可保持系统一致的 disable 或 no-op 行为
+
+人工验收标准：
+
+- 选中文本后右键能看到 native text-surface menu，并正确复制当前选中文本
+- 无 selection 时行为与 Slint / 系统一致，不引入伪造编辑语义
+- `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes` 全覆盖
+- section header 的 window-local menu、`Risk Level` 显式 `Copy` 按钮、Analysis success scroll 行为均不回退
+
+已接受的约束：
+
+- 不改 `crates/fc-ui-slint/src/context_menu.rs` 的 window-local controller contract
+- 不把 selectable-text 右键路由到现有 non-input menu core
+- 不引入 overlay 拦截、私有事件链路或自写 caret/selection/editing
+- 不扩张到 `SelectableDiffText`、Analysis shell-state text、editable inputs
+- 不与 `Phase 16`、`edition = "2024"` 升级或 phase15 总结混在同一轮
+
+### `Phase 16`（主线参考，不再在本升级计划模式中执行）
 
 目标：
 
@@ -464,6 +502,7 @@
 - 结果列表 / diff 列表模型已改为持久 `VecModel`，后续阶段不必在每次相关刷新时重新分配 `ModelRc`
 - non-input context menu 视觉层已与当前 desktop shell 更一致，不需要为 `Phase 16` 再混入菜单 polish 噪音
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
+- 如执行可选 `Phase 15.8`，也能继续建立在同一升级完成基线之上，而不需要重新打开 window-local menu controller 设计
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
 
@@ -485,7 +524,9 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
+- 决定可选 `Phase 15.8` 是否在 `edition = "2024"` 升级与 phase15 总结前单独执行
 - `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` / `15.7` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- 若执行 `Phase 15.8`，补做一次 Analysis success text-selection/native-menu 人工 smoke
 - 决定 `Phase 16` 的结果导航优先级与交互切线
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
@@ -644,7 +685,38 @@
 - 三份主文档与当前事实同步
 ```
 
-### Prompt for `Phase 16`
+### Prompt for `Phase 15.8`
+
+```text
+先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
+把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7` 视为已完成。
+本次只执行可选收尾 `Phase 15.8`：为 `Workspace Analysis success` 的 `SelectableSectionText` 补 native text-surface right-click。
+目标：
+- 菜单对象是当前选中文本
+- 覆盖 `Summary`、`Core Judgment`、`Key Points`、`Review Suggestions`、`Notes`
+- 正文文本菜单最小化为 `Copy`、`Select All`
+- 保持 section header / chrome 继续使用现有 window-local `Copy` / `Copy Summary`
+约束：
+- 正文文本必须走 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`）
+- 不改 `crates/fc-ui-slint/src/context_menu.rs`
+- 不把 selectable-text 右键路由到现有 non-input menu core
+- 不要求自造严格的 selection-aware enabled contract；无 selection 时可保持 Slint / 系统一致的 disable 或 no-op 行为
+- 不扩张到 `Risk Level`、Analysis shell-state text、`SelectableDiffText`、editable inputs
+- 不引入 overlay 拦截、私有事件链路或自写 caret/selection/editing
+- 不把 `Phase 16`、`edition = "2024"` 升级或 phase15 总结混进同一轮
+验证：
+- `cargo check --workspace`
+- `cargo test --workspace`
+- `cargo run -p fc-ui-slint`
+- 人工 smoke 覆盖 Analysis success 的 text selection、right-click、scroll、keyboard copy
+人工验收标准：
+- 选中文本右键后可复制当前选中文本
+- 无 selection 时行为与 Slint / 系统一致
+- header window-local menu、`Risk Level` 显式 `Copy` 按钮、成功态滚动与 section copy action 不回退
+- 三份主文档与当前事实同步
+```
+
+### Prompt for `Phase 16`（主线参考）
 
 ```text
 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
