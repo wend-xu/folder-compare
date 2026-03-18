@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2` 已完成；本文件继续作为 `Phase 15.6`、`Phase 15.7`、`Phase 16` 的约束与提示词入口。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3` 已完成；本文件继续作为 `Phase 15.6`、`Phase 15.7`、`Phase 16` 的约束与提示词入口。
 
 原始升级目标是把当时基线：
 
@@ -38,7 +38,7 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.5 fix-2`)
+### Current baseline (after `Phase 15.5 fix-3`)
 
 - `Cargo.toml`
   - workspace `version = "0.2.17"`
@@ -57,6 +57,7 @@
   - `API Key` 外置 `Show/Hide` 按钮已收敛为字段内 reveal toggle
   - `Search` 手工 `Clear` 按钮暂时保留，因为当前 macOS native `cupertino` `LineEdit` 没有稳定 clear affordance
   - `SelectableDiffText` / `SelectableSectionText` 现已通过共享 Slint global token `UiTypography.selectable_content_font_family` 消费同一套 selectable-content `font-family`，优先落到 `PingFang SC`，用于修复 `slint 1.15.1` `TextInput` 在 mixed Latin+CJK 文本里把全角标点渲染成 tofu 的回归
+  - `Workspace Diff detail` 的 body 现已切到显式 `ScrollView` 视口：column header 镜像 `viewport-x`，内容末尾保留 scrollbar-safe spacer，恢复长行横向滚动条并避免尾行被滚动条遮挡
   - UI 同步仍保留 `50ms` 轮询，作为 `Phase 15.6` 清理目标
   - `15.2D` 行为已在新依赖下恢复等价
 
@@ -77,7 +78,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.5 fix-2`
+### Actually changed in `Phase 15.3A` - `Phase 15.5 fix-3`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -93,6 +94,8 @@
   - `crates/fc-ui-slint/src/app.rs`
 - UI typography token 收敛
   - `crates/fc-ui-slint/src/ui_palette.slint`
+- Diff detail scroll stabilization
+  - `crates/fc-ui-slint/src/app.rs`
 - 兼容性清理
   - `crates/fc-core/src/services/classifier.rs`
 
@@ -328,6 +331,37 @@
 - 行为保持与 `Phase 15.5 fix-1` 一致，只做结构收敛，不扩张菜单范围
 - workspace 版本随本轮收敛到 `0.2.17`
 
+### `Phase 15.5 fix-3` - Diff detail horizontal scrollbar stabilization
+
+执行状态：
+
+- 已完成（`2026-03-18`）
+
+目标：
+
+- 修复依赖升级后 `Workspace Diff detail` 长行横向滚动条丢失的问题
+- 保证恢复横向滚动条后，尾行不再被滚动条遮挡，仍可正常选择/复制
+
+要做的事：
+
+- 确认回归不是 `fix-2` 字体修复引入，而是升级后 `Diff` body 滚动容器行为变化
+- 把 `Diff` body 从依赖 `ListView` 双轴滚动，改为更稳定的显式 `ScrollView` 视口
+- 保留 header 与 body 的横向同步，并把 scrollbar-safe inset 收敛为内容末尾 spacer
+
+人工验收标准：
+
+- 长行 diff 样本重新出现可操作的横向滚动条
+- 横向滚动条恢复后，最后一行不被滚动条遮挡，仍可选择文本或触发行号双击复制
+- `Workspace Diff detail line` 的文本选择、`Cmd/Ctrl+C`、行号/marker 双击复制、纵向滚动都不回退
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` smoke 通过
+
+实际结果：
+
+- 确认回归来源不是 `Phase 15.5 fix-2`；`c90f746` 之后同一套 `Diff` 代码在 `slint 1.15.1` 下继续依赖 `ListView` 承载这类“宽表 + selectable TextInput + 变高行”的自定义 diff viewer 时，横向滚动条露出不再稳定
+- `Diff` body 已改为显式 `ScrollView` 视口，column header 继续镜像 body 的 `viewport-x`
+- 原来的外部 scrollbar-safe inset 已收敛为内容末尾 spacer，使尾行在滚动到底部时不再压在横向滚动条下面
+- workspace 版本保持 `0.2.17`，本轮不增加版本号
+
 ### `Phase 15.6` - Post-upgrade cleanup
 
 目标：
@@ -387,7 +421,7 @@
 - 不引入 tree mode
 - 不破坏 `15.x` 已收敛的 workspace shell
 
-## 7. Upgrade Benefits Realized After `Phase 15.5` / `fix-2`
+## 7. Upgrade Benefits Realized After `Phase 15.5` / `fix-3`
 
 - `15.2E` 不再长期 deferred
 - 输入与非输入菜单策略分层更清晰
@@ -395,6 +429,7 @@
 - Search 输入菜单已回到原生 editable-input surface，且 clear affordance 的保留理由已明确
 - 升级引入的 read-only selectable text glyph fallback 回归已被局部收敛，不再阻断真实 mixed Latin/CJK 文本阅读
 - glyph fallback 修复现已收敛到共享 `UiTypography` token，后续维护不再需要多层 view-level prop threading
+- `Workspace Diff detail` 的长行横向滚动条已从升级后的不稳定 `ListView` 路径迁移到显式 `ScrollView` 基线，尾行复制/选择不再被滚动条遮挡
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
@@ -417,7 +452,7 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
-- `Phase 15.5` / `fix-1` / `fix-2` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
 - 决定 `Phase 15.7` context-menu visual polish 是否在 `Phase 15.6` 之后立即执行，还是继续保持 optional later work
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
@@ -526,8 +561,8 @@
 
 ```text
 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
-以 `Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2` 已稳定为前提，本次只执行 `Phase 15.6`：做升级后的同步与结构清理。
-把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2` 视为已完成，不要回头重做前置阶段。
+以 `Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3` 已稳定为前提，本次只执行 `Phase 15.6`：做升级后的同步与结构清理。
+把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3` 视为已完成，不要回头重做前置阶段。
 目标：
 - 识别并收窄 `50ms` UI polling 的主路径
 - 降低结果列表 / diff 列表的整批 model 重建

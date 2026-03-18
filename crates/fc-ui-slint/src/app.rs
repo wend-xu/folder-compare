@@ -1687,7 +1687,7 @@ slint::slint! {
                                                             }
 
                                                             Rectangle {
-                                                                x: diff_rows.viewport-x;
+                                                                x: diff_body_scroll.viewport-x;
                                                                 y: 0px;
                                                                 width: diff_ready_surface.table_width;
                                                                 height: parent.height;
@@ -1741,113 +1741,112 @@ slint::slint! {
                                                             }
                                                         }
 
-                                                        diff_rows := ListView {
+                                                        diff_body_scroll := ScrollView {
                                                             x: 0px;
                                                             y: 30px;
                                                             width: parent.width;
-                                                            height: max(0px, parent.height - 30px - root.diff_scrollbar_safe_inset);
+                                                            height: max(0px, parent.height - 30px);
                                                             viewport-width: diff_ready_surface.table_width;
-                                                            for row_content[index] in root.diff_contents: row_line := Rectangle {
-                                                                property <string> row_kind: root.diff_row_kinds[index];
-                                                                property <bool> is_hunk: row_kind == "hunk";
-                                                                property <bool> is_added: row_kind == "added";
-                                                                property <bool> is_removed: row_kind == "removed";
-                                                                property <string> marker_text: root.diff_markers[index];
-                                                                property <string> copy_text: row_line.is_hunk || row_line.marker_text == "" || row_line.marker_text == " "
-                                                                    ? row_content
-                                                                    : row_line.marker_text + " " + row_content;
-                                                                property <string> old_feedback_label: root.diff_old_line_nos[index] == ""
-                                                                    ? ""
-                                                                    : "Line " + root.diff_old_line_nos[index];
-                                                                property <string> new_feedback_label: root.diff_new_line_nos[index] == ""
-                                                                    ? ""
-                                                                    : "Line " + root.diff_new_line_nos[index];
+                                                            viewport-height: max(self.height, diff_rows_content.preferred-height);
+                                                            horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
+                                                            vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+                                                            diff_rows_content := VerticalLayout {
                                                                 width: diff_ready_surface.table_width;
-                                                                height: row_line.is_hunk ? 30px : 26px;
-                                                                background: row_line.is_hunk
-                                                                    ? #ebf2fa
-                                                                    : (row_line.is_added
-                                                                        ? #f1f8f3
-                                                                        : (row_line.is_removed
-                                                                            ? #fbf1f1
-                                                                            : (Math.mod(index, 2) == 0 ? #fbfdff : #f8fbfe)));
+                                                                spacing: 0px;
 
-                                                                HorizontalLayout {
-                                                                    spacing: 0px;
-                                                                    DiffCopyHotspot {
-                                                                        width: root.diff_number_column_width;
-                                                                        height: parent.height;
-                                                                        label: row_line.is_hunk ? "" : root.diff_old_line_nos[index];
-                                                                        feedback_label: row_line.old_feedback_label;
-                                                                        copy_value: row_line.copy_text;
-                                                                        activated => {
-                                                                            root.copy_requested(self.copy_value, self.feedback_label);
+                                                                for row_content[index] in root.diff_contents: row_line := Rectangle {
+                                                                    property <string> row_kind: root.diff_row_kinds[index];
+                                                                    property <bool> is_hunk: row_kind == "hunk";
+                                                                    property <bool> is_added: row_kind == "added";
+                                                                    property <bool> is_removed: row_kind == "removed";
+                                                                    property <string> marker_text: root.diff_markers[index];
+                                                                    property <string> copy_text: row_line.is_hunk || row_line.marker_text == "" || row_line.marker_text == " "
+                                                                        ? row_content
+                                                                        : row_line.marker_text + " " + row_content;
+                                                                    property <string> old_feedback_label: root.diff_old_line_nos[index] == ""
+                                                                        ? ""
+                                                                        : "Line " + root.diff_old_line_nos[index];
+                                                                    property <string> new_feedback_label: root.diff_new_line_nos[index] == ""
+                                                                        ? ""
+                                                                        : "Line " + root.diff_new_line_nos[index];
+                                                                    width: diff_ready_surface.table_width;
+                                                                    height: row_line.is_hunk ? 30px : 26px;
+                                                                    background: row_line.is_hunk
+                                                                        ? #ebf2fa
+                                                                        : (row_line.is_added
+                                                                            ? #f1f8f3
+                                                                            : (row_line.is_removed
+                                                                                ? #fbf1f1
+                                                                                : (Math.mod(index, 2) == 0 ? #fbfdff : #f8fbfe)));
+
+                                                                    HorizontalLayout {
+                                                                        spacing: 0px;
+                                                                        DiffCopyHotspot {
+                                                                            width: root.diff_number_column_width;
+                                                                            height: parent.height;
+                                                                            label: row_line.is_hunk ? "" : root.diff_old_line_nos[index];
+                                                                            feedback_label: row_line.old_feedback_label;
+                                                                            copy_value: row_line.copy_text;
+                                                                            activated => {
+                                                                                root.copy_requested(self.copy_value, self.feedback_label);
+                                                                            }
                                                                         }
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height;
-                                                                        background: #e4ebf4;
-                                                                    }
-                                                                    DiffCopyHotspot {
-                                                                        width: root.diff_number_column_width;
-                                                                        height: parent.height;
-                                                                        label: row_line.is_hunk ? "" : root.diff_new_line_nos[index];
-                                                                        feedback_label: row_line.new_feedback_label;
-                                                                        copy_value: row_line.copy_text;
-                                                                        activated => {
-                                                                            root.copy_requested(self.copy_value, self.feedback_label);
+                                                                        Rectangle {
+                                                                            width: 1px;
+                                                                            height: parent.height;
+                                                                            background: #e4ebf4;
                                                                         }
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height;
-                                                                        background: #e4ebf4;
-                                                                    }
-                                                                    DiffCopyHotspot {
-                                                                        width: root.diff_marker_column_width;
-                                                                        height: parent.height;
-                                                                        label: row_line.marker_text;
-                                                                        enabled: row_line.is_hunk;
-                                                                        align_center: true;
-                                                                        feedback_label: "Hunk header";
-                                                                        copy_value: row_line.copy_text;
-                                                                        text_color: row_line.is_hunk ? #58789c : (row_line.is_added ? #346a4a
-                                                                            : (row_line.is_removed ? #8a4242 : #5d6d7e));
-                                                                        activated => {
-                                                                            root.copy_requested(self.copy_value, self.feedback_label);
+                                                                        DiffCopyHotspot {
+                                                                            width: root.diff_number_column_width;
+                                                                            height: parent.height;
+                                                                            label: row_line.is_hunk ? "" : root.diff_new_line_nos[index];
+                                                                            feedback_label: row_line.new_feedback_label;
+                                                                            copy_value: row_line.copy_text;
+                                                                            activated => {
+                                                                                root.copy_requested(self.copy_value, self.feedback_label);
+                                                                            }
                                                                         }
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height;
-                                                                        background: #e4ebf4;
-                                                                    }
-                                                                    SelectableDiffText {
-                                                                        value: row_content;
-                                                                        foreground: row_line.is_hunk
-                                                                            ? #2f5376
-                                                                            : #2f4357;
-                                                                        font_weight: row_line.is_hunk ? 600 : 400;
-                                                                        content_padding: 8px;
-                                                                        horizontal-stretch: 1;
+                                                                        Rectangle {
+                                                                            width: 1px;
+                                                                            height: parent.height;
+                                                                            background: #e4ebf4;
+                                                                        }
+                                                                        DiffCopyHotspot {
+                                                                            width: root.diff_marker_column_width;
+                                                                            height: parent.height;
+                                                                            label: row_line.marker_text;
+                                                                            enabled: row_line.is_hunk;
+                                                                            align_center: true;
+                                                                            feedback_label: "Hunk header";
+                                                                            copy_value: row_line.copy_text;
+                                                                            text_color: row_line.is_hunk ? #58789c : (row_line.is_added ? #346a4a
+                                                                                : (row_line.is_removed ? #8a4242 : #5d6d7e));
+                                                                            activated => {
+                                                                                root.copy_requested(self.copy_value, self.feedback_label);
+                                                                            }
+                                                                        }
+                                                                        Rectangle {
+                                                                            width: 1px;
+                                                                            height: parent.height;
+                                                                            background: #e4ebf4;
+                                                                        }
+                                                                        SelectableDiffText {
+                                                                            value: row_content;
+                                                                            foreground: row_line.is_hunk
+                                                                                ? #2f5376
+                                                                                : #2f4357;
+                                                                            font_weight: row_line.is_hunk ? 600 : 400;
+                                                                            content_padding: 8px;
+                                                                            horizontal-stretch: 1;
+                                                                        }
                                                                     }
                                                                 }
-                                                            }
-                                                        }
 
-                                                        Rectangle {
-                                                            x: 0px;
-                                                            y: parent.height - root.diff_scrollbar_safe_inset;
-                                                            width: parent.width;
-                                                            height: root.diff_scrollbar_safe_inset;
-                                                            background: #f7f9fc;
-                                                            Rectangle {
-                                                                x: 0px;
-                                                                y: 0px;
-                                                                width: parent.width;
-                                                                height: 1px;
-                                                                background: #dbe4ef;
+                                                                Rectangle {
+                                                                    width: diff_ready_surface.table_width;
+                                                                    height: root.diff_scrollbar_safe_inset;
+                                                                    background: transparent;
+                                                                }
                                                             }
                                                         }
                                                     }

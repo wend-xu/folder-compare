@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.5 editable-input baseline + fix-2 typography cleanup)
+## `fc-ui-slint` current architecture snapshot (Phase 15.5 editable-input baseline + fix-3 diff-scroll stabilization)
 
 ### IA and layout contract
 
@@ -174,8 +174,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - read-only selectable diff rows use the same shared `UiTypography.selectable_content_font_family` token as Analysis success text, because `slint 1.15.1` changed `TextInput` font fallback behavior and otherwise rendered some full-width punctuation in mixed Latin/CJK lines as tofu on macOS;
   - the workbench panel owns `header -> helper strip -> state/table` as one surface, so Diff detail reads as a single workstation instead of nested cards;
   - the table can scroll horizontally for long lines with persistent in-surface guidance;
-  - the diff body `ListView` owns vertical scrolling while the column header mirrors its horizontal viewport, keeping the vertical scrollbar visible without depending on horizontal position;
-  - the diff body reserves a scrollbar-safe bottom inset so the last rows stay selectable/copyable;
+  - the diff body now uses an explicit `ScrollView` viewport instead of relying on `ListView` horizontal-scroll exposure, while the column header mirrors the same horizontal viewport;
+  - the diff body keeps a content-end scrollbar-safe spacer so the last rows stay selectable/copyable and no longer sit under the horizontal scrollbar;
   - lightweight row-copy fallback moved from always-visible per-row buttons to double-click-on-line-number/hunk-marker hotspots that copy the full underlying line text, not just the visible viewport fragment;
   - transient copy feedback is explicit but restrained (`Line N copied` / `Copy failed`) and now uses top-center overlay `toast` for copy actions;
   - window-local `toast-controller` is toast-only (overlay placement), and copy-related helper/action-strip pill has been removed in this phase;
@@ -270,7 +270,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
   - workspace `slint` / `slint-build` are pinned to `1.15.1`;
-  - workspace version is now `0.2.17` after `Phase 15.5 fix-2`;
+  - workspace version remains `0.2.17` after `Phase 15.5 fix-3`;
   - release version, macOS bundle version, and DMG/ZIP artifact version now derive from the workspace manifest version.
 - Product outcome:
   - `15.2D` shell/menu/loading/toast boundaries remained behavior-equivalent on the new dependency baseline;
@@ -366,7 +366,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - added one dedicated `ApiKeyLineEdit` local shell so `API Key` can keep hidden=`Paste` only while still relying on native `TextInput` editing behavior;
   - collapsed the old detached API-key `Show/Hide` button into a field-local reveal affordance and left `Search` clear explicit because the current native `cupertino` style still lacks a stable built-in clear action.
 
-## Dependency upgrade roadmap status (Phase 15.3A -> 15.5 completed)
+## Dependency upgrade roadmap status (Phase 15.3A -> 15.5 + fix-3 completed)
 
 - Why this upgrade line was executed:
   - a meaningful share of deferred UI work was blocked by the old dependency baseline rather than by product uncertainty;
@@ -387,7 +387,8 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `Phase 15.3B`: Rust `1.94.0` migration with no `15.2D` regression, completed;
   - `Phase 15.4`: Slint `1.15.1` migration with behavior parity restored, completed;
   - `Phase 15.5`: editable-input context-menu integration shipped with conservative `API Key` secret handling, completed;
-  - `Phase 15.5 fix-2`: read-only selectable-content typography cleanup moved from window/panel prop threading to a shared Slint global token, completed.
+  - `Phase 15.5 fix-2`: read-only selectable-content typography cleanup moved from window/panel prop threading to a shared Slint global token, completed;
+  - `Phase 15.5 fix-3`: diff detail horizontal scrollbar regression moved off the upgraded `ListView` path onto an explicit `ScrollView` viewport with bottom safe spacer, completed.
 - What intentionally still did not change after `15.5`:
   - no `Phase 16` navigation work was mixed into the editable-input pass;
   - `Search` keeps its explicit `Clear` button because the current native `cupertino` style still lacks a stable clear affordance;
@@ -438,7 +439,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - local baseline now exists via window-local `toast-controller` (overlay toast, tone/queueing/replace policy, per-request duration);
   - global routing, persistence, and cross-surface orchestration remain deferred until broader save/export/report flows require a notification center model.
 - `P2` Sticky left-side line numbers:
-  - deferred because the current Slint `ListView` viewer would need a split pinned gutter + horizontally scrollable content lane with synchronized vertical viewport, row-height parity, and hunk-row handling; that is medium-high complexity and too invasive for the accepted fix-3 stabilization shell.
+  - deferred because the current `ScrollView`-backed diff viewer would still need a split pinned gutter + horizontally scrollable content lane with synchronized vertical viewport, row-height parity, and hunk-row handling; that is medium-high complexity and too invasive for the accepted `15.5 fix-3` stabilization shell.
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
