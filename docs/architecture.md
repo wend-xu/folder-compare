@@ -96,7 +96,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - structured provider execution failure kinds (`missing endpoint/key/model`, invalid endpoint, timeout, network failure, HTTP non-success);
   - structured response parse failure kinds (`invalid json`, missing content, invalid contract).
 
-## `fc-ui-slint` current architecture snapshot (Phase 15.5 editable-input baseline + fix-3 diff-scroll stabilization)
+## `fc-ui-slint` current architecture snapshot (Phase 15.6 sync-cleanup baseline)
 
 ### IA and layout contract
 
@@ -196,11 +196,11 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 
 ### Runtime synchronization contract
 
-- Compare/diff/analysis work runs in background workers; UI uses periodic snapshot synchronization while work is active.
+- Compare/diff/analysis work still runs in background workers, but async completion now pushes a fresh `AppState` snapshot back to the UI thread through presenter notifier + `slint::Weak::upgrade_in_event_loop`, instead of relying on a repeated `50ms` polling timer.
 - Rebinding and refresh are bounded:
-  - result/diff models rebuild only when relevant source state changes;
-  - timer refresh is constrained by busy-state transitions;
-  - `sync_window_state_if_changed` now applies an immediate loading-mask projection from the freshly synced busy flags, so short-lived busy windows (for example `Results/Navigator -> LoadSelectedDiff`) still render workspace mask reliably before background completion;
+  - result/diff models are initialized once as persistent `VecModel` instances and only receive `set_vec()` updates when relevant source state changes;
+  - cache-aware sync still skips redundant property/model projection when the latest snapshot is unchanged;
+  - loading-mask projection is still derived only from busy flags, but timeout copy is now scheduled by busy-phase transitions through one-shot timers rather than by a repeated watchdog tick;
   - row delegate local state reduces repeated indexed binding evaluation;
   - header stats avoid cloning filtered rows only for count computation.
 
@@ -214,10 +214,11 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `App Bar` and `Provider Settings` modal are outside the loading-mask scope in this phase.
 - Existing `enabled` bindings remain the primary control logic; loading-mask only adds overlay-level input interception.
 - Mask overlay keeps corner-radius alignment with host surfaces to avoid seam/clip regressions in Sidebar and Workspace.
-- Timeout handling is UI-local watchdog behavior only:
+- Timeout handling remains UI-local behavior only:
   - before timeout: show normal loading copy;
   - after timeout: degrade copy to `Taking longer than expected...`;
-  - timeout never mutates compare/diff/analysis business state and never auto-closes mask.
+  - timeout never mutates compare/diff/analysis business state and never auto-closes mask;
+  - timeout scheduling is driven by busy-phase start/reset, not by a broad repeated polling loop.
 - Minimal extra UI protection: while `diff_loading`, navigator row click is blocked to prevent selection/context drift caused by `SelectRow` racing with in-flight diff completion.
 
 ### Local semantic palette boundary (Phase 15.2C)
@@ -263,21 +264,21 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - safe surfaces already get reusable menu open/close/dispatch behavior now;
   - future input integration can reuse the same shared core without being required for phase-16 progression.
 
-### Editable input integration status (post-15.5 baseline)
+### Editable input integration status (post-15.6 baseline)
 
 - `15.2E` is now shipped on top of the upgraded dependency baseline without expanding the existing non-input menu controller.
-- Dependency and packaging baseline after `Phase 15.5`:
+- Dependency and packaging baseline after `Phase 15.6`:
   - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
   - workspace `slint` / `slint-build` are pinned to `1.15.1`;
-  - workspace version remains `0.2.17` after `Phase 15.5 fix-3`;
+  - workspace version remains `0.2.17` after `Phase 15.6`;
   - release version, macOS bundle version, and DMG/ZIP artifact version now derive from the workspace manifest version.
 - Product outcome:
   - `15.2D` shell/menu/loading/toast boundaries remained behavior-equivalent on the new dependency baseline;
   - editable-input menu coverage is now live on `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings`;
   - read-only selectable content (`SelectableDiffText` / `SelectableSectionText`) now carries one shared `UiTypography` glyph-fallback token so full-width punctuation from real workspace text stays readable after the Slint upgrade without repeated view-level prop threading;
-  - macOS arm64 manual smoke passed after `Phase 15.4`, and launch-level smoke also passed after `Phase 15.5`;
-  - diff loading still feels perceptibly faster on the upgraded baseline even though `15.3A`-`15.5` did not intentionally add new diff-loading product scope.
+  - macOS arm64 manual smoke passed after `Phase 15.4`, and launch-level smoke also passed after `Phase 15.5` plus `Phase 15.6`;
+  - diff loading still feels perceptibly faster on the upgraded baseline, and `Phase 15.6` has now removed the old high-frequency sync path without adding new product scope.
 - Rejected implementation paths remain rejected after `15.5`:
   - overlay-style `TouchArea` interception would risk left-click caret placement, drag selection, IME behavior, and native shortcut flow;
   - private/global pointer interception would leak menu lifecycle outside the current UI-local boundary and raise focus/passive-sync risk;
@@ -309,7 +310,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No runtime theme/settings upgrade or cross-surface theme controller.
 - No selectable-text-wrapper context-menu expansion beyond the shipped editable-input scope.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.5 editable-input baseline)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.6 sync-cleanup baseline)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -365,8 +366,13 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - shipped editable-input menu coverage by reusing Slint-native `LineEdit`/`ContextMenuArea` surfaces for `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings`;
   - added one dedicated `ApiKeyLineEdit` local shell so `API Key` can keep hidden=`Paste` only while still relying on native `TextInput` editing behavior;
   - collapsed the old detached API-key `Show/Hide` button into a field-local reveal affordance and left `Search` clear explicit because the current native `cupertino` style still lacks a stable built-in clear action.
+- 15.6:
+  - replaced the old repeated `50ms` UI polling path with presenter-driven async completion pushes back to the UI thread;
+  - narrowed loading-mask timeout handling to busy-phase-triggered one-shot timers instead of repeated watchdog ticking;
+  - converted `Results / Navigator` and `Diff` row data to persistent `VecModel` instances updated via `set_vec()` only when the related payload changes;
+  - evaluated `.slint` externalization and intentionally kept the large inline `slint::slint!` surface plus current `build.rs` boundary because cleanup benefit was not yet strong enough to justify migration churn.
 
-## Dependency upgrade roadmap status (Phase 15.3A -> 15.5 + fix-3 completed)
+## Dependency upgrade roadmap status (Phase 15.3A -> 15.6 completed)
 
 - Why this upgrade line was executed:
   - a meaningful share of deferred UI work was blocked by the old dependency baseline rather than by product uncertainty;
@@ -380,7 +386,9 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `slint` / `slint-build` are pinned to `1.15.1`;
   - `fc-ui-slint` still uses inline `slint::slint!`;
   - release version ownership now lives in the workspace manifest and packaging derives bundle/DMG/ZIP version from that source;
-  - `50ms` polling and the current snapshot-sync design remain in place and are now explicit cleanup scope for `Phase 15.6`;
+  - main UI sync no longer relies on repeated `50ms` polling; async completion is pushed back to the UI thread on demand;
+  - loading-mask timeout copy is phase-driven UI-local timer behavior only;
+  - results/diff models now reuse persistent `VecModel` instances;
   - macOS arm64 remains the primary validation platform.
 - Completed phase train:
   - `Phase 15.3A`: version-source cleanup plus doc/checklist alignment, completed;
@@ -388,19 +396,20 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - `Phase 15.4`: Slint `1.15.1` migration with behavior parity restored, completed;
   - `Phase 15.5`: editable-input context-menu integration shipped with conservative `API Key` secret handling, completed;
   - `Phase 15.5 fix-2`: read-only selectable-content typography cleanup moved from window/panel prop threading to a shared Slint global token, completed;
-  - `Phase 15.5 fix-3`: diff detail horizontal scrollbar regression moved off the upgraded `ListView` path onto an explicit `ScrollView` viewport with bottom safe spacer, completed.
-- What intentionally still did not change after `15.5`:
-  - no `Phase 16` navigation work was mixed into the editable-input pass;
+  - `Phase 15.5 fix-3`: diff detail horizontal scrollbar regression moved off the upgraded `ListView` path onto an explicit `ScrollView` viewport with bottom safe spacer, completed;
+  - `Phase 15.6`: sync/model-churn cleanup shipped without expanding product scope, completed.
+- What intentionally still did not change after `15.6`:
+  - no `Phase 16` navigation work was mixed into the cleanup pass;
   - `Search` keeps its explicit `Clear` button because the current native `cupertino` style still lacks a stable clear affordance;
+  - the large inline `slint::slint!` surface was not externalized because the cleanup benefit was still below migration cost;
   - no `edition = "2024"` pass was combined with the dependency diff.
 - Remaining phase train:
-  - `Phase 15.6`: post-upgrade cleanup for sync/model churn and optional Slint-file externalization;
   - `Phase 15.7`: optional context-menu visual polish, kept separate from sync cleanup and navigation work;
   - `Phase 16`: resume results-navigation enhancement on top of the upgraded baseline.
 - Detailed implementation planning now lives in:
   - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
 
-## Deferred architecture decisions (after Phase 15.5 editable-input baseline)
+## Deferred architecture decisions (after Phase 15.6 sync-cleanup baseline)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -419,7 +428,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Optional Workspace Diff detail line selectable-row context-menu (`SelectableDiffText`):
   - deferred and explicitly optional for now; current baseline keeps keyboard copy plus line-number/hunk double-click copy as the accepted low-risk path;
   - trigger: only revisit if mouse-driven row copy becomes a demonstrated productivity gap that existing selection + copy shortcuts do not cover;
-  - do not schedule before `Phase 15.6`, and do not revisit with overlay interception, private pointer plumbing, or custom caret/selection logic.
+  - do not mix with accepted `Phase 15.6` sync cleanup, `Phase 15.7` style-only polish, or `Phase 16` navigation work, and do not revisit with overlay interception, private pointer plumbing, or custom caret/selection logic.
 - `P2` Search clear-affordance convergence:
   - deferred because the current macOS native `cupertino` `LineEdit` style still lacks a stable built-in clear action, so the accepted `15.5` baseline keeps an explicit `Clear` button;
   - trigger: revisit only if Slint native style support changes or the application deliberately adopts a different desktop widget style.
@@ -443,14 +452,14 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.5 editable-input baseline)
+## Next implementation priority (after Phase 15.6 sync-cleanup baseline)
 
-1. Execute `Phase 15.6` and reduce polling/model churn without expanding product scope.
-   - acceptance: main sync path no longer relies on broad high-frequency polling, or the remaining polling scope is materially smaller and explicitly justified; results/diff refresh avoids unnecessary full rebuilds.
-2. Resume `Phase 16` results navigation enhancement only after `15.6` is stable.
+1. Resume `Phase 16` results navigation enhancement on top of the `15.6` event-driven sync baseline.
    - acceptance: users can locate one target file in large result sets with fewer manual scroll steps and without introducing tree mode or regressing the accepted workspace shell.
-3. Keep `Phase 15.7` context-menu visual polish and any selectable-text menu experiments as isolated follow-up scope.
-   - acceptance: any future menu polish or selectable-text menu work must stay separated from `15.6` sync cleanup and `Phase 16` navigation changes, and must continue to avoid overlay interception or custom editor plumbing.
+2. Keep `Phase 15.7` context-menu visual polish and any selectable-text menu experiments as isolated follow-up scope.
+   - acceptance: any future menu polish or selectable-text menu work must stay separated from the accepted `15.6` sync cleanup and `Phase 16` navigation changes, and must continue to avoid overlay interception or custom editor plumbing.
+3. Revisit `.slint` externalization only when it delivers concrete maintainability or compile-time payoff beyond the now-accepted inline baseline.
+   - acceptance: do not reopen this just for cleanup aesthetics; any future extraction must justify the new `slint-build` churn and preserve the current shell/runtime contracts.
 
 ## Documentation update contract (mandatory)
 

@@ -10,17 +10,22 @@ use std::thread;
 use std::time::Duration;
 
 const BACKGROUND_START_DELAY: Duration = Duration::from_millis(4);
+type StateChangeNotifier = Arc<dyn Fn() + Send + Sync>;
 
 /// Presenter that manages compare-oriented UI state.
 #[derive(Clone)]
 pub struct Presenter {
     state: Arc<Mutex<AppState>>,
+    state_change_notifier: Arc<Mutex<Option<StateChangeNotifier>>>,
 }
 
 impl Presenter {
     /// Creates a presenter from state.
     pub fn new(state: Arc<Mutex<AppState>>) -> Self {
-        Self { state }
+        Self {
+            state,
+            state_change_notifier: Arc::new(Mutex::new(None)),
+        }
     }
 
     /// Returns a snapshot copy of current app state.
@@ -28,10 +33,13 @@ impl Presenter {
         self.state.lock().expect("state mutex poisoned").clone()
     }
 
-    /// Returns coarse busy flags used by UI polling loop to avoid heavy snapshots.
-    pub fn busy_flags(&self) -> (bool, bool, bool) {
-        let state = self.state.lock().expect("state mutex poisoned");
-        (state.running, state.diff_loading, state.analysis_loading)
+    /// Registers one optional notifier used to push async state completions back to the UI thread.
+    pub fn set_state_change_notifier(&self, notifier: StateChangeNotifier) {
+        let mut slot = self
+            .state_change_notifier
+            .lock()
+            .expect("state change notifier mutex poisoned");
+        *slot = Some(notifier);
     }
 
     /// Handles one UI command.
@@ -187,7 +195,22 @@ impl Presenter {
         }
     }
 
+    fn notify_state_changed(&self) {
+        Self::notify_state_changed_with(&self.state_change_notifier);
+    }
+
+    fn notify_state_changed_with(slot: &Arc<Mutex<Option<StateChangeNotifier>>>) {
+        let notifier = slot
+            .lock()
+            .expect("state change notifier mutex poisoned")
+            .clone();
+        if let Some(notifier) = notifier {
+            notifier();
+        }
+    }
+
     fn execute_compare(&self) {
+        let state_change_notifier = Arc::clone(&self.state_change_notifier);
         let (left_root, right_root, state_ref) = {
             let mut state = self.state.lock().expect("state mutex poisoned");
             if state.running {
@@ -208,6 +231,7 @@ impl Presenter {
                 Arc::clone(&self.state),
             )
         };
+        self.notify_state_changed();
 
         thread::spawn(move || {
             // Give UI one short frame to render loading state before heavy work.
@@ -217,31 +241,35 @@ impl Presenter {
                 .and_then(run_compare)
                 .map(bridge::map_compare_report);
 
-            let mut state = state_ref.lock().expect("state mutex poisoned");
-            state.running = false;
-            match result {
-                Ok(vm) => {
-                    let count = vm.entry_rows.len();
-                    state.summary_text = vm.summary_text;
-                    state.entry_rows = vm.entry_rows;
-                    state.warning_lines = vm.warnings;
-                    state.truncated = vm.truncated;
-                    state.error_message = None;
-                    state.status_text = format!("Compare finished: {} entries", count);
-                }
-                Err(message) => {
-                    state.summary_text.clear();
-                    state.entry_rows.clear();
-                    state.warning_lines.clear();
-                    state.truncated = false;
-                    state.error_message = Some(message);
-                    state.status_text = "Compare failed".to_string();
+            {
+                let mut state = state_ref.lock().expect("state mutex poisoned");
+                state.running = false;
+                match result {
+                    Ok(vm) => {
+                        let count = vm.entry_rows.len();
+                        state.summary_text = vm.summary_text;
+                        state.entry_rows = vm.entry_rows;
+                        state.warning_lines = vm.warnings;
+                        state.truncated = vm.truncated;
+                        state.error_message = None;
+                        state.status_text = format!("Compare finished: {} entries", count);
+                    }
+                    Err(message) => {
+                        state.summary_text.clear();
+                        state.entry_rows.clear();
+                        state.warning_lines.clear();
+                        state.truncated = false;
+                        state.error_message = Some(message);
+                        state.status_text = "Compare failed".to_string();
+                    }
                 }
             }
+            Self::notify_state_changed_with(&state_change_notifier);
         });
     }
 
     fn execute_load_selected_diff(&self) {
+        let state_change_notifier = Arc::clone(&self.state_change_notifier);
         let (left_root, right_root, selected_row, state_ref) = {
             let mut state = self.state.lock().expect("state mutex poisoned");
             if state.diff_loading {
@@ -303,6 +331,7 @@ impl Presenter {
                 Arc::clone(&self.state),
             )
         };
+        self.notify_state_changed();
 
         thread::spawn(move || {
             // Give UI one short frame to render loading state before heavy work.
@@ -330,51 +359,56 @@ impl Presenter {
                         })
                 });
 
-            let mut state = state_ref.lock().expect("state mutex poisoned");
-            state.diff_loading = false;
-            match result {
-                Ok((row, diff_vm)) => {
-                    let is_preview_mode = row.status == "left-only"
-                        || row.status == "right-only"
-                        || row.status == "equal";
-                    state.selected_relative_path = Some(diff_vm.relative_path.clone());
-                    state.diff_warning = diff_vm.warning.clone();
-                    state.diff_truncated = diff_vm.truncated;
-                    state.diff_error_message = None;
-                    state.selected_diff = Some(diff_vm);
-                    state.analysis_available = row.can_load_analysis;
-                    state.analysis_error_message = None;
-                    state.analysis_result = None;
-                    state.analysis_loading = false;
-                    state.analysis_hint = Some(if row.can_load_analysis {
-                        "Click Analyze to run AI risk review.".to_string()
-                    } else {
-                        row.analysis_blocked_reason.unwrap_or_else(|| {
-                            "selected row does not support AI analysis".to_string()
-                        })
-                    });
-                    state.status_text = if is_preview_mode {
-                        "File preview loaded".to_string()
-                    } else {
-                        "Detailed diff loaded".to_string()
-                    };
-                }
-                Err(message) => {
-                    state.diff_error_message = Some(message);
-                    state.selected_diff = None;
-                    state.diff_warning = None;
-                    state.diff_truncated = false;
-                    state.analysis_available = false;
-                    state.clear_analysis_panel();
-                    state.analysis_hint =
-                        Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
-                    state.status_text = "Detailed diff unavailable".to_string();
+            {
+                let mut state = state_ref.lock().expect("state mutex poisoned");
+                state.diff_loading = false;
+                match result {
+                    Ok((row, diff_vm)) => {
+                        let is_preview_mode = row.status == "left-only"
+                            || row.status == "right-only"
+                            || row.status == "equal";
+                        state.selected_relative_path = Some(diff_vm.relative_path.clone());
+                        state.diff_warning = diff_vm.warning.clone();
+                        state.diff_truncated = diff_vm.truncated;
+                        state.diff_error_message = None;
+                        state.selected_diff = Some(diff_vm);
+                        state.analysis_available = row.can_load_analysis;
+                        state.analysis_error_message = None;
+                        state.analysis_result = None;
+                        state.analysis_loading = false;
+                        state.analysis_hint = Some(if row.can_load_analysis {
+                            "Click Analyze to run AI risk review.".to_string()
+                        } else {
+                            row.analysis_blocked_reason.unwrap_or_else(|| {
+                                "selected row does not support AI analysis".to_string()
+                            })
+                        });
+                        state.status_text = if is_preview_mode {
+                            "File preview loaded".to_string()
+                        } else {
+                            "Detailed diff loaded".to_string()
+                        };
+                    }
+                    Err(message) => {
+                        state.diff_error_message = Some(message);
+                        state.selected_diff = None;
+                        state.diff_warning = None;
+                        state.diff_truncated = false;
+                        state.analysis_available = false;
+                        state.clear_analysis_panel();
+                        state.analysis_hint = Some(
+                            "Detailed diff is unavailable; AI analysis is disabled.".to_string(),
+                        );
+                        state.status_text = "Detailed diff unavailable".to_string();
+                    }
                 }
             }
+            Self::notify_state_changed_with(&state_change_notifier);
         });
     }
 
     fn execute_load_ai_analysis(&self) {
+        let state_change_notifier = Arc::clone(&self.state_change_notifier);
         let (selected_row, selected_diff, diff_warning, diff_truncated, ai_config, state_ref) = {
             let mut state = self.state.lock().expect("state mutex poisoned");
             if state.analysis_loading {
@@ -430,6 +464,7 @@ impl Presenter {
                 Arc::clone(&self.state),
             )
         };
+        self.notify_state_changed();
 
         thread::spawn(move || {
             // Give UI one short frame to render loading state before heavy work.
@@ -454,24 +489,27 @@ impl Presenter {
                 .and_then(run_ai_analysis)
                 .map(bridge::map_analyze_diff_response);
 
-            let mut state = state_ref.lock().expect("state mutex poisoned");
-            state.analysis_loading = false;
-            match result {
-                Ok(analysis_vm) => {
-                    state.analysis_error_message = None;
-                    state.analysis_result = Some(analysis_vm);
-                    state.analysis_hint = Some(format!(
-                        "AI analysis loaded from {} provider.",
-                        state.analysis_provider_mode_text()
-                    ));
-                    state.status_text = "AI analysis loaded".to_string();
-                }
-                Err(message) => {
-                    state.analysis_error_message = Some(message);
-                    state.analysis_result = None;
-                    state.status_text = "AI analysis unavailable".to_string();
+            {
+                let mut state = state_ref.lock().expect("state mutex poisoned");
+                state.analysis_loading = false;
+                match result {
+                    Ok(analysis_vm) => {
+                        state.analysis_error_message = None;
+                        state.analysis_result = Some(analysis_vm);
+                        state.analysis_hint = Some(format!(
+                            "AI analysis loaded from {} provider.",
+                            state.analysis_provider_mode_text()
+                        ));
+                        state.status_text = "AI analysis loaded".to_string();
+                    }
+                    Err(message) => {
+                        state.analysis_error_message = Some(message);
+                        state.analysis_result = None;
+                        state.status_text = "AI analysis unavailable".to_string();
+                    }
                 }
             }
+            Self::notify_state_changed_with(&state_change_notifier);
         });
     }
 

@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3` 已完成；本文件继续作为 `Phase 15.6`、`Phase 15.7`、`Phase 16` 的约束与提示词入口。
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6` 已完成；本文件继续作为 `Phase 15.7`、`Phase 16` 的约束与提示词入口。
 
 原始升级目标是把当时基线：
 
@@ -38,7 +38,7 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Current baseline (after `Phase 15.5 fix-3`)
+### Current baseline (after `Phase 15.6`)
 
 - `Cargo.toml`
   - workspace `version = "0.2.17"`
@@ -58,13 +58,16 @@
   - `Search` 手工 `Clear` 按钮暂时保留，因为当前 macOS native `cupertino` `LineEdit` 没有稳定 clear affordance
   - `SelectableDiffText` / `SelectableSectionText` 现已通过共享 Slint global token `UiTypography.selectable_content_font_family` 消费同一套 selectable-content `font-family`，优先落到 `PingFang SC`，用于修复 `slint 1.15.1` `TextInput` 在 mixed Latin+CJK 文本里把全角标点渲染成 tofu 的回归
   - `Workspace Diff detail` 的 body 现已切到显式 `ScrollView` 视口：column header 镜像 `viewport-x`，内容末尾保留 scrollbar-safe spacer，恢复长行横向滚动条并避免尾行被滚动条遮挡
-  - UI 同步仍保留 `50ms` 轮询，作为 `Phase 15.6` 清理目标
+  - compare / diff / analysis 后台完成态现已通过 presenter notifier + `slint::Weak::upgrade_in_event_loop` 回推 UI，主同步路径不再依赖常驻 `50ms` 轮询
+  - loading-mask timeout 文案现已改为按 busy phase 切换调度的一次性 timer，不再依赖 repeated watchdog tick
+  - `Results / Navigator` 与 `Diff` 行模型现已初始化为持久 `VecModel`，只在相关 payload 变化时 `set_vec()` 更新，避免重复 `ModelRc::new(VecModel::from(...))`
+  - `Phase 15.6` 已评估外置 `.slint`；当前收益不足以覆盖 churn，因此继续保留内联 `slint::slint!`，`build.rs` 不变
   - `15.2D` 行为已在新依赖下恢复等价
 
 ### Remaining target
 
-- 在后续清理轮次收敛 `50ms` 轮询与 model churn
-- 再在稳定升级基线上推进 `Phase 16`
+- 可选执行 `Phase 15.7` 的 non-input context-menu visual polish
+- 在当前稳定升级基线上推进 `Phase 16`
 
 ## 4. Why This Upgrade Is Worth Doing
 
@@ -78,7 +81,7 @@
 
 ## 5. Files And Surfaces Changed / Remaining
 
-### Actually changed in `Phase 15.3A` - `Phase 15.5 fix-3`
+### Actually changed in `Phase 15.3A` - `Phase 15.6`
 
 - 根级工具链与依赖
   - `Cargo.toml`
@@ -96,26 +99,27 @@
   - `crates/fc-ui-slint/src/ui_palette.slint`
 - Diff detail scroll stabilization
   - `crates/fc-ui-slint/src/app.rs`
+- UI sync / model churn cleanup
+  - `crates/fc-ui-slint/src/app.rs`
+  - `crates/fc-ui-slint/src/presenter.rs`
+  - `crates/fc-ui-slint/src/bridge.rs`
 - 兼容性清理
   - `crates/fc-core/src/services/classifier.rs`
 
 ### Notably unchanged during / after the migration train
 
 - `crates/fc-ui-slint/src/context_menu.rs`
-- `crates/fc-ui-slint/src/presenter.rs`
 - `crates/fc-ui-slint/build.rs`
 
-### Likely hotspots for `Phase 15.6`
+### Likely hotspots after `Phase 15.6`
 
 - `crates/fc-ui-slint/src/app.rs`
-  - `50ms` polling + snapshot sync 清理接入点
-  - `Search` clear affordance 后续是否还能进一步收敛
+  - `Phase 15.7` 若执行，仍从现有 window-local menu visual layer 切，不动当前 sync/runtime 边界
+  - `Phase 16` 若执行，继续沿用当前 event-driven sync + persistent `VecModel` 基线
 - `crates/fc-ui-slint/src/context_menu.rs`
-  - non-input safe surfaces 与 editable-input 分层保持不回退
-- `crates/fc-ui-slint/src/presenter.rs` + `src/app.rs`
-  - `50ms` polling + snapshot sync 清理与局部收敛
+  - non-input safe surfaces 与 editable-input 分层保持不回退；`15.7` 仅做 style-only polish
 - `crates/fc-ui-slint/build.rs`
-  - 仅在决定外置 `.slint` 时，才接入真正的 Slint 编译入口
+  - 除非后续 `.slint` 外置收益明确，否则继续不接入额外编译链路 churn
 
 ## 6. Versioned Delivery Plan
 
@@ -364,6 +368,10 @@
 
 ### `Phase 15.6` - Post-upgrade cleanup
 
+执行状态：
+
+- 已完成（`2026-03-18`）
+
 目标：
 
 - 清理升级后仍保留的旧基线技术债
@@ -380,6 +388,16 @@
 - UI 不再依赖常驻 `50ms` 轮询作为主同步路径，或轮询范围显著收窄且有明确保留理由
 - 结果列表 / diff 列表不再因为无关状态变更而全量重建
 - 交互与视觉不回退
+
+实际结果：
+
+- `fc-ui-slint` 的 compare / diff / analysis 后台完成态已通过 presenter notifier + `slint::Weak::upgrade_in_event_loop` 回推 UI，移除常驻 `50ms` polling 主同步路径
+- loading-mask timeout 文案已改为按 busy phase 切换调度的一次性 timer；scope、message、auto-timeout contract 保持不变
+- `Results / Navigator` 与 `Diff` 行模型已初始化为持久 `VecModel`，相关 payload 变化时只 `set_vec()` 更新，不再反复 `ModelRc::new(VecModel::from(...))`
+- UI-thread callback 仍保留 cache-aware sync 与 context-menu close-on-selection/busy-start contract；未把 menu lifecycle 反向塞进 `AppState` / `Presenter`
+- 已评估把大块内联 `slint::slint!` 外置到 `.slint`；当前收益不足以覆盖迁移 churn，因此 `build.rs` 与编译链路保持现状
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` 启动级 smoke 通过
+- workspace 版本保持 `0.2.17`，本轮不增加版本号
 
 ### `Phase 15.7` - Context-menu visual polish
 
@@ -421,7 +439,7 @@
 - 不引入 tree mode
 - 不破坏 `15.x` 已收敛的 workspace shell
 
-## 7. Upgrade Benefits Realized After `Phase 15.5` / `fix-3`
+## 7. Upgrade Benefits Realized After `Phase 15.6`
 
 - `15.2E` 不再长期 deferred
 - 输入与非输入菜单策略分层更清晰
@@ -430,6 +448,9 @@
 - 升级引入的 read-only selectable text glyph fallback 回归已被局部收敛，不再阻断真实 mixed Latin/CJK 文本阅读
 - glyph fallback 修复现已收敛到共享 `UiTypography` token，后续维护不再需要多层 view-level prop threading
 - `Workspace Diff detail` 的长行横向滚动条已从升级后的不稳定 `ListView` 路径迁移到显式 `ScrollView` 基线，尾行复制/选择不再被滚动条遮挡
+- 升级后遗留的 `50ms` UI polling 主路径已被事件驱动同步替代，后台完成态能直接回推 UI 线程
+- loading-mask timeout 文案不再依赖 repeated watchdog tick，runtime sync contract 更收敛
+- 结果列表 / diff 列表模型已改为持久 `VecModel`，后续阶段不必在每次相关刷新时重新分配 `ModelRc`
 - 后续 `Phase 16` 可以建立在新基线而不是旧版本临时方案上
 
 ## 8. Why We Do Not Recommend `edition = "2024"` In The Same Round
@@ -452,8 +473,8 @@
 
 - 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
   - `Search` 的 Clear 按钮是否在未来 `cupertino` / style surface 提供稳定 clear affordance 后移除
-- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
-- 决定 `Phase 15.7` context-menu visual polish 是否在 `Phase 15.6` 之后立即执行，还是继续保持 optional later work
+- `Phase 15.5` / `fix-1` / `fix-2` / `fix-3` / `15.6` 在真实 macOS 桌面环境下的最终人工 smoke 与视觉验收
+- 决定下一步是直接进入 `Phase 16`，还是先执行可选的 `Phase 15.7` context-menu visual polish
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
 

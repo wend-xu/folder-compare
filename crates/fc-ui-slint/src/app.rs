@@ -16,11 +16,12 @@ use crate::toast_controller::{
 };
 use copypasta::{ClipboardContext, ClipboardProvider};
 use fc_ai::AiProviderKind;
-use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
+use slint::{Model, ModelRc, SharedString, Timer, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
@@ -2648,52 +2649,76 @@ impl Default for LoadingMaskProjection {
 }
 
 #[derive(Debug, Clone)]
-struct LoadingMaskWatchdog {
+struct LoadingMaskState {
     phase: LoadingMaskPhase,
-    phase_started_at: Option<Instant>,
+    generation: u64,
+    timeout_reached: bool,
     last_projection: LoadingMaskProjection,
 }
 
-impl Default for LoadingMaskWatchdog {
+impl Default for LoadingMaskState {
     fn default() -> Self {
         Self {
             phase: LoadingMaskPhase::Idle,
-            phase_started_at: None,
+            generation: 0,
+            timeout_reached: false,
             last_projection: LoadingMaskProjection::default(),
         }
     }
 }
 
-impl LoadingMaskWatchdog {
-    fn tick(
+impl LoadingMaskState {
+    fn advance(
         &mut self,
         running: bool,
         diff_loading: bool,
         analysis_loading: bool,
-        now: Instant,
-    ) -> Option<LoadingMaskProjection> {
+    ) -> (Option<LoadingMaskProjection>, Option<u64>) {
         let phase = derive_loading_mask_phase(running, diff_loading, analysis_loading);
-        if phase == LoadingMaskPhase::Idle {
-            self.phase = LoadingMaskPhase::Idle;
-            self.phase_started_at = None;
-        } else if self.phase != phase {
+        let phase_changed = self.phase != phase;
+        if phase_changed {
             self.phase = phase;
-            self.phase_started_at = Some(now);
-        } else if self.phase_started_at.is_none() {
-            self.phase_started_at = Some(now);
+            self.generation = self.generation.wrapping_add(1);
+            self.timeout_reached = false;
         }
 
-        let timeout_reached = phase != LoadingMaskPhase::Idle
-            && self
-                .phase_started_at
-                .map(|start| now.duration_since(start) >= LOADING_MASK_TIMEOUT)
-                .unwrap_or(false);
         let projection = derive_loading_mask_projection(
             running,
             diff_loading,
             analysis_loading,
-            timeout_reached,
+            self.timeout_reached,
         );
+        let timeout_generation = if phase_changed && phase != LoadingMaskPhase::Idle {
+            Some(self.generation)
+        } else {
+            None
+        };
+        if projection == self.last_projection {
+            return (None, timeout_generation);
+        }
+        self.last_projection = projection;
+        (Some(projection), timeout_generation)
+    }
+
+    fn trigger_timeout(&mut self, generation: u64) -> Option<LoadingMaskProjection> {
+        if self.phase == LoadingMaskPhase::Idle
+            || self.generation != generation
+            || self.timeout_reached
+        {
+            return None;
+        }
+
+        self.timeout_reached = true;
+        let projection = match self.phase {
+            LoadingMaskPhase::Comparing => derive_loading_mask_projection(true, false, false, true),
+            LoadingMaskPhase::DiffLoading => {
+                derive_loading_mask_projection(false, true, false, true)
+            }
+            LoadingMaskPhase::AnalysisLoading => {
+                derive_loading_mask_projection(false, false, true, true)
+            }
+            LoadingMaskPhase::Idle => LoadingMaskProjection::default(),
+        };
         if projection == self.last_projection {
             return None;
         }
@@ -2751,6 +2776,78 @@ fn apply_loading_mask_projection(window: &MainWindow, projection: LoadingMaskPro
     window.set_sidebar_loading_mask_visible(projection.sidebar_visible);
     window.set_workspace_loading_mask_visible(projection.workspace_visible);
     window.set_loading_mask_text(projection.message.into());
+}
+
+#[derive(Clone)]
+struct LoadingMaskController {
+    inner: Arc<Mutex<LoadingMaskControllerInner>>,
+}
+
+struct LoadingMaskControllerInner {
+    window: slint::Weak<MainWindow>,
+    state: LoadingMaskState,
+}
+
+impl LoadingMaskController {
+    fn new(window: &MainWindow) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(LoadingMaskControllerInner {
+                window: window.as_weak(),
+                state: LoadingMaskState::default(),
+            })),
+        }
+    }
+
+    fn sync(&self, running: bool, diff_loading: bool, analysis_loading: bool) {
+        let (projection, timeout_generation) = {
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("loading mask controller mutex poisoned");
+            inner.state.advance(running, diff_loading, analysis_loading)
+        };
+
+        if let Some(projection) = projection {
+            self.render_projection(projection);
+        }
+        if let Some(generation) = timeout_generation {
+            self.schedule_timeout(generation);
+        }
+    }
+
+    fn schedule_timeout(&self, generation: u64) {
+        let controller = self.clone();
+        Timer::single_shot(LOADING_MASK_TIMEOUT, move || {
+            controller.on_timeout(generation);
+        });
+    }
+
+    fn on_timeout(&self, generation: u64) {
+        let projection = {
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("loading mask controller mutex poisoned");
+            inner.state.trigger_timeout(generation)
+        };
+        if let Some(projection) = projection {
+            self.render_projection(projection);
+        }
+    }
+
+    fn render_projection(&self, projection: LoadingMaskProjection) {
+        let window = {
+            let inner = self
+                .inner
+                .lock()
+                .expect("loading mask controller mutex poisoned");
+            inner.window.clone()
+        };
+        let Some(window) = window.upgrade() else {
+            return;
+        };
+        apply_loading_mask_projection(&window, projection);
+    }
 }
 
 #[derive(Clone)]
@@ -2971,6 +3068,27 @@ fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppSta
     }
 }
 
+fn initialize_window_models(window: &MainWindow) {
+    window.set_row_statuses(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_paths(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_details(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_source_indices(Rc::new(VecModel::<i32>::default()).into());
+    window.set_row_can_load_diff(Rc::new(VecModel::<bool>::default()).into());
+    window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_old_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_new_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_markers(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_contents(Rc::new(VecModel::<SharedString>::default()).into());
+}
+
+fn replace_model_contents<T: Clone + 'static>(model: ModelRc<T>, next_rows: Vec<T>, name: &str) {
+    let vec_model = model
+        .as_any()
+        .downcast_ref::<VecModel<T>>()
+        .unwrap_or_else(|| panic!("{name} must be initialized as VecModel"));
+    vec_model.set_vec(next_rows);
+}
+
 // Contract: state -> window projection.
 // Centralized one-way sync from AppState snapshot into Slint properties/models.
 fn sync_window_state(
@@ -3091,27 +3209,35 @@ fn sync_window_state(
             .iter()
             .map(|(_, row)| SharedString::from(row.status.clone()))
             .collect::<Vec<_>>();
-        window.set_row_statuses(ModelRc::new(VecModel::from(row_statuses)));
+        replace_model_contents(window.get_row_statuses(), row_statuses, "row_statuses");
         let row_paths = filtered_rows
             .iter()
             .map(|(_, row)| SharedString::from(row.relative_path.clone()))
             .collect::<Vec<_>>();
-        window.set_row_paths(ModelRc::new(VecModel::from(row_paths)));
+        replace_model_contents(window.get_row_paths(), row_paths, "row_paths");
         let row_details = filtered_rows
             .iter()
             .map(|(_, row)| SharedString::from(row.detail.clone()))
             .collect::<Vec<_>>();
-        window.set_row_details(ModelRc::new(VecModel::from(row_details)));
+        replace_model_contents(window.get_row_details(), row_details, "row_details");
         let row_source_indices = filtered_rows
             .iter()
             .map(|(index, _)| *index as i32)
             .collect::<Vec<_>>();
-        window.set_row_source_indices(ModelRc::new(VecModel::from(row_source_indices)));
+        replace_model_contents(
+            window.get_row_source_indices(),
+            row_source_indices,
+            "row_source_indices",
+        );
         let row_can_load_diff = filtered_rows
             .iter()
             .map(|(_, row)| row.can_load_diff)
             .collect::<Vec<_>>();
-        window.set_row_can_load_diff(ModelRc::new(VecModel::from(row_can_load_diff)));
+        replace_model_contents(
+            window.get_row_can_load_diff(),
+            row_can_load_diff,
+            "row_can_load_diff",
+        );
     }
 
     if should_refresh_diff_models(last_state, state) {
@@ -3120,62 +3246,146 @@ fn sync_window_state(
             .iter()
             .map(|row| SharedString::from(row.row_kind.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_row_kinds(ModelRc::new(VecModel::from(diff_row_kinds)));
+        replace_model_contents(
+            window.get_diff_row_kinds(),
+            diff_row_kinds,
+            "diff_row_kinds",
+        );
         let diff_old_line_nos = diff_rows
             .iter()
             .map(|row| SharedString::from(row.old_line_no.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_old_line_nos(ModelRc::new(VecModel::from(diff_old_line_nos)));
+        replace_model_contents(
+            window.get_diff_old_line_nos(),
+            diff_old_line_nos,
+            "diff_old_line_nos",
+        );
         let diff_new_line_nos = diff_rows
             .iter()
             .map(|row| SharedString::from(row.new_line_no.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_new_line_nos(ModelRc::new(VecModel::from(diff_new_line_nos)));
+        replace_model_contents(
+            window.get_diff_new_line_nos(),
+            diff_new_line_nos,
+            "diff_new_line_nos",
+        );
         let diff_markers = diff_rows
             .iter()
             .map(|row| SharedString::from(row.marker.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_markers(ModelRc::new(VecModel::from(diff_markers)));
+        replace_model_contents(window.get_diff_markers(), diff_markers, "diff_markers");
         let diff_contents = diff_rows
             .into_iter()
             .map(|row| SharedString::from(row.content))
             .collect::<Vec<_>>();
-        window.set_diff_contents(ModelRc::new(VecModel::from(diff_contents)));
+        replace_model_contents(window.get_diff_contents(), diff_contents, "diff_contents");
     }
 }
 
-// Contract: cache-aware sync wrapper used by timer + callbacks.
-fn sync_window_state_if_changed(
+fn sync_window_snapshot_if_changed(
     window: &MainWindow,
-    bridge: &UiBridge,
+    state: AppState,
     cache: &Arc<Mutex<Option<AppState>>>,
-    context_menu_controller: &ContextMenuController,
+    context_menu_controller: Option<&ContextMenuController>,
+    loading_mask_controller: &LoadingMaskController,
     mode: SyncMode,
 ) {
-    let state = bridge.snapshot();
     let mut cache_guard = cache.lock().expect("sync cache mutex poisoned");
     if should_skip_sync(cache_guard.as_ref(), &state) {
         return;
     }
     if let Some(last_state) = cache_guard.as_ref() {
-        if should_close_for_sync_transition(
-            derive_context_menu_sync_state(last_state),
-            derive_context_menu_sync_state(&state),
-        ) {
-            context_menu_controller.close();
+        if let Some(context_menu_controller) = context_menu_controller {
+            if should_close_for_sync_transition(
+                derive_context_menu_sync_state(last_state),
+                derive_context_menu_sync_state(&state),
+            ) {
+                context_menu_controller.close();
+            }
         }
     }
     sync_window_state(window, &state, mode, cache_guard.as_ref());
-    // Keep loading-mask projection aligned with the latest synced busy flags,
-    // so short-lived diff loading started from row selection can still render immediately.
-    let immediate_projection = derive_loading_mask_projection(
-        state.running,
-        state.diff_loading,
-        state.analysis_loading,
-        false,
-    );
-    apply_loading_mask_projection(window, immediate_projection);
+    loading_mask_controller.sync(state.running, state.diff_loading, state.analysis_loading);
     *cache_guard = Some(state);
+}
+
+// Contract: cache-aware sync wrapper used by UI-thread callbacks.
+fn sync_window_state_if_changed(
+    window: &MainWindow,
+    bridge: &UiBridge,
+    cache: &Arc<Mutex<Option<AppState>>>,
+    context_menu_controller: Option<&ContextMenuController>,
+    loading_mask_controller: &LoadingMaskController,
+    mode: SyncMode,
+) {
+    sync_window_snapshot_if_changed(
+        window,
+        bridge.snapshot(),
+        cache,
+        context_menu_controller,
+        loading_mask_controller,
+        mode,
+    );
+}
+
+#[derive(Clone)]
+struct UiSyncController {
+    inner: Arc<UiSyncControllerInner>,
+}
+
+struct UiSyncControllerInner {
+    window: slint::Weak<MainWindow>,
+    state: Arc<Mutex<AppState>>,
+    cache: Arc<Mutex<Option<AppState>>>,
+    loading_mask_controller: LoadingMaskController,
+    pending: AtomicBool,
+}
+
+impl UiSyncController {
+    fn new(
+        window: &MainWindow,
+        state: Arc<Mutex<AppState>>,
+        cache: Arc<Mutex<Option<AppState>>>,
+        loading_mask_controller: LoadingMaskController,
+    ) -> Self {
+        Self {
+            inner: Arc::new(UiSyncControllerInner {
+                window: window.as_weak(),
+                state,
+                cache,
+                loading_mask_controller,
+                pending: AtomicBool::new(false),
+            }),
+        }
+    }
+
+    fn request_passive_sync(&self) {
+        if self.inner.pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        let controller = self.clone();
+        let enqueue_result = self.inner.window.upgrade_in_event_loop(move |window| {
+            controller.inner.pending.store(false, Ordering::Release);
+            let state = controller
+                .inner
+                .state
+                .lock()
+                .expect("app state mutex poisoned")
+                .clone();
+            sync_window_snapshot_if_changed(
+                &window,
+                state,
+                &controller.inner.cache,
+                None,
+                &controller.inner.loading_mask_controller,
+                SyncMode::Passive,
+            );
+        });
+        if enqueue_result.is_err() {
+            self.inner.pending.store(false, Ordering::Release);
+        }
+    }
 }
 
 fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
@@ -3315,55 +3525,32 @@ fn copy_text_with_feedback(toast_controller: &ToastController, text: &str, feedb
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
     let app = MainWindow::new().map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    initialize_window_models(&app);
 
     let state = Arc::new(Mutex::new(AppState::default()));
-    let presenter = Presenter::new(state);
-    let bridge = UiBridge::new(presenter);
+    let presenter = Presenter::new(Arc::clone(&state));
+    let bridge = UiBridge::new(presenter.clone());
     bridge.dispatch(UiCommand::Initialize);
     let initial_state = bridge.snapshot();
     sync_window_state(&app, &initial_state, SyncMode::Full, None);
-    let sync_cache = Arc::new(Mutex::new(Some(initial_state)));
+    let sync_cache = Arc::new(Mutex::new(Some(initial_state.clone())));
     let toast_controller = ToastController::new(&app);
     let context_menu_controller = ContextMenuController::new(&app);
-
-    // Contract: background UI polling loop.
-    // Polls presenter busy flags and performs passive sync only when runtime busy-state diverges from window state.
-    let ui_refresh_timer = Timer::default();
-    let loading_mask_watchdog = Rc::new(RefCell::new(LoadingMaskWatchdog::default()));
-    let app_weak = app.as_weak();
-    let refresh_bridge = bridge.clone();
-    let refresh_cache = Arc::clone(&sync_cache);
-    let refresh_loading_mask_watchdog = Rc::clone(&loading_mask_watchdog);
-    let refresh_context_menu_controller = context_menu_controller.clone();
-    ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
-        let Some(window) = app_weak.upgrade() else {
-            return;
-        };
-        let bridge_busy = refresh_bridge.busy_flags();
-        let window_busy = (
-            window.get_running(),
-            window.get_diff_loading(),
-            window.get_analysis_loading(),
-        );
-        if bridge_busy != window_busy {
-            sync_window_state_if_changed(
-                &window,
-                &refresh_bridge,
-                &refresh_cache,
-                &refresh_context_menu_controller,
-                SyncMode::Passive,
-            );
-        }
-        let mut watchdog = refresh_loading_mask_watchdog.borrow_mut();
-        if let Some(projection) = watchdog.tick(
-            window.get_running(),
-            window.get_diff_loading(),
-            window.get_analysis_loading(),
-            Instant::now(),
-        ) {
-            apply_loading_mask_projection(&window, projection);
-        }
-    });
+    let loading_mask_controller = LoadingMaskController::new(&app);
+    loading_mask_controller.sync(
+        initial_state.running,
+        initial_state.diff_loading,
+        initial_state.analysis_loading,
+    );
+    let async_sync_controller = UiSyncController::new(
+        &app,
+        Arc::clone(&state),
+        Arc::clone(&sync_cache),
+        loading_mask_controller.clone(),
+    );
+    presenter.set_state_change_notifier(Arc::new(move || {
+        async_sync_controller.request_passive_sync();
+    }));
 
     // Contract: UI event dispatch and bridge binding.
     // Each callback converts UI intent into UiCommand(s), then triggers passive sync.
@@ -3448,6 +3635,7 @@ pub fn run() -> anyhow::Result<()> {
     let compare_bridge = bridge.clone();
     let compare_cache = Arc::clone(&sync_cache);
     let compare_context_menu_controller = context_menu_controller.clone();
+    let compare_loading_mask_controller = loading_mask_controller.clone();
     app.on_compare_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3465,7 +3653,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &compare_bridge,
             &compare_cache,
-            &compare_context_menu_controller,
+            Some(&compare_context_menu_controller),
+            &compare_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3504,6 +3693,7 @@ pub fn run() -> anyhow::Result<()> {
     let row_bridge = bridge.clone();
     let row_cache = Arc::clone(&sync_cache);
     let row_context_menu_controller = context_menu_controller.clone();
+    let row_loading_mask_controller = loading_mask_controller.clone();
     app.on_row_selected(move |index| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3525,7 +3715,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &row_bridge,
             &row_cache,
-            &row_context_menu_controller,
+            Some(&row_context_menu_controller),
+            &row_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3534,6 +3725,7 @@ pub fn run() -> anyhow::Result<()> {
     let filter_bridge = bridge.clone();
     let filter_cache = Arc::clone(&sync_cache);
     let filter_context_menu_controller = context_menu_controller.clone();
+    let filter_loading_mask_controller = loading_mask_controller.clone();
     app.on_filter_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3544,7 +3736,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &filter_bridge,
             &filter_cache,
-            &filter_context_menu_controller,
+            Some(&filter_context_menu_controller),
+            &filter_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3553,6 +3746,7 @@ pub fn run() -> anyhow::Result<()> {
     let status_filter_bridge = bridge.clone();
     let status_filter_cache = Arc::clone(&sync_cache);
     let status_filter_context_menu_controller = context_menu_controller.clone();
+    let status_filter_loading_mask_controller = loading_mask_controller.clone();
     app.on_status_filter_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3563,7 +3757,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &status_filter_bridge,
             &status_filter_cache,
-            &status_filter_context_menu_controller,
+            Some(&status_filter_context_menu_controller),
+            &status_filter_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3586,6 +3781,7 @@ pub fn run() -> anyhow::Result<()> {
     let provider_settings_bridge = bridge.clone();
     let provider_settings_cache = Arc::clone(&sync_cache);
     let provider_settings_context_menu_controller = context_menu_controller.clone();
+    let provider_settings_loading_mask_controller = loading_mask_controller.clone();
     app.on_provider_settings_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3597,7 +3793,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_settings_bridge,
             &provider_settings_cache,
-            &provider_settings_context_menu_controller,
+            Some(&provider_settings_context_menu_controller),
+            &provider_settings_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3606,6 +3803,7 @@ pub fn run() -> anyhow::Result<()> {
     let provider_settings_cancel_bridge = bridge.clone();
     let provider_settings_cancel_cache = Arc::clone(&sync_cache);
     let provider_settings_cancel_context_menu_controller = context_menu_controller.clone();
+    let provider_settings_cancel_loading_mask_controller = loading_mask_controller.clone();
     app.on_provider_settings_cancel_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3617,7 +3815,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_settings_cancel_bridge,
             &provider_settings_cancel_cache,
-            &provider_settings_cancel_context_menu_controller,
+            Some(&provider_settings_cancel_context_menu_controller),
+            &provider_settings_cancel_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3627,6 +3826,7 @@ pub fn run() -> anyhow::Result<()> {
     let provider_settings_save_cache = Arc::clone(&sync_cache);
     let provider_settings_toast_controller = toast_controller.clone();
     let provider_settings_save_context_menu_controller = context_menu_controller.clone();
+    let provider_settings_save_loading_mask_controller = loading_mask_controller.clone();
     app.on_provider_settings_save_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3649,7 +3849,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_settings_save_bridge,
             &provider_settings_save_cache,
-            &provider_settings_save_context_menu_controller,
+            Some(&provider_settings_save_context_menu_controller),
+            &provider_settings_save_loading_mask_controller,
             SyncMode::Passive,
         );
         if window.get_provider_settings_error_text().is_empty() {
@@ -3667,6 +3868,7 @@ pub fn run() -> anyhow::Result<()> {
     let analysis_bridge = bridge.clone();
     let analysis_cache = Arc::clone(&sync_cache);
     let analyze_context_menu_controller = context_menu_controller.clone();
+    let analysis_loading_mask_controller = loading_mask_controller.clone();
     app.on_analyze_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3687,7 +3889,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &analysis_bridge,
             &analysis_cache,
-            &analyze_context_menu_controller,
+            Some(&analyze_context_menu_controller),
+            &analysis_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3697,6 +3900,7 @@ pub fn run() -> anyhow::Result<()> {
     let provider_bridge = bridge.clone();
     let provider_cache = Arc::clone(&sync_cache);
     let provider_mock_context_menu_controller = context_menu_controller.clone();
+    let provider_mock_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_provider_mock_selected(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3707,7 +3911,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_bridge,
             &provider_cache,
-            &provider_mock_context_menu_controller,
+            Some(&provider_mock_context_menu_controller),
+            &provider_mock_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3716,6 +3921,7 @@ pub fn run() -> anyhow::Result<()> {
     let provider_bridge = bridge.clone();
     let provider_cache = Arc::clone(&sync_cache);
     let provider_openai_context_menu_controller = context_menu_controller.clone();
+    let provider_openai_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_provider_openai_selected(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3726,7 +3932,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_bridge,
             &provider_cache,
-            &provider_openai_context_menu_controller,
+            Some(&provider_openai_context_menu_controller),
+            &provider_openai_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3736,6 +3943,7 @@ pub fn run() -> anyhow::Result<()> {
     let endpoint_bridge = bridge.clone();
     let endpoint_cache = Arc::clone(&sync_cache);
     let endpoint_context_menu_controller = context_menu_controller.clone();
+    let endpoint_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_endpoint_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3746,7 +3954,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &endpoint_bridge,
             &endpoint_cache,
-            &endpoint_context_menu_controller,
+            Some(&endpoint_context_menu_controller),
+            &endpoint_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3755,6 +3964,7 @@ pub fn run() -> anyhow::Result<()> {
     let api_key_bridge = bridge.clone();
     let api_key_cache = Arc::clone(&sync_cache);
     let api_key_context_menu_controller = context_menu_controller.clone();
+    let api_key_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_api_key_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3765,7 +3975,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &api_key_bridge,
             &api_key_cache,
-            &api_key_context_menu_controller,
+            Some(&api_key_context_menu_controller),
+            &api_key_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3774,6 +3985,7 @@ pub fn run() -> anyhow::Result<()> {
     let model_bridge = bridge.clone();
     let model_cache = Arc::clone(&sync_cache);
     let model_context_menu_controller = context_menu_controller.clone();
+    let model_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_model_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3784,7 +3996,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &model_bridge,
             &model_cache,
-            &model_context_menu_controller,
+            Some(&model_context_menu_controller),
+            &model_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3796,7 +4009,6 @@ pub fn run() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn passive_mode_does_not_sync_editable_inputs() {
@@ -3874,32 +4086,20 @@ mod tests {
     }
 
     #[test]
-    fn loading_mask_watchdog_resets_on_phase_change() {
-        let mut watchdog = LoadingMaskWatchdog::default();
-        let now = Instant::now();
-        let started = watchdog
-            .tick(false, true, false, now)
-            .expect("first diff-loading projection should be emitted");
+    fn loading_mask_state_resets_timeout_on_phase_change() {
+        let mut state = LoadingMaskState::default();
+        let (started, generation) = state.advance(false, true, false);
+        let started = started.expect("first diff-loading projection should be emitted");
         assert_eq!(started.message, "Loading diff...");
+        let generation = generation.expect("diff-loading phase should schedule a timeout");
 
-        let timed_out = watchdog
-            .tick(
-                false,
-                true,
-                false,
-                now + LOADING_MASK_TIMEOUT + Duration::from_millis(1),
-            )
+        let timed_out = state
+            .trigger_timeout(generation)
             .expect("timeout transition should emit degraded copy");
         assert_eq!(timed_out.message, "Taking longer than expected...");
 
-        let analysis_reset = watchdog
-            .tick(
-                false,
-                false,
-                true,
-                now + LOADING_MASK_TIMEOUT + Duration::from_millis(2),
-            )
-            .expect("phase switch should reset timeout copy");
+        let (analysis_reset, _) = state.advance(false, false, true);
+        let analysis_reset = analysis_reset.expect("phase switch should reset timeout copy");
         assert_eq!(analysis_reset.message, "Running AI analysis...");
     }
 }

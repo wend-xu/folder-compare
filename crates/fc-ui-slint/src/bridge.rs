@@ -42,11 +42,6 @@ impl UiBridge {
     pub fn snapshot(&self) -> AppState {
         self.presenter.state_snapshot()
     }
-
-    /// Returns presenter busy flags `(running, diff_loading, analysis_loading)`.
-    pub fn busy_flags(&self) -> (bool, bool, bool) {
-        self.presenter.busy_flags()
-    }
 }
 
 /// Builds a compare request from raw UI path inputs.
