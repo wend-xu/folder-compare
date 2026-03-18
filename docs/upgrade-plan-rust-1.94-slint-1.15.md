@@ -2,7 +2,9 @@
 
 ## 1. Purpose
 
-本文件记录一次只针对依赖与实现成本的版本升级方案，目标是把当前基线：
+本文件记录依赖升级方案与执行结果。截止 `2026-03-18`，`Phase 15.3A`、`Phase 15.3B`、`Phase 15.4` 已完成；本文件继续作为 `Phase 15.5`、`Phase 15.6`、`Phase 16` 的约束与提示词入口。
+
+原始升级目标是把当时基线：
 
 - Rust `1.75.0`
 - Slint `1.8.0`
@@ -12,7 +14,7 @@
 - Rust `1.94.0`
 - Slint `1.15.x`
 
-本方案只定义可实施计划，不在本轮直接执行代码升级。
+当前不再是“纯计划、未执行”状态；后续阶段将按“执行同时更新主文档”的方式继续推进。
 
 ## 2. Planning Principles
 
@@ -21,9 +23,9 @@
 - 不把依赖升级、`15.2E` 补票、`Phase 16` 新功能混在一个版本内。
 - 先维持 workspace `edition = "2021"`，不在同一轮引入 edition 迁移噪音。
 
-## 3. Current Baseline And Target
+## 3. Baseline Transition Snapshot
 
-### Current baseline
+### Original baseline (before `Phase 15.3A`)
 
 - `Cargo.toml`
   - `rust-version = "1.75"`
@@ -36,13 +38,28 @@
   - editable input context menu 因 `slint = 1.8.0` 缺少稳定 hook 而 deferred
   - UI 同步仍依赖 `50ms` 轮询
 
-### Target baseline
+### Current baseline (after `Phase 15.4`)
 
-- Rust toolchain 固定到 `1.94.0`
-- workspace `rust-version` 提升到 `1.94`
-- `slint` / `slint-build` 升到 `1.15.x`
-- `15.2D` 行为在新依赖下恢复等价
-- 在下一小版本完成 `15.2E`，而不是把它塞进依赖迁移版本
+- `Cargo.toml`
+  - workspace `version = "0.2.15"`
+  - `rust-version = "1.94"`
+  - `slint = "=1.15.1"`
+  - `slint-build = "=1.15.1"`
+- `rust-toolchain.toml`
+  - `channel = "1.94.0"`
+- 打包版本来源
+  - crate version、bundle version、DMG / ZIP version 已统一从 workspace manifest 派生
+- UI 基线
+  - `fc-ui-slint` 仍使用 `src/app.rs` 内联 `slint::slint!`
+  - editable input context menu 仍 deferred 到 `Phase 15.5`
+  - UI 同步仍保留 `50ms` 轮询，作为 `Phase 15.6` 清理目标
+  - `15.2D` 行为已在新依赖下恢复等价
+
+### Remaining target
+
+- 在下一小版本完成 `15.2E`
+- 在后续清理轮次收敛 `50ms` 轮询与 model churn
+- 再在稳定升级基线上推进 `Phase 16`
 
 ## 4. Why This Upgrade Is Worth Doing
 
@@ -54,44 +71,49 @@
   - 对输入菜单继续“只做非输入表面”的分裂策略
 - 升级后再推进 `Phase 16`，能避免在旧基线下继续堆临时实现。
 
-## 5. Files And Surfaces Expected To Change
+## 5. Files And Surfaces Changed / Remaining
 
-### Required for the upgrade
+### Actually changed in `Phase 15.3A` - `Phase 15.4`
 
 - 根级工具链与依赖
   - `Cargo.toml`
   - `Cargo.lock`
   - `rust-toolchain.toml`
-- Slint UI crate
-  - `crates/fc-ui-slint/Cargo.toml`
-  - `crates/fc-ui-slint/src/app.rs`
-  - `crates/fc-ui-slint/src/context_menu.rs`
-  - `crates/fc-ui-slint/src/presenter.rs`
-  - `crates/fc-ui-slint/build.rs`
 - 文档与打包
   - `docs/architecture.md`
   - `docs/thread-context.md`
+  - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
   - `docs/macos_dmg.sh`
   - `README.md`
+- 兼容性清理
+  - `crates/fc-core/src/services/classifier.rs`
 
-### Likely migration hotspots
+### Notably unchanged during the migration
 
-- `src/app.rs`
-  - Slint import/path cleanup
-  - `LineEdit` / `TextInput` 相关语法与能力对齐
-  - layout 语法清理
+- `crates/fc-ui-slint/src/app.rs`
+- `crates/fc-ui-slint/src/context_menu.rs`
+- `crates/fc-ui-slint/src/presenter.rs`
+- `crates/fc-ui-slint/build.rs`
+
+### Likely hotspots for `Phase 15.5` - `Phase 15.6`
+
+- `crates/fc-ui-slint/src/app.rs`
   - editable input context-menu 接入点
-- `src/context_menu.rs`
-  - 保留给 non-input safe surfaces
-  - editable input 不应继续复用当前的保守约束
-- `src/presenter.rs` + `src/app.rs`
-  - 升级后应重新评估 `50ms` polling + snapshot sync 是否还需要保留
-- `build.rs`
-  - 若把大块 UI 从 `slint::slint!` 外置到 `.slint` 文件，则需要改为真正的 Slint 编译入口
+  - 可能的原生 clear / password affordance 收敛
+- `crates/fc-ui-slint/src/context_menu.rs`
+  - non-input safe surfaces 与 editable-input 策略分层
+- `crates/fc-ui-slint/src/presenter.rs` + `src/app.rs`
+  - `50ms` polling + snapshot sync 清理与局部收敛
+- `crates/fc-ui-slint/build.rs`
+  - 仅在决定外置 `.slint` 时，才接入真正的 Slint 编译入口
 
 ## 6. Versioned Delivery Plan
 
 ### `Phase 15.3A` - Upgrade preflight
+
+执行状态：
+
+- 已完成（`2026-03-18`）
 
 目标：
 
@@ -112,7 +134,17 @@
 - 文档中不存在“升级后做什么”与“当前基线是什么”的矛盾描述
 - 打包版本来源清晰，不再同时存在多套人为维护的版本号口径
 
+实际结果：
+
+- workspace `Cargo.toml` 成为 crate / bundle / DMG / ZIP 版本的单一事实来源
+- `docs/macos_dmg.sh` 改为从 manifest 派生版本，不再硬编码发布号
+- `cargo check --workspace`、`cargo test --workspace` 通过
+
 ### `Phase 15.3B` - Rust `1.94.0` only
+
+执行状态：
+
+- 已完成（`2026-03-18`）
 
 目标：
 
@@ -138,7 +170,18 @@
   - Provider Settings 保存
   - 现有 non-input context menu
 
+实际结果：
+
+- `rust-toolchain.toml` 已锁到 `1.94.0`
+- workspace `rust-version` 已提升到 `1.94`
+- 旧的 dead-code warning 已清理，便于后续阶段判断新增噪音
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` smoke 通过
+
 ### `Phase 15.4` - Slint `1.15.x` migration
+
+执行状态：
+
+- 已完成（`2026-03-18`）
 
 目标：
 
@@ -164,6 +207,14 @@
   - `Results / Navigator` 与 Analysis success scroll 自动关闭菜单
   - loading-mask 范围不扩张到 App Bar
   - `Risk Level` 仍保持显式 `Copy` 按钮，不错误并入通用菜单
+
+实际结果：
+
+- `slint` / `slint-build` 已精确锁定到 `1.15.1`
+- `Cargo.lock` 已更新到新依赖图
+- 现有 UI 代码对 `slint 1.15.1` 直接兼容，本轮不需要修改 `app.rs` / `context_menu.rs` / `presenter.rs`
+- `cargo check --workspace`、`cargo test --workspace`、`cargo run -p fc-ui-slint` smoke 通过
+- macOS arm64 人工 smoke 通过，且 diff 加载性能体感明显提升
 
 ### `Phase 15.5` - Reopen and ship `15.2E`
 
@@ -254,12 +305,10 @@
 
 ## 9. Work That Requires Human Ownership
 
-- 决定版本号单一事实来源：
-  - crate version
-  - app bundle version
-  - DMG version
-- 决定 `Phase 15.4` 是否允许任何轻微视觉变化，还是必须严格 screenshot parity
-- 最终人工 smoke 与视觉验收
+- 决定 `Phase 15.5` 中哪些临时本地 affordance 可以在原生能力稳定后移除：
+  - `API Key` 的 Show/Hide 按钮
+  - `Search` 的 Clear 按钮
+- `Phase 15.5` 完成后的最终人工 smoke 与视觉验收
 - 如需签名/公证/分发，处理本机签名证书与发布流程
 - 决定 edition `2024` 是否在当前升级路线之后单列里程碑
 
@@ -337,22 +386,30 @@
 ```text
 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
 以 `Phase 15.4` 已稳定为前提，本次只执行 `Phase 15.5`：完成 `15.2E`。
+把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4` 视为已完成，不要回头重做升级或 preflight。
 目标：
 - 为 `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings`、`API Key` 接入 editable input context menu
 - 优先使用 Slint 新基线提供的稳定 surface
-- 收敛本地手工 password toggle / clear affordance
+- 仅在原生能力已经稳定替代的前提下，收敛本地手工 password toggle / clear affordance
 约束：
 - 禁止 overlay 拦截、私有事件链路、自写 caret/selection/editing
 - 不破坏 typing/focus/selection/paste/cut/select-all
 - non-input context menu core 保持 window-local
+- `Risk Level` 继续保持 explicit `Copy` button-only
+- 不顺手推进 `Phase 15.6`、`Phase 16`
+- 执行同时同步更新 `docs/architecture.md`、`docs/thread-context.md`、`docs/upgrade-plan-rust-1.94-slint-1.15.md`
+- 不再创建额外 phase checklist 文档
 验证：
 - `cargo check --workspace`
 - `cargo test --workspace`
 - `cargo run -p fc-ui-slint`
+- 人工 smoke 覆盖 `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings`、`API Key`
 人工验收标准：
 - 输入右键菜单稳定可用
 - `API Key` hidden/visible 行为正确
+- typing/focus/selection/paste/cut/select-all contract 不回退
 - 旧有 Results/Workspace/Analysis 菜单行为不回退
+- 三份主文档与当前事实同步
 ```
 
 ### Prompt for `Phase 15.6`
@@ -360,21 +417,28 @@
 ```text
 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md` 和 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。
 以 `Phase 15.5` 已稳定为前提，本次只执行 `Phase 15.6`：做升级后的同步与结构清理。
+把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5` 视为已完成，不要回头重做前置阶段。
 目标：
-- 评估并减少 `50ms` UI polling
-- 降低列表 model 全量重建
-- 视需要把大块内联 Slint UI 外置，并接入真正的 `slint-build`
+- 识别并收窄 `50ms` UI polling 的主路径
+- 降低结果列表 / diff 列表的整批 model 重建
+- 仅在收益明确时，才把大块内联 Slint UI 外置并接入真正的 `slint-build`
 约束：
 - 不新增 Phase 16 功能
 - 不回退 `15.x` 已稳定的 shell contract
+- 不为“清理”引入一次大规模 UI rewrite
+- 执行同时同步更新 `docs/architecture.md`、`docs/thread-context.md`、`docs/upgrade-plan-rust-1.94-slint-1.15.md`
+- 不再创建额外 phase checklist 文档
 验证：
 - `cargo check --workspace`
 - `cargo test --workspace`
 - `cargo run -p fc-ui-slint`
+- 人工观察 Compare、Results/Navigator、Diff、Analysis 的 busy/loading/selection 切换
 人工验收标准：
 - 主同步路径不再依赖高频轮询，或轮询保留理由明确且范围变小
 - 列表刷新颗粒度更合理
+- 大结果集或连续切换时，diff/loading 体感进一步改善
 - 视觉与交互不回退
+- 三份主文档与当前事实同步
 ```
 
 ### Prompt for `Phase 16`

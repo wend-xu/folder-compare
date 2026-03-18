@@ -264,18 +264,23 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - safe surfaces already get reusable menu open/close/dispatch behavior now;
   - future input integration can reuse the same shared core without being required for phase-16 progression.
 
-### Editable input integration status (Phase 15.2E assessment)
+### Editable input integration status (post-15.4 baseline)
 
-- No editable-input context-menu code landed in the current baseline; `15.2D` remains the accepted stable implementation.
-- Feasibility result on the pinned dependency set:
-  - the workspace is still locked to `slint = 1.8.0`;
-  - this version exposes `select-all/copy/paste/cut` on `LineEdit` / `TextInput`, but it does not expose a stable editable-input context-menu hook;
-  - newer upstream widget sources add `ContextMenuArea` around editable inputs, but that surface is not available in `1.8.0`, so using it here would require a Slint upgrade outside the allowed scope.
-- Rejected implementation paths for the current phase:
+- No editable-input context-menu code landed in the upgraded baseline; `15.2E` remains intentionally deferred after the dependency migration release.
+- Dependency and packaging baseline after `Phase 15.4`:
+  - Rust toolchain is fixed at `1.94.0`;
+  - workspace `rust-version = 1.94`;
+  - workspace `slint` / `slint-build` are pinned to `1.15.1`;
+  - release version, macOS bundle version, and DMG/ZIP artifact version now derive from the workspace manifest version.
+- Migration outcome:
+  - `15.2D` shell/menu/loading/toast boundaries remained behavior-equivalent on the new dependency baseline;
+  - macOS arm64 manual smoke passed after `Phase 15.4`;
+  - diff loading feels perceptibly faster on the upgraded baseline even though `15.3A`-`15.4` did not intentionally add new diff-loading product scope.
+- Rejected implementation paths remain rejected for the upcoming `15.5` pass:
   - overlay-style `TouchArea` interception would risk left-click caret placement, drag selection, IME behavior, and native shortcut flow;
   - private/global pointer interception would leak menu lifecycle outside the current UI-local boundary and raise focus/passive-sync risk;
   - custom caret/selection plumbing would duplicate editor behavior and violate the “reuse Slint editing logic” constraint.
-- Therefore the following remain deferred:
+- Therefore the following remain deferred until `Phase 15.5`:
   - Stage 1 targets: `Compare Inputs -> left/right` and `Filter / Scope -> Search`;
   - Stage 2 targets: `Provider Settings -> Endpoint / Model / Timeout`;
   - Stage 3 target: `Provider Settings -> API Key`;
@@ -294,7 +299,7 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - No runtime theme/settings upgrade or cross-surface theme controller.
 - No editable-input context-menu integration in the shipped baseline.
 
-## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.2D stable baseline)
+## `fc-ui-slint` evolution highlights (Phase 13.1 -> 15.4 upgraded baseline)
 
 - 13.1 -> 14.2:
   - stabilized IA and desktop-density visual grammar;
@@ -339,42 +344,45 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
   - normalized `AnalysisSectionPanel` anchor coordinates so section menus open near the actual pointer location;
   - kept `SelectableSectionText` / `SelectableDiffText` / all editable inputs out of scope so the menu core remains independently stable and does not depend on `15.2E`.
 - 15.2E assessment:
-  - verified that the locked `slint = 1.8.0` baseline does not provide a low-risk editable-input context-menu hook comparable to newer `ContextMenuArea`-based widgets;
-  - intentionally kept `Compare Inputs`, `Filter / Scope -> Search`, `Provider Settings` inputs, and all selectable-text wrappers deferred rather than introducing overlay interception or custom text-edit plumbing.
+  - confirmed that the old `slint = 1.8.0` baseline was the blocker for low-risk editable-input menus;
+  - kept `Compare Inputs`, `Filter / Scope -> Search`, `Provider Settings` inputs, and all selectable-text wrappers deferred until the upgraded baseline was stable.
+- 15.3A -> 15.4:
+  - unified version ownership around the workspace manifest and packaging-script derivation;
+  - locked Rust `1.94.0` and Slint `1.15.1` while preserving accepted `15.2D` shell/menu/loading/toast boundaries;
+  - kept the large inline `slint::slint!` surface and current sync design intact because the dependency migration compiled cleanly without a UI rewrite;
+  - manual smoke on macOS arm64 passed and diff loading responsiveness improved perceptibly relative to the pre-upgrade baseline.
 
-## Planned dependency upgrade roadmap (accepted planning baseline, not yet executed)
+## Dependency upgrade roadmap status (Phase 15.3A -> 15.4 completed)
 
-- Why this plan exists:
-  - a meaningful share of deferred UI work is now blocked by the locked dependency baseline rather than by product uncertainty;
-  - `15.2E` is the clearest example: the current `slint = 1.8.0` baseline keeps editable-input menus too expensive/risky to ship cleanly.
-- Current shipped baseline remains unchanged until migration work lands:
-  - `15.2D` is still the stable UI contract;
+- Why this upgrade line was executed:
+  - a meaningful share of deferred UI work was blocked by the old dependency baseline rather than by product uncertainty;
+  - `15.2E` remained the clearest example because editable-input menus were too expensive/risky on `slint = 1.8.0`.
+- Current upgraded baseline:
+  - `15.2D` remains the stable UI contract;
   - workspace `edition` remains `2021`;
-  - Rust baseline in source metadata is still `1.75`, and `slint` is still pinned to `1.8.0`.
-- Planned target baseline:
-  - Rust toolchain `1.94.0`;
+  - Rust toolchain is fixed at `1.94.0`;
   - workspace `rust-version = 1.94`;
-  - `slint = 1.15.x` with an exact patch pin (preferred: `1.15.1`);
-  - macOS arm64 first; Intel Mac compatibility is not a requirement for this migration.
-- Edition decision for this roadmap:
-  - keep workspace `edition = "2021"` throughout the Rust/Slint migration;
-  - evaluate a separate `edition = "2024"` pass only after the new dependency baseline is stable and behavior-equivalent;
-  - if an edition pass is approved later, `cargo fix --edition` should be used as a starting aid, not mixed into the dependency-migration diff.
-- Planned phase train:
-  - `Phase 15.3A`: preflight, version-source cleanup, checklist/doc alignment, no dependency bump;
-  - `Phase 15.3B`: Rust `1.94.0` only, keep Slint `1.8.0`, revalidate `15.2D`;
-  - `Phase 15.4`: Slint `1.15.x` migration, restore `15.2D` behavior parity, no new UX scope;
-  - `Phase 15.5`: reopen and ship deferred editable-input context-menu integration (`15.2E`) on the new baseline, and replace temporary local input affordances with native widget capabilities where appropriate;
+  - `slint` / `slint-build` are pinned to `1.15.1`;
+  - `fc-ui-slint` still uses inline `slint::slint!`;
+  - release version ownership now lives in the workspace manifest and packaging derives bundle/DMG/ZIP version from that source;
+  - `50ms` polling and the current snapshot-sync design remain in place and are now explicit cleanup scope for `Phase 15.6`;
+  - macOS arm64 remains the primary validation platform.
+- Completed phase train:
+  - `Phase 15.3A`: version-source cleanup plus doc/checklist alignment, completed;
+  - `Phase 15.3B`: Rust `1.94.0` migration with no `15.2D` regression, completed;
+  - `Phase 15.4`: Slint `1.15.1` migration with behavior parity restored, completed.
+- What intentionally did not change in the migration release:
+  - no editable-input context-menu product scope landed yet;
+  - no `Phase 16` navigation work was mixed into the migration release;
+  - no `edition = "2024"` pass was combined with the dependency diff.
+- Remaining phase train:
+  - `Phase 15.5`: reopen and ship deferred editable-input context-menu integration (`15.2E`) on the upgraded baseline, and replace temporary local input affordances with native widget capabilities where appropriate;
   - `Phase 15.6`: post-upgrade cleanup for sync/model churn and optional Slint-file externalization;
   - `Phase 16`: resume results-navigation enhancement on top of the upgraded baseline.
 - Detailed implementation planning now lives in:
   - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
-- What intentionally does not change at planning time:
-  - no dependency version has been bumped yet;
-  - no accepted `15.2D` shell/menu/loading/toast contract is relaxed by this roadmap alone;
-  - `Phase 16` work should not be mixed into `Phase 15.4`.
 
-## Deferred architecture decisions (after Phase 15.2D stable baseline)
+## Deferred architecture decisions (after Phase 15.4 upgraded baseline)
 
 - `P1` Secure secret storage integration (Keychain/Credential Manager/Secret Service):
   - trigger: before remote provider is treated as production-default.
@@ -387,10 +395,10 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P2` Multi-line copy workflow:
   - deferred because the current baseline now covers low-noise Diff row copy plus lightweight Analysis section/whole-review copy; full range selection, clipboard formatting, and richer clipboard semantics would still expand interaction scope beyond the accepted shell.
 - `P2` Editable input context-menu integration:
-  - re-confirmed as deferred after `15.2E` assessment on `slint = 1.8.0`;
-  - shared menu open/close/dispatch core exists, but the current dependency set does not expose a stable editable-input context-menu hook;
-  - accepted roadmap is to revisit this in `Phase 15.5` after `Phase 15.4` restores parity on `slint = 1.15.x`;
-  - do not revisit earlier unless another first-class editable-input menu surface appears that does not require overlay interception.
+  - remains deferred after `Phase 15.4` because the migration release intentionally preserved product scope and only restored baseline parity;
+  - shared menu open/close/dispatch core exists, and the upgraded `slint = 1.15.1` baseline is now the accepted starting point for native editable-input integration;
+  - next execution target is `Phase 15.5`;
+  - do not revisit with overlay interception, private pointer plumbing, or custom caret/selection logic.
 - `P2` Analysis shell-state selectable text (non-success states):
   - not a hard requirement for `Phase 15.1B fix-3`;
   - deferred for a separate pass so shell-state interaction changes do not regress the stabilized success-body scrolling contract.
@@ -411,20 +419,14 @@ UI should not embed compare business logic. `fc-ui-slint` translates user intent
 - `P3` Tree explorer / compare-view dual-mode workspace:
   - trigger: when file-view-only navigation becomes a productivity bottleneck.
 
-## Next implementation priority (after Phase 15.2D stable baseline)
+## Next implementation priority (after Phase 15.4 upgraded baseline)
 
-1. Execute `Phase 15.3A` preflight and version-source cleanup before any new product scope.
-   - acceptance: upgrade inputs, version ownership, and smoke checklist are explicit without changing `15.2D` behavior.
-2. Execute `Phase 15.3B` and prove Rust `1.94.0` alone does not regress the stable baseline.
-   - acceptance: `cargo check --workspace`, `cargo test --workspace`, and macOS UI smoke all pass while staying on `slint = 1.8.0`.
-3. Execute `Phase 15.4` and restore `15.2D` behavior parity on `slint = 1.15.x` before reopening deferred UI scope.
-   - acceptance: shell/menu/loading/toast contracts remain equivalent and no `15.2E` product work is mixed into the migration release.
-4. Reopen `15.2E` only in `Phase 15.5` on top of the upgraded baseline.
-   - acceptance: no overlay interception, no custom caret/selection logic, and `API Key` keeps the conservative hidden=`Paste` only / visible=`Select All+Copy+Paste+Cut` policy.
-5. Use `Phase 15.6` to reduce polling/model churn before resuming `Phase 16` navigation work.
-   - acceptance: post-upgrade cleanup reduces technical debt without expanding IA or reopening workspace-shell redesign.
-6. Resume `Phase 16` results navigation enhancement only after the upgrade line is stable.
-   - acceptance: users can locate one target file in large result sets with fewer manual scroll steps and without introducing tree mode.
+1. Execute `Phase 15.5` and ship editable-input context-menu integration on top of the upgraded baseline.
+   - acceptance: native editable-input menu behavior is stable on `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings`; no overlay interception or custom caret/selection logic is introduced; `API Key` keeps the conservative hidden=`Paste` only / visible=`Select All+Copy+Paste+Cut` policy.
+2. Execute `Phase 15.6` and reduce polling/model churn without expanding product scope.
+   - acceptance: main sync path no longer relies on broad high-frequency polling, or the remaining polling scope is materially smaller and explicitly justified; results/diff refresh avoids unnecessary full rebuilds.
+3. Resume `Phase 16` results navigation enhancement only after `15.5` and `15.6` are stable.
+   - acceptance: users can locate one target file in large result sets with fewer manual scroll steps and without introducing tree mode or regressing the accepted workspace shell.
 
 ## Documentation update contract (mandatory)
 
