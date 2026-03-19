@@ -578,8 +578,8 @@ impl AppState {
             .unwrap_or(false)
     }
 
-    /// Returns filter stats text for UI header.
-    pub fn filter_stats_text(&self) -> String {
+    /// Returns collection summary text for Results / Navigator.
+    pub fn results_collection_text(&self) -> String {
         let status_filter = normalize_status_filter_token(&self.entry_status_filter);
         let visible = self
             .entry_rows
@@ -589,64 +589,72 @@ impl AppState {
                     && status_filter_matches(&row.status, status_filter.as_str())
             })
             .count();
-        let total = self.entry_rows.len();
+        let total =
+            summary_metric_usize(&self.summary_text, "total=").unwrap_or(self.entry_rows.len());
         let query = self.entry_filter.trim();
-        let query_text = if query.is_empty() {
-            "—".to_string()
+        let mut parts = vec![format!("Showing {visible} / {total}")];
+        if !query.is_empty() {
+            parts.push(format!(
+                "Search: \"{}\"",
+                abbreviate_middle(&sanitize_inline_query(query), 30, 18, 8)
+            ));
+        }
+        if status_filter == "all" {
+            if query.is_empty() {
+                parts.push("All results".to_string());
+            }
         } else {
-            abbreviate_middle(query, 28, 16, 8)
-        };
-        let status_text = match status_filter.as_str() {
-            "all" => "All",
-            "different" => "Different",
-            "equal" => "Equal",
-            "left-only" => "Left-only",
-            "right-only" => "Right-only",
-            _ => "All",
-        };
-        format!("Visible {visible}/{total} | Search: {query_text} | Status: {status_text}")
+            parts.push(status_filter_label(status_filter.as_str()).to_string());
+        }
+        parts.join(" · ")
     }
 
     /// Returns compact compare summary text for sidebar status section.
     pub fn compact_summary_text(&self) -> String {
-        if self.summary_text.trim().is_empty() {
-            return "No compare summary yet.".to_string();
+        if !self.compare_status_has_detail() {
+            return String::new();
         }
         let mut parts = Vec::new();
-        if let Some(value) = summary_metric(&self.summary_text, "mode=") {
-            parts.push(format!("mode {value}"));
+        if let Some(value) = self.compare_mode_label() {
+            parts.push(value);
         }
         if let Some(value) = summary_metric(&self.summary_text, "total=") {
-            parts.push(format!("total {value}"));
+            parts.push(format!("Total {value}"));
         }
         if let Some(value) = summary_metric(&self.summary_text, "different=") {
-            parts.push(format!("diff {value}"));
+            parts.push(format!("Changed {value}"));
         }
         if let Some(value) = summary_metric(&self.summary_text, "left_only=") {
-            parts.push(format!("left {value}"));
+            parts.push(format!("Left {value}"));
         }
         if let Some(value) = summary_metric(&self.summary_text, "right_only=") {
-            parts.push(format!("right {value}"));
+            parts.push(format!("Right {value}"));
         }
-        if let Some(value) = summary_metric(&self.summary_text, "deferred=") {
-            parts.push(format!("deferred {value}"));
+        if let Some(value) = self.compare_deferred_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} deferred"));
         }
-        if let Some(value) = summary_metric(&self.summary_text, "oversized_text=") {
-            parts.push(format!("oversized {value}"));
+        if let Some(value) = self.compare_oversized_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} oversized"));
         }
         if self.truncated {
-            parts.push("truncated".to_string());
+            parts.push("Truncated".to_string());
         }
         if parts.is_empty() {
+            if self.error_message.is_some() {
+                return "Compare failed".to_string();
+            }
+            if !self.warning_lines.is_empty() {
+                return format_warning_count(self.warning_lines.len());
+            }
             return abbreviate_middle(&self.summary_text, 96, 56, 36);
         }
-        parts.join(" | ")
+        parts.join(" · ")
     }
 
     /// Returns key compare metrics in short desktop-friendly format.
     pub fn compare_metrics_text(&self) -> String {
         if self.summary_text.trim().is_empty() {
-            return "total 0 | changed 0 | left 0 | right 0".to_string();
+            return String::new();
         }
         let total = summary_metric(&self.summary_text, "total=").unwrap_or_else(|| "0".to_string());
         let changed =
@@ -655,7 +663,7 @@ impl AppState {
             summary_metric(&self.summary_text, "left_only=").unwrap_or_else(|| "0".to_string());
         let right =
             summary_metric(&self.summary_text, "right_only=").unwrap_or_else(|| "0".to_string());
-        format!("total {total} | changed {changed} | left {left} | right {right}")
+        format!("Total {total} · Changed {changed} · Left {left} · Right {right}")
     }
 
     /// Returns true when compare summary indicates deferred detail entries.
@@ -666,6 +674,127 @@ impl AppState {
     /// Returns true when compare summary indicates oversized text entries.
     pub fn compare_has_oversized(&self) -> bool {
         summary_metric_usize(&self.summary_text, "oversized_text=").unwrap_or(0) > 0
+    }
+
+    /// Returns true when Compare Status has any compare report detail to expose.
+    pub fn compare_status_has_detail(&self) -> bool {
+        !self.summary_text.trim().is_empty()
+            || !self.warning_lines.is_empty()
+            || self
+                .error_message
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty())
+    }
+
+    /// Returns one collapsed note line for Compare Status.
+    pub fn compare_status_note_text(&self) -> String {
+        if !self.compare_status_has_detail() {
+            return String::new();
+        }
+
+        let mut parts = Vec::new();
+        if let Some(value) = self.compare_mode_note_text() {
+            parts.push(value);
+        }
+        if let Some(value) = self.compare_deferred_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} deferred"));
+        }
+        if let Some(value) = self.compare_oversized_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} oversized"));
+        }
+        if !self.warning_lines.is_empty() {
+            parts.push(format_warning_count(self.warning_lines.len()));
+        }
+        if self.truncated {
+            parts.push("Truncated output".to_string());
+        }
+
+        parts.join(" · ")
+    }
+
+    /// Returns concise copy-ready text for Compare Status.
+    pub fn compare_summary_copy_text(&self) -> String {
+        if !self.compare_status_has_detail() {
+            return String::new();
+        }
+
+        let mut lines = vec!["Compare Summary".to_string()];
+        if let Some(status) = normalize_optional_text(&self.status_text) {
+            lines.push(status);
+        }
+        if let Some(metrics) = normalize_optional_text(&self.compare_metrics_text()) {
+            lines.push(metrics);
+        }
+        if let Some(note) = normalize_optional_text(&self.compare_status_note_text()) {
+            lines.push(note);
+        }
+        if let Some(error) = self
+            .error_message
+            .as_deref()
+            .and_then(normalize_optional_text)
+        {
+            lines.push(format!("Error: {error}"));
+        }
+
+        lines.join("\n")
+    }
+
+    /// Returns structured copy-ready detail text for Compare Status.
+    pub fn compare_detail_copy_text(&self) -> String {
+        if !self.compare_status_has_detail() {
+            return String::new();
+        }
+
+        let mut blocks = Vec::new();
+        if let Some(status) = normalize_optional_text(&self.status_text) {
+            blocks.push(format!("Status\n{status}"));
+        }
+        if let Some(metrics) = normalize_optional_text(&self.compare_metrics_text()) {
+            blocks.push(format!("Results\n{metrics}"));
+        }
+
+        let mut diagnostics = Vec::new();
+        if let Some(mode) = self.compare_mode_label() {
+            diagnostics.push(mode);
+        }
+        if let Some(value) = self.compare_deferred_count().filter(|value| *value > 0) {
+            diagnostics.push(format!("{value} deferred detail entries"));
+        }
+        if let Some(value) = self.compare_oversized_count().filter(|value| *value > 0) {
+            diagnostics.push(format!("{value} oversized text entries"));
+        }
+        if self.truncated {
+            diagnostics.push("Truncated compare output".to_string());
+        }
+        if !diagnostics.is_empty() {
+            blocks.push(format!("Detail\n{}", diagnostics.join("\n")));
+        }
+
+        if let Some(summary) = normalize_optional_text(&self.compact_summary_text()) {
+            blocks.push(format!("Summary\n{summary}"));
+        }
+
+        if !self.warning_lines.is_empty() {
+            blocks.push(format!(
+                "Warnings\n{}",
+                self.warning_lines
+                    .iter()
+                    .map(|warning| format!("• {}", warning.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
+
+        if let Some(error) = self
+            .error_message
+            .as_deref()
+            .and_then(normalize_optional_text)
+        {
+            blocks.push(format!("Error\n{error}"));
+        }
+
+        format!("Compare Detail\n\n{}", blocks.join("\n\n"))
     }
 
     /// Returns selected relative path text for UI rendering.
@@ -1240,6 +1369,37 @@ impl AppState {
             && self.selected_diff.is_some()
             && (!self.analysis_remote_mode() || self.analysis_remote_config_ready())
     }
+
+    fn compare_mode_token(&self) -> Option<String> {
+        summary_metric(&self.summary_text, "mode=")
+            .and_then(|value| normalize_optional_text(&value))
+    }
+
+    fn compare_mode_label(&self) -> Option<String> {
+        match self.compare_mode_token()?.as_str() {
+            "summary-first" => Some("Summary-first mode".to_string()),
+            "large" => Some("Large mode".to_string()),
+            "normal" => None,
+            other => Some(title_case_token(other)),
+        }
+    }
+
+    fn compare_mode_note_text(&self) -> Option<String> {
+        match self.compare_mode_token()?.as_str() {
+            "summary-first" => Some("Summary-first mode".to_string()),
+            "large" => Some("Large-directory protection".to_string()),
+            "normal" => None,
+            other => Some(title_case_token(other)),
+        }
+    }
+
+    fn compare_deferred_count(&self) -> Option<usize> {
+        summary_metric_usize(&self.summary_text, "deferred=")
+    }
+
+    fn compare_oversized_count(&self) -> Option<usize> {
+        summary_metric_usize(&self.summary_text, "oversized_text=")
+    }
 }
 
 fn wrap_ui_text(text: &str, max_columns: usize) -> Vec<String> {
@@ -1359,6 +1519,32 @@ fn normalize_status_filter_token(raw: &str) -> String {
 
 fn status_filter_matches(status: &str, filter: &str) -> bool {
     filter == "all" || status.eq_ignore_ascii_case(filter)
+}
+
+fn status_filter_label(filter: &str) -> &'static str {
+    match filter {
+        "different" => "Diff",
+        "equal" => "Equal",
+        "left-only" => "Left only",
+        "right-only" => "Right only",
+        _ => "All results",
+    }
+}
+
+fn sanitize_inline_query(query: &str) -> String {
+    query
+        .trim()
+        .replace('\n', " ")
+        .replace('\r', " ")
+        .replace('"', "'")
+}
+
+fn format_warning_count(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1 => "1 warning".to_string(),
+        value => format!("{value} warnings"),
+    }
 }
 
 fn summary_metric(summary_text: &str, key: &str) -> Option<String> {
@@ -1504,20 +1690,20 @@ mod tests {
     }
 
     #[test]
-    fn filter_stats_text_is_consistent_across_scopes() {
+    fn results_collection_text_tracks_search_and_scope() {
         let mut state = AppState {
             entry_rows: sample_rows(),
             ..AppState::default()
         };
         assert_eq!(
-            state.filter_stats_text(),
-            "Visible 2/2 | Search: — | Status: All"
+            state.results_collection_text(),
+            "Showing 2 / 2 · All results"
         );
 
         state.entry_filter = "logo".to_string();
         state.set_entry_status_filter("different");
-        let text = state.filter_stats_text();
-        assert!(text.starts_with("Visible 1/2 | Search: logo | Status: Different"));
+        let text = state.results_collection_text();
+        assert_eq!(text, "Showing 1 / 2 · Search: \"logo\" · Diff");
     }
 
     #[test]
@@ -1528,14 +1714,13 @@ mod tests {
             ..AppState::default()
         };
         let text = state.compact_summary_text();
-        assert!(text.contains("mode normal"));
-        assert!(text.contains("total 120"));
-        assert!(text.contains("diff 8"));
-        assert!(text.contains("left 7"));
-        assert!(text.contains("right 5"));
-        assert!(text.contains("deferred 3"));
-        assert!(text.contains("oversized 2"));
-        assert!(text.contains("truncated"));
+        assert!(text.contains("Total 120"));
+        assert!(text.contains("Changed 8"));
+        assert!(text.contains("Left 7"));
+        assert!(text.contains("Right 5"));
+        assert!(text.contains("3 deferred"));
+        assert!(text.contains("2 oversized"));
+        assert!(text.contains("Truncated"));
     }
 
     #[test]
@@ -1546,8 +1731,35 @@ mod tests {
         };
         assert_eq!(
             state.compare_metrics_text(),
-            "total 42 | changed 4 | left 2 | right 1"
+            "Total 42 · Changed 4 · Left 2 · Right 1"
         );
+    }
+
+    #[test]
+    fn compare_copy_texts_are_summary_first_and_structured() {
+        let state = AppState {
+            status_text: "Compare finished: 42 entries".to_string(),
+            summary_text: "mode=summary-first total=42 equal=35 different=4 left_only=2 right_only=1 pending=0 skipped=0 deferred=3 oversized_text=1".to_string(),
+            warning_lines: vec!["large-directory guard applied".to_string()],
+            truncated: true,
+            ..AppState::default()
+        };
+
+        let summary = state.compare_summary_copy_text();
+        assert!(summary.contains("Compare Summary"));
+        assert!(summary.contains("Compare finished: 42 entries"));
+        assert!(summary.contains("Total 42 · Changed 4 · Left 2 · Right 1"));
+        assert!(summary.contains(
+            "Summary-first mode · 3 deferred · 1 oversized · 1 warning · Truncated output"
+        ));
+
+        let detail = state.compare_detail_copy_text();
+        assert!(detail.contains("Compare Detail"));
+        assert!(detail.contains("Status\nCompare finished: 42 entries"));
+        assert!(detail.contains("Results\nTotal 42 · Changed 4 · Left 2 · Right 1"));
+        assert!(detail.contains("Detail\nSummary-first mode"));
+        assert!(detail.contains("3 deferred detail entries"));
+        assert!(detail.contains("Warnings\n• large-directory guard applied"));
     }
 
     #[test]

@@ -5,8 +5,8 @@ use crate::commands::UiCommand;
 use crate::context_menu::{
     CONTEXT_MENU_COPY_ACTION_ID, CONTEXT_MENU_COPY_SUMMARY_ACTION_ID, ContextMenuBuildResult,
     ContextMenuCustomAction, ContextMenuInvocation, ContextMenuSyncState, ContextMenuTextPayload,
-    build_action_specs, build_analysis_section_payload, build_results_row_payload,
-    build_workspace_header_payload, should_close_for_sync_transition,
+    build_action_specs, build_analysis_section_payload, build_compare_status_payload,
+    build_results_row_payload, build_workspace_header_payload, should_close_for_sync_transition,
 };
 use crate::folder_picker;
 use crate::presenter::Presenter;
@@ -908,6 +908,10 @@ slint::slint! {
         in property <string> summary_text;
         in property <string> compact_summary_text;
         in property <string> compare_metrics_text;
+        in property <string> compare_status_note_text;
+        in property <bool> compare_status_has_detail;
+        in property <string> compare_summary_copy_text;
+        in property <string> compare_detail_copy_text;
         in property <string> warnings_text;
         in property <string> error_text;
         in property <bool> compare_truncated;
@@ -915,7 +919,7 @@ slint::slint! {
         in property <bool> compare_has_oversized;
         in-out property <string> entry_filter;
         in-out property <string> entry_status_filter;
-        in property <string> filter_stats_text;
+        in property <string> results_collection_text;
         in property <[string]> row_statuses;
         in property <[string]> row_paths;
         in property <[string]> row_details;
@@ -977,7 +981,7 @@ slint::slint! {
         in property <string> analysis_full_copy_text;
         in property <string> provider_settings_error_text;
         in-out property <int> workspace_tab: 0;
-        in-out property <bool> compare_warnings_expanded: false;
+        in-out property <bool> compare_status_details_expanded: false;
         in-out property <bool> provider_settings_open: false;
         in-out property <int> provider_settings_mode: 0;
         in-out property <string> provider_settings_endpoint;
@@ -1044,6 +1048,7 @@ slint::slint! {
         callback provider_settings_clicked();
         callback provider_settings_save_clicked();
         callback provider_settings_cancel_clicked();
+        callback compare_status_context_menu_requested(string, string);
         callback results_context_menu_requested(string, string, string, bool);
         callback workspace_header_context_menu_requested(string, string, string, string, string);
         callback analysis_section_context_menu_requested(string, string, string, string);
@@ -1105,9 +1110,9 @@ slint::slint! {
                         // Contract: Compare Inputs.
                         // Collects left/right roots and compare trigger; does not render compare results.
                         SectionCard {
-                            height: 142px;
+                            height: 146px;
                             VerticalLayout {
-                                padding: 9px;
+                                padding: 10px;
                                 spacing: 6px;
                                 Text {
                                     text: "Compare Inputs";
@@ -1126,6 +1131,7 @@ slint::slint! {
                                         text <=> root.left_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
+                                        placeholder-text: "Choose left folder";
                                     }
                                     ToolButton {
                                         label: "Browse";
@@ -1149,6 +1155,7 @@ slint::slint! {
                                         text <=> root.right_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
+                                        placeholder-text: "Choose right folder";
                                     }
                                     ToolButton {
                                         label: "Browse";
@@ -1177,7 +1184,7 @@ slint::slint! {
                                             ? "Running compare..."
                                             : (root.left_root == "" || root.right_root == ""
                                                 ? "Select left and right folders."
-                                                : "Ready");
+                                                : "Ready to compare.");
                                         color: #6c7a89;
                                         overflow: elide;
                                         vertical-alignment: center;
@@ -1196,97 +1203,229 @@ slint::slint! {
                                 // Contract: Compare Status.
                                 // Summarizes compare run status/metrics/warnings; no row selection or file-level content here.
                                 SectionCard {
-                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 132px : 88px;
-                            VerticalLayout {
-                                padding: 9px;
-                                spacing: 4px;
-                                Text {
-                                    text: "Compare Status";
-                                    color: #3b4a5b;
-                                    font-size: 15px;
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: root.status_text;
-                                        color: #455d74;
-                                        overflow: elide;
-                                        vertical-alignment: center;
-                                    }
-                                    StatusPill {
-                                        visible: root.compare_truncated;
-                                        label: "truncated";
-                                        tone: "warn";
-                                    }
-                                    StatusPill {
-                                        visible: root.warnings_text != "";
-                                        label: "warning";
-                                        tone: "warn";
-                                    }
-                                    StatusPill {
-                                        visible: root.error_text != "";
-                                        label: "error";
-                                        tone: "error";
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                    TextAction {
-                                        visible: root.summary_text != "" || root.warnings_text != "" || root.error_text != "";
-                                        label: root.compare_warnings_expanded ? "Hide details" : "Details";
-                                        tapped => {
-                                            root.compare_warnings_expanded = !root.compare_warnings_expanded;
-                                        }
-                                    }
-                                }
-                                Text {
-                                    text: root.compare_metrics_text
-                                        + (root.compare_has_deferred ? " | deferred" : "")
-                                        + (root.compare_has_oversized ? " | oversized" : "");
-                                    color: #566a7f;
-                                    overflow: elide;
-                                }
-                                Rectangle {
-                                    visible: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "");
-                                    height: 42px;
-                                    border-width: 1px;
-                                    border-color: #dde5ef;
-                                    border-radius: 4px;
-                                    background: #f7fafd;
-                                    clip: true;
+                                    height: root.compare_status_details_expanded && root.compare_status_has_detail
+                                        ? 206px
+                                        : (root.compare_status_note_text != "" ? 106px : 92px);
                                     VerticalLayout {
-                                        padding: 5px;
-                                        spacing: 2px;
-                                        Text {
-                                            visible: root.summary_text != "";
-                                            text: root.compact_summary_text;
-                                            color: #637285;
-                                            overflow: elide;
-                                            horizontal-stretch: 1;
+                                        padding: 10px;
+                                        spacing: 6px;
+
+                                        compare_status_header := Rectangle {
+                                            height: 20px;
+                                            background: transparent;
+
+                                            HorizontalLayout {
+                                                spacing: 8px;
+
+                                                compare_status_title_lane := Rectangle {
+                                                    background: transparent;
+                                                    horizontal-stretch: 1;
+
+                                                    Text {
+                                                        x: 0px;
+                                                        y: 0px;
+                                                        width: parent.width;
+                                                        height: parent.height;
+                                                        text: "Compare Status";
+                                                        color: #3b4a5b;
+                                                        font-size: 15px;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    TouchArea {
+                                                        pointer-event(event) => {
+                                                            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                root.compare_status_context_menu_requested(
+                                                                    root.compare_summary_copy_text,
+                                                                    root.compare_detail_copy_text,
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                TextAction {
+                                                    visible: root.compare_status_has_detail;
+                                                    label: root.compare_status_details_expanded ? "Hide details" : "Show details";
+                                                    tapped => {
+                                                        root.compare_status_details_expanded = !root.compare_status_details_expanded;
+                                                    }
+                                                }
+                                            }
                                         }
-                                        Text {
-                                            visible: root.error_text != "";
-                                            text: root.error_text;
-                                            color: #8a2f2f;
-                                            overflow: elide;
-                                            horizontal-stretch: 1;
+
+                                        compare_status_summary_surface := Rectangle {
+                                            height: root.compare_status_note_text != "" ? 48px : 34px;
+                                            background: transparent;
+
+                                            VerticalLayout {
+                                                spacing: 4px;
+
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: root.status_text;
+                                                        color: #455d74;
+                                                        overflow: elide;
+                                                        vertical-alignment: center;
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                    StatusPill {
+                                                        visible: root.compare_truncated;
+                                                        label: "truncated";
+                                                        tone: "warn";
+                                                    }
+                                                    StatusPill {
+                                                        visible: root.warnings_text != "";
+                                                        label: "warning";
+                                                        tone: "warn";
+                                                    }
+                                                    StatusPill {
+                                                        visible: root.error_text != "";
+                                                        label: "error";
+                                                        tone: "error";
+                                                    }
+                                                }
+
+                                                Text {
+                                                    visible: root.compare_metrics_text != "";
+                                                    text: root.compare_metrics_text;
+                                                    color: #566a7f;
+                                                    overflow: elide;
+                                                    horizontal-stretch: 1;
+                                                }
+
+                                                Text {
+                                                    visible: root.compare_status_note_text != "";
+                                                    text: root.compare_status_note_text;
+                                                    color: #6c7b8a;
+                                                    overflow: elide;
+                                                    horizontal-stretch: 1;
+                                                }
+                                            }
+
+                                            TouchArea {
+                                                pointer-event(event) => {
+                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                        root.compare_status_context_menu_requested(
+                                                            root.compare_summary_copy_text,
+                                                            root.compare_detail_copy_text,
+                                                        );
+                                                    }
+                                                }
+                                            }
                                         }
-                                        Text {
-                                            visible: root.warnings_text != "";
-                                            text: root.warnings_text;
-                                            color: #7a5a2f;
-                                            overflow: elide;
-                                            horizontal-stretch: 1;
+
+                                        compare_status_detail_tray := Rectangle {
+                                            visible: root.compare_status_details_expanded && root.compare_status_has_detail;
+                                            height: 104px;
+                                            border-width: 1px;
+                                            border-color: #dde5ef;
+                                            border-radius: 5px;
+                                            background: #f7fafd;
+                                            clip: true;
+
+                                            compare_status_detail_scroll := ScrollView {
+                                                width: parent.width;
+                                                height: parent.height;
+                                                scrolled => {
+                                                    root.context_menu_close_requested();
+                                                }
+                                                viewport-width: self.width;
+                                                viewport-height: max(
+                                                    self.height,
+                                                    compare_status_detail_content.y + compare_status_detail_content.preferred-height + 8px
+                                                );
+                                                compare_status_detail_viewport := Rectangle {
+                                                    width: compare_status_detail_scroll.viewport-width;
+                                                    height: compare_status_detail_scroll.viewport-height;
+
+                                                    compare_status_detail_content := VerticalLayout {
+                                                        x: 8px;
+                                                        y: 8px;
+                                                        width: max(0px, parent.width - 16px);
+                                                        spacing: 6px;
+
+                                                        if root.compact_summary_text != "" : Rectangle {
+                                                            height: compare_status_summary_detail.preferred-height;
+                                                            background: transparent;
+
+                                                            compare_status_summary_detail := VerticalLayout {
+                                                                spacing: 2px;
+                                                                Text {
+                                                                    text: "Summary";
+                                                                    color: #708193;
+                                                                    font-size: 11px;
+                                                                    font-weight: 600;
+                                                                }
+                                                                Text {
+                                                                    text: root.compact_summary_text;
+                                                                    color: #586c81;
+                                                                    font-size: 12px;
+                                                                    wrap: word-wrap;
+                                                                    horizontal-stretch: 1;
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if root.warnings_text != "" : Rectangle {
+                                                            height: compare_status_warning_detail.preferred-height;
+                                                            background: transparent;
+
+                                                            compare_status_warning_detail := VerticalLayout {
+                                                                spacing: 2px;
+                                                                Text {
+                                                                    text: "Warnings";
+                                                                    color: #826136;
+                                                                    font-size: 11px;
+                                                                    font-weight: 600;
+                                                                }
+                                                                Text {
+                                                                    text: root.warnings_text;
+                                                                    color: #7a5a2f;
+                                                                    font-size: 12px;
+                                                                    wrap: word-wrap;
+                                                                    horizontal-stretch: 1;
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if root.error_text != "" : Rectangle {
+                                                            height: compare_status_error_detail.preferred-height;
+                                                            background: transparent;
+
+                                                            compare_status_error_detail := VerticalLayout {
+                                                                spacing: 2px;
+                                                                Text {
+                                                                    text: "Error";
+                                                                    color: #8a2f2f;
+                                                                    font-size: 11px;
+                                                                    font-weight: 600;
+                                                                }
+                                                                Text {
+                                                                    text: root.error_text;
+                                                                    color: #8a2f2f;
+                                                                    font-size: 12px;
+                                                                    wrap: word-wrap;
+                                                                    horizontal-stretch: 1;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        }
 
                         // Contract: Filter / Scope.
                         // Applies text/status filters to navigator rows; does not mutate source compare data.
                         SectionCard {
-                            height: 108px;
+                            height: 104px;
                             VerticalLayout {
                                 padding: 10px;
                                 spacing: 6px;
@@ -1388,22 +1527,6 @@ slint::slint! {
                                             }
                                         }
                                     }
-                                    Text {
-                                        text: "scope: "
-                                            + (root.entry_status_filter == "all"
-                                                ? "All"
-                                                : (root.entry_status_filter == "different"
-                                                    ? "Diff"
-                                                    : (root.entry_status_filter == "equal"
-                                                        ? "Equal"
-                                                        : (root.entry_status_filter == "left-only"
-                                                            ? "Left"
-                                                            : "Right"))));
-                                        width: 84px;
-                                        color: #6f7e8d;
-                                        vertical-alignment: center;
-                                        horizontal-alignment: right;
-                                    }
                                 }
                             }
                         }
@@ -1421,7 +1544,7 @@ slint::slint! {
                                     font-size: 15px;
                                 }
                                 Text {
-                                    text: root.filter_stats_text;
+                                    text: root.results_collection_text;
                                     color: #6f7e8d;
                                     overflow: elide;
                                 }
@@ -3214,12 +3337,16 @@ fn sync_window_state(
     window.set_summary_text(state.summary_text.clone().into());
     window.set_compact_summary_text(state.compact_summary_text().into());
     window.set_compare_metrics_text(state.compare_metrics_text().into());
+    window.set_compare_status_note_text(state.compare_status_note_text().into());
+    window.set_compare_status_has_detail(state.compare_status_has_detail());
+    window.set_compare_summary_copy_text(state.compare_summary_copy_text().into());
+    window.set_compare_detail_copy_text(state.compare_detail_copy_text().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
     window.set_compare_truncated(state.truncated);
     window.set_compare_has_deferred(state.compare_has_deferred());
     window.set_compare_has_oversized(state.compare_has_oversized());
-    window.set_filter_stats_text(state.filter_stats_text().into());
+    window.set_results_collection_text(state.results_collection_text().into());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
     window.set_selected_relative_path_raw(
@@ -3666,6 +3793,25 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let compare_status_context_menu_controller = context_menu_controller.clone();
+    app.on_compare_status_context_menu_requested(move |summary_text, detail_text| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        let payload = build_compare_status_payload(summary_text.as_str(), detail_text.as_str());
+        let target_token = format!(
+            "compare-status:{}",
+            window
+                .get_status_text()
+                .to_string()
+                .trim()
+                .to_ascii_lowercase()
+        );
+        compare_status_context_menu_controller
+            .open(ContextMenuOpenRequest::builtin_only(target_token, payload));
+    });
+
+    let app_weak = app.as_weak();
     let results_context_menu_controller = context_menu_controller.clone();
     app.on_results_context_menu_requested(move |path, status, detail, unavailable| {
         if app_weak.upgrade().is_none() {
@@ -3747,6 +3893,7 @@ pub fn run() -> anyhow::Result<()> {
         };
 
         compare_context_menu_controller.close();
+        window.set_compare_status_details_expanded(false);
         compare_bridge.dispatch(UiCommand::UpdateLeftRoot(
             window.get_left_root().to_string(),
         ));

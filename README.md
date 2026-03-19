@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace 项目，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-03-18）：
+当前项目状态（2026-03-19）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -11,9 +11,10 @@
 - `slint = 1.15.1`
 - `slint-build = 1.15.1`
 - `phase15 summary` 已完成
+- `Phase 16A` 已完成
 - `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`，以及独立 workspace `edition = "2024"` 里程碑均已完成
 - `15.2E` 已在当前基线上发货
-- 当前主线下一步是 `Phase 16`
+- 当前主线下一步是继续剩余 `Phase 16` 工作
 
 ![display](./docs/assets/display_0_2_15/display.gif)
 
@@ -36,6 +37,7 @@
 - IA 保持 `App Bar + Sidebar + Workspace`
 - Workspace 保持 `Diff / Analysis` 共享壳层：`Tabs -> Header -> Content`
 - Compare Status 保持 summary-first
+- `Compare Status` 支持块内 `Show details / Hide details` tray 与 `Copy Summary` / `Copy Detail`
 - `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入框使用 `slint 1.15.1` 原生 editable-input context menu
 - `Provider Settings -> API Key` 使用专用 `ApiKeyLineEdit`
   - hidden：`Paste` only
@@ -48,12 +50,13 @@
 - read-only selectable content 共用 `UiTypography.selectable_content_font_family`
 - UI 主同步路径已切到 event-driven sync
 - `Results / Navigator` 与 `Diff` 行模型已切到 persistent `VecModel`
+- `Results / Navigator` 顶部摘要使用当前结果集合状态条（`Showing visible / total ...`）
 - `loading-mask` 与 `toast` 继续保持 UI-local boundary
 
 ## 3. 当前能力总览
 
-- Compare 闭环：路径输入、Browse、校验反馈、summary-first 状态
-- Results / Navigator：搜索 + 状态过滤 + 选择驱动 Diff 上下文
+- Compare 闭环：路径输入、Browse、校验反馈、summary-first 状态、块内 compare detail tray
+- Results / Navigator：搜索 + 状态过滤 + 集合状态摘要 + 选择驱动 Diff 上下文
 - Diff：`no-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`
 - Analysis：`no-selection -> not-started -> loading -> error|success`
 - Analysis success：
@@ -139,16 +142,16 @@ cargo test --workspace
 
 ## 9. 下一步
 
-- 下一步是 `Phase 16`：结果导航效率增强
-- `Phase 16` 应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1` 基线上
-- 进入 `Phase 16` 时，继续保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变
+- 下一步是继续剩余 `Phase 16`：结果导航效率增强
+- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A` 基线上
+- 继续保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变
 
 ## 10. 长期路线（参考）
 
 本节用于保留产品长期方向，便于快速理解项目后续可能演进到哪里。
 
 - 这是方向性 roadmap，不是当前线程 contract，也不覆盖 `docs/architecture.md` 中的当前架构事实。
-- 当前唯一明确的下一步仍然是 `Phase 16`。
+- 当前唯一明确的下一步仍然是继续剩余 `Phase 16`。
 - `Phase 17+` 之后的内容仅作为中长期参考，后续可以调整优先级、范围或拆分方式。
 
 - `Phase 16`

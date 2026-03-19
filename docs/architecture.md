@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 15 summary)
+# Folder Compare Architecture (Current Baseline after Phase 16A)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 16A`
   - `Phase 15.3A`
   - `Phase 15.3B`
   - `Phase 15.4`
@@ -25,10 +26,13 @@
   - `slint-build = 1.15.1`
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
-- Why `Phase 16` is next only after this summary:
+- Current working baseline on top of that shipped base:
+  - `Phase 16A` is complete
+  - Sidebar IA remains unchanged, but `Compare Status`, `Filter / Scope`, and `Results / Navigator` now use the tightened Phase 16A presentation contract
+- Why `Phase 16` still remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
-  - this summary removes obsolete roadmap language so the next thread starts from current facts instead of reopening completed closeouts;
-  - new product work should therefore resume at `Phase 16`, not at any `15.3A` to `15.8 fix-1` or edition-2024 task.
+  - `Phase 16A` closed the Sidebar expression pass without reopening old closeouts;
+  - the next thread should therefore continue the remaining `Phase 16` work instead of reopening `15.3A` to `15.8 fix-1` or edition-2024 tasks.
 
 ## Phase 15 summary
 
@@ -86,10 +90,17 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - validation
   - compare trigger
   - summary-first status update
+- `Compare Inputs` keeps the same interaction model, with only a light presentation pass around input/browse/compare grouping.
+- `Compare Status` remains one static sidebar result block:
+  - summary-first by default
+  - inline `Show details / Hide details` tray inside the block
+  - no modal or secondary report flow
 - Filter flow remains state-driven:
   - search text
   - segmented status scope (`All / Diff / Equal / Left / Right`)
   - segmented visual state stays in lockstep with filter state
+  - the user-facing summary no longer repeats status scope as a second `scope` label
+- `Results / Navigator` keeps the same row model and selection behavior, but the top summary now expresses the visible collection state (`Showing visible / total ...`) instead of raw filter field labels.
 
 ### Diff and Analysis shell
 
@@ -117,6 +128,10 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 ### Copy and menu boundaries
 
+- `Compare Status` reuses the shared window-local non-input context-menu core:
+  - `Copy Summary`
+  - `Copy Detail`
+  - `Copy Detail` remains available even when the tray is collapsed
 - `Analysis success` section cards keep lightweight inline `Copy` actions and one `Copy All` action.
 - `Analysis success` body text now uses native text-surface right-click on the current selected text only:
   - `Summary`
@@ -130,7 +145,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - Section-header labels remain explicitly left-aligned inside the narrowed header label lane, and that lane must not block the inline `Copy` action.
 - The shared window-local non-input context-menu core remains intentionally narrow:
   - safe surfaces only
-  - built-in actions limited to `Copy` and `Copy Summary`
+  - built-in actions remain limited to `Copy` and `Copy Summary`, with per-surface label override when needed
   - no fake `Paste` / `Cut` / `Select All`
   - no menu state in `AppState`
   - no controller ownership pushed into `Presenter`
@@ -206,10 +221,10 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 ## Next implementation priority
 
-1. Start `Phase 16` on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1` baseline.
-   - acceptance: result navigation becomes faster in large result sets without introducing tree mode or breaking the accepted workspace shell.
+1. Continue the remaining `Phase 16` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A` baseline.
+   - acceptance: result navigation continues to improve without introducing tree mode or breaking the accepted workspace shell.
 2. Keep the shipped `15.5` to `15.8 fix-1` contracts unchanged while `Phase 16` lands.
-   - acceptance: editable-input context menus, the `API Key` secret contract, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, and persistent `VecModel` all remain intact.
+   - acceptance: editable-input context menus, the `API Key` secret contract, `Compare Status` summary-first boundary, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, and persistent `VecModel` all remain intact.
 
 ## Documentation update contract
 
@@ -220,4 +235,4 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - what is completed
   - what the current baseline is
   - what intentionally stays unchanged
-  - why the next step is `Phase 16`
+  - why the next step is the remaining `Phase 16` work

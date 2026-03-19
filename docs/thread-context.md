@@ -4,10 +4,11 @@
 
 本文件用于“开新线程”的短周期交接，只记录当前事实、边界和下一步，不再把已完成的 phase train 当作待执行队列。
 
-## 本轮更新说明（2026-03-18）
+## 本轮更新说明（2026-03-19）
 
-- 本轮只执行 `phase15 summary / architecture 去历史化整理`，三份主文档现已同步到同一口径。
+- 本轮执行 `Phase 16A`，只做 Sidebar 信息架构收口，不改 IA、不改 compare/diff/analysis 核心数据结构。
 - 已完成并关闭：
+  - `Phase 16A`
   - `Phase 15.3A`
   - `Phase 15.3B`
   - `Phase 15.4`
@@ -35,6 +36,8 @@
   - non-input context-menu visual polish 已落地
   - `Analysis success` native text-surface right-click 已落地
   - section header 左对齐修复已落地
+  - `Compare Status` 块内 detail tray + `Copy Summary` / `Copy Detail` 已落地
+  - `Results / Navigator` 顶部集合状态条已落地
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
   - connected tabs + attached workbench surface 不变
@@ -51,9 +54,9 @@
 
 ## 快照（Snapshot）
 
-- 日期：`2026-03-18`（Asia/Shanghai）
-- 分支：`dev-phase15_3_to_6_upgrade_plan`
-- 工作区：当前仅有三份主文档的整理改动
+- 日期：`2026-03-19`（Asia/Shanghai）
+- 分支：当前执行 `Phase 16A`
+- 工作区：`fc-ui-slint` Sidebar 表达层、菜单接线与主文档同步改动
 - 最近提交：
   - `1311f96` edition-2024 milestone
   - `7e59de3` Phase 15.8 fix-1: section title align
@@ -64,9 +67,9 @@
 
 ## 当前目标（Execution Focus）
 
-1. `phase15 summary` 已完成；三份主文档现在都应表达同一份当前稳定事实。
-2. 下一线程默认从 `Phase 16` 开始，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`，也不要重开独立 workspace `edition = "2024"` 里程碑。
-3. 后续任何新一轮执行，都继续只同步这三份主文档，不再创建额外 phase checklist / summary 文档。
+1. `Phase 16A` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
+2. 后续线程继续 `Phase 16` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`，也不要重开独立 workspace `edition = "2024"` 里程碑。
+3. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
@@ -104,6 +107,10 @@
   - `Diff` 与 `Analysis` 共用已验收的 workbench shell，不改 tabs / header / content 层次
   - `Diff` detail 长行横向滚动维持显式 `ScrollView` 视口，尾行通过 scrollbar-safe spacer 避免被横向滚动条遮挡
   - `SelectableDiffText` 与 `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
+  - `Compare Status` 继续保持 summary-first，并在块内支持 `Show details / Hide details` tray
+  - `Compare Status` 右键菜单支持 `Copy Summary` / `Copy Detail`
+  - `Filter / Scope` 不再向用户重复显示单独的 `scope` 文案
+  - `Results / Navigator` 顶部摘要现在表达当前结果集合状态（`Showing visible / total ...`）
   - Analysis success 正文文本支持 native text-surface `Copy` / `Select All` right-click
   - Analysis success section header 标题继续保持显式左对齐，且不会遮挡右上角 inline `Copy`
 - 运行时：
@@ -113,9 +120,9 @@
 
 ## 下一步（Next）
 
-- 唯一建议的下一步是 `Phase 16`。
-- `Phase 16` 应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
-- 进入 `Phase 16` 时，继续保持当前 shell / menu / loading / toast / event-driven sync contract 不变。
+- 唯一建议的下一步是继续剩余 `Phase 16` 工作。
+- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
+- 继续保持当前 shell / menu / loading / toast / event-driven sync contract 不变。
 
 ## 开始前优先阅读文件（Key Files）
 
@@ -132,16 +139,11 @@
 
 ## 验证（Verification）
 
-- 本轮验证重点是“文档是否与当前代码事实一致”，已核对：
-  - `Cargo.toml`
-  - `rust-toolchain.toml`
-  - `docs/macos_dmg.sh`
-  - `crates/fc-ui-slint/src/app.rs`
-  - `crates/fc-ui-slint/src/ui_palette.slint`
-- 本轮未重复运行 `cargo check --workspace` / `cargo test --workspace`：
-  - 原因：本次只做文档整理，没有改 Rust / Slint / UI / 业务代码
-- 本轮未重复运行 `cargo run -p fc-ui-slint`：
-  - 原因：未改动任何会影响运行时行为、UI contract 或 smoke 结果的代码路径
+- 本轮验证重点是 `Phase 16A` Sidebar 表达与菜单接线：
+  - `cargo check -p fc-ui-slint`
+  - `cargo test -p fc-ui-slint`
+- 本轮未运行 `cargo run -p fc-ui-slint`：
+  - 原因：本轮未在此线程内做桌面 GUI smoke；真实视觉与交互验收仍保留给人工
 
 ## 新线程提示词模板（Handoff Prompt）
 

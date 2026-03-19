@@ -38,6 +38,8 @@ pub struct ContextMenuTextPayload {
     pub summary_text: String,
     pub copy_feedback_label: String,
     pub summary_feedback_label: String,
+    pub copy_action_label: String,
+    pub summary_action_label: String,
 }
 
 impl ContextMenuTextPayload {
@@ -47,6 +49,14 @@ impl ContextMenuTextPayload {
 
     pub fn summary_enabled(&self) -> bool {
         !self.summary_text.trim().is_empty()
+    }
+
+    fn resolved_copy_action_label(&self) -> String {
+        normalize_text(&self.copy_action_label).unwrap_or_else(|| "Copy".to_string())
+    }
+
+    fn resolved_summary_action_label(&self) -> String {
+        normalize_text(&self.summary_action_label).unwrap_or_else(|| "Copy Summary".to_string())
     }
 }
 
@@ -70,12 +80,12 @@ pub fn build_action_specs(
 ) -> ContextMenuBuildResult {
     let mut actions = Vec::new();
     actions.push(ContextMenuActionSpec {
-        label: "Copy".to_string(),
+        label: payload.resolved_copy_action_label(),
         action_id: CONTEXT_MENU_COPY_ACTION_ID.to_string(),
         enabled: payload.copy_enabled(),
     });
     actions.push(ContextMenuActionSpec {
-        label: "Copy Summary".to_string(),
+        label: payload.resolved_summary_action_label(),
         action_id: CONTEXT_MENU_COPY_SUMMARY_ACTION_ID.to_string(),
         enabled: payload.summary_enabled(),
     });
@@ -143,6 +153,8 @@ pub fn build_results_row_payload(
         summary_text: join_blocks(&[("Result Summary", Some(summary))]),
         copy_feedback_label: "Result".to_string(),
         summary_feedback_label: "Result Summary".to_string(),
+        copy_action_label: String::new(),
+        summary_action_label: String::new(),
     }
 }
 
@@ -177,6 +189,8 @@ pub fn build_workspace_header_payload(
         summary_text: join_blocks(&[("File Context Summary", Some(summary_line)), ("Hint", hint)]),
         copy_feedback_label: "File Context".to_string(),
         summary_feedback_label: "File Context Summary".to_string(),
+        copy_action_label: String::new(),
+        summary_action_label: String::new(),
     }
 }
 
@@ -202,6 +216,25 @@ pub fn build_analysis_section_payload(
         summary_text,
         copy_feedback_label: section.clone(),
         summary_feedback_label: format!("{section} Summary"),
+        copy_action_label: String::new(),
+        summary_action_label: String::new(),
+    }
+}
+
+pub fn build_compare_status_payload(
+    summary_text: &str,
+    detail_text: &str,
+) -> ContextMenuTextPayload {
+    let summary = normalize_text(summary_text);
+    let detail = normalize_text(detail_text).or_else(|| summary.clone());
+
+    ContextMenuTextPayload {
+        copy_text: detail.unwrap_or_default(),
+        summary_text: summary.unwrap_or_default(),
+        copy_feedback_label: "Compare Detail".to_string(),
+        summary_feedback_label: "Compare Summary".to_string(),
+        copy_action_label: "Copy Detail".to_string(),
+        summary_action_label: "Copy Summary".to_string(),
     }
 }
 
@@ -294,6 +327,8 @@ mod tests {
             summary_text: "summary".to_string(),
             copy_feedback_label: "Copy".to_string(),
             summary_feedback_label: "Summary".to_string(),
+            copy_action_label: String::new(),
+            summary_action_label: String::new(),
         };
         let custom_actions = (0..12)
             .map(|index| ContextMenuCustomActionDescriptor {
@@ -308,10 +343,12 @@ mod tests {
         assert_eq!(result.actions.len(), 12);
         assert_eq!(result.truncated_custom_count, 2);
         assert_eq!(result.actions[0].action_id, CONTEXT_MENU_COPY_ACTION_ID);
+        assert_eq!(result.actions[0].label, "Copy");
         assert_eq!(
             result.actions[1].action_id,
             CONTEXT_MENU_COPY_SUMMARY_ACTION_ID
         );
+        assert_eq!(result.actions[1].label, "Copy Summary");
         assert_eq!(
             result
                 .actions
@@ -330,6 +367,18 @@ mod tests {
         assert!(payload.copy_text.contains("Status\nChanged"));
         assert!(payload.summary_text.contains("Result Summary"));
         assert!(payload.summary_text.contains("src/main.rs"));
+    }
+
+    #[test]
+    fn compare_status_payload_uses_summary_and_detail_labels() {
+        let payload = build_compare_status_payload("Compare Summary\nOK", "Compare Detail\nLines");
+        let result = build_action_specs(&payload, &[]);
+
+        assert_eq!(result.actions.len(), 2);
+        assert_eq!(result.actions[0].label, "Copy Detail");
+        assert_eq!(result.actions[1].label, "Copy Summary");
+        assert_eq!(payload.copy_feedback_label, "Compare Detail");
+        assert_eq!(payload.summary_feedback_label, "Compare Summary");
     }
 
     #[test]
