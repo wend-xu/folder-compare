@@ -6,8 +6,9 @@
 
 ## 本轮更新说明（2026-03-20）
 
-- 本轮执行 `Phase 16C`，只做 `Results / Navigator` 与右侧 `File View` 之间的 selection / stale / unavailable 一致性收口，不改 IA、不改 compare/diff/analysis 核心数据结构。
+- 本轮执行 `Phase 16C fix-1`，只做 `Results / Navigator` 次信息可见性收口与输入框全角字符 TOFU 回归修复，不改 IA、不改 compare/diff/analysis 核心数据结构。
 - 已完成并关闭：
+  - `Phase 16C fix-1`
   - `Phase 16C`
   - `Phase 16A`
   - `Phase 16A fix-1`
@@ -36,6 +37,7 @@
   - persistent `VecModel` 已落地
   - `Diff` 显式 `ScrollView` 视口已落地
   - shared `UiTypography.selectable_content_font_family` 已落地
+  - shared `UiTypography.editable_input_font_family` 已落地
   - non-input context-menu visual polish 已落地
   - `Analysis success` native text-surface right-click 已落地
   - section header 左对齐修复已落地
@@ -48,6 +50,8 @@
   - compare 重跑后已支持基于同一路径的低风险恢复；无法恢复时进入 stale selection
   - row secondary summary 已更贴近右侧真实 viewer 能力，尤其是 non-text / binary / preview-unavailable 项
   - `Diff / Analysis` 已区分 `no selection` 与 `stale selection`，并收口基础 unavailable / ready / waiting 语义
+  - `Results / Navigator` row 次信息已进一步收缩为 capability-first 短语，弱 parent-path 会更早让出宽度
+  - `Compare Inputs`、`Search`、`Provider Settings`、`API Key` 输入框已统一走 CJK-safe editable input font token，修复全角标点 TOFU
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
   - connected tabs + attached workbench surface 不变
@@ -58,15 +62,15 @@
   - loading-mask / toast boundary 不变
   - UI 继续使用内联 `slint::slint!`
 - 为什么下一步才是 `Phase 16`：
-  - `Phase 16A`、`16A fix-1`、`16B`、`16C` 已把 Sidebar 表达、flat-list 结果扫描能力，以及 File View 状态联动收口到当前稳定基线；
+  - `Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1` 已把 Sidebar 表达、flat-list 结果扫描能力，以及 File View 状态联动收口到当前稳定基线；
   - 现有主文档已经不再把已完成 closeout 与 16A/16B 当作待执行清单；
   - 因此下一线程应继续剩余 `Phase 16` 工作，而不是继续重开 `15.3A` 到 `15.8 fix-1`、`16A`、`16A fix-1`、`16B`、`16C` 或 edition 兼容修复。
 
 ## 快照（Snapshot）
 
 - 日期：`2026-03-20`（Asia/Shanghai）
-- 分支：当前执行 `Phase 16C`
-- 工作区：`fc-ui-slint` selection continuity、compare reload restore、row/file-view capability 文案与主文档同步改动
+- 分支：当前执行 `Phase 16C fix-1`
+- 工作区：`fc-ui-slint` row capability summary 收缩、editable input 字体链修复、主文档同步改动
 - 最近提交：
   - `0a8769d` Phase 16A fix-1
   - `1311f96` edition-2024 milestone
@@ -78,23 +82,24 @@
 
 ## 当前目标（Execution Focus）
 
-1. `Phase 16C` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
+1. `Phase 16C fix-1` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
 2. `Results / Navigator` 当前稳定 contract 是 flat list：filename-first 主信息、reason summary 次信息、parent-path 弱信息，以及仅基于现有 `path / name` 搜索 contract 的轻量命中高亮。
 3. selection / file-view 当前稳定 contract：
    - Search / Status 改变后，当前项仍可见则保留；否则清掉左侧可见选中态，右侧进入 stale selection
    - compare 重跑后仅按同一路径做基础恢复；无法稳定恢复则保持 stale selection，不自动跳转
    - `Diff / Analysis` 明确区分 `no selection`、`stale selection`、`unavailable` 与 `ready/waiting`
-4. 后续线程继续 `Phase 16` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`，也不要重开独立 workspace `edition = "2024"` 里程碑。
-5. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
+4. row / input 当前补充 contract：
+   - row 次信息优先表达是否可 `text diff` / `text preview`，并使用短语以适配当前 Sidebar 宽度
+   - 普通输入框与 `ApiKeyLineEdit` 共用 `UiTypography.editable_input_font_family`，避免 `slint 1.15.1` 默认 editable widget 字体链导致的全角字符 TOFU
+5. 后续线程继续 `Phase 16` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`，也不要重开独立 workspace `edition = "2024"` 里程碑。
+6. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `Phase 16C`
-  - Search / Status 变化后的 selection continuity 收口
-  - compare 重跑后的基础恢复策略
-  - row 语义与右侧 unavailable / preview capability 对齐
-  - `Diff / Analysis` 基础状态切换一致性
+  - `Phase 16C fix-1`
+  - row secondary summary 的可见性有效性收口
+  - editable input 字体链回归修复
 - Out of Scope：
   - tree / hierarchy / grouping navigation
   - 排序系统
@@ -114,7 +119,8 @@
 7. `Provider Settings -> API Key` 继续保持专用 `ApiKeyLineEdit`：hidden=`Paste` only；visible=`Select All`、`Copy`、`Paste`、`Cut`。
 8. `Analysis success` 正文文本继续走 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`）；section header / chrome 继续走 window-local `Copy` / `Copy Summary` 菜单；`Risk Level` 继续保持显式 `Copy` 按钮-only。
 9. 不重新引入 broad `50ms` polling，不回退 persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`。
-10. 不把 `Phase 16`、新菜单方案、或新的产品行为变更混入当前文档 closeout。
+10. 不把 editable input 字体策略散落到多个局部组件，继续通过共享 typography token 统一控制。
+11. 不把 `Phase 16`、新菜单方案、或新的产品行为变更混入当前文档 closeout。
 
 ## 当前稳定事实（Stable Facts）
 
@@ -127,6 +133,7 @@
   - `Diff` 与 `Analysis` 共用已验收的 workbench shell，不改 tabs / header / content 层次
   - `Diff` detail 长行横向滚动维持显式 `ScrollView` 视口，尾行通过 scrollbar-safe spacer 避免被横向滚动条遮挡
   - `SelectableDiffText` 与 `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
+  - 普通输入框与 `ApiKeyLineEdit` 现在共用 `UiTypography.editable_input_font_family`，修复 mixed Latin/CJK 与全角标点输入的 TOFU
   - `Compare Status` 继续保持 summary-first，并在块内支持 `Show details / Hide details` tray
   - `Compare Status` 右键菜单支持 `Copy Summary` / `Copy Detail`
   - `Compare Status` 折叠区与展开 tray 区都支持同一套上下文菜单
@@ -135,12 +142,12 @@
   - `Filter / Scope` 不再向用户重复显示单独的 `scope` 文案
   - `Results / Navigator` 顶部摘要现在表达当前结果集合状态（`Showing visible / total ...`）
   - `Results / Navigator` row 顶部主信息现在优先展示 filename / leaf path segment，而不是整条路径文本
-  - `Results / Navigator` row 次信息现在优先表达 `diff / equal / left / right` 的原因摘要，而不是直接暴露原始 detail 文本
+  - `Results / Navigator` row 次信息现在优先表达 `diff / equal / left / right` 的 capability-first 短摘要，而不是直接暴露原始 detail 文本
   - `Results / Navigator` row 保留 parent-path 作为弱 disambiguation 信息，不引入 tree / hierarchy / grouping
   - `Results / Navigator` 搜索命中高亮仅基于当前 `path / name` contract，不引入 detail/content 搜索
   - Search / Status 改变后，若当前 source row 仍在新集合中则保持选中；若不在新集合中，则左侧清掉可见选中态，右侧保留 stale path 语义，不自动跳到第一项
   - compare 重跑后只按同一路径做低风险恢复；若同一路径仍存在且在当前 filter 下可见，则恢复选中并自动刷新 File View；否则进入 stale selection
-  - row secondary summary 现在更主动提示 non-text / binary compare 与常见 preview-unavailable 文件类型，帮助用户预判右侧 viewer 能力
+  - row secondary summary 现在更主动提示 non-text / binary compare 与常见 preview-unavailable 文件类型，帮助用户预判右侧 viewer 能力，并通过更短文案适配当前 Sidebar 宽度
   - Analysis success 正文文本支持 native text-surface `Copy` / `Select All` right-click
   - Analysis success section header 标题继续保持显式左对齐，且不会遮挡右上角 inline `Copy`
   - `Diff` 与 `Analysis` 当前都已支持显式 stale selection 文案，不再把 filtered-out selection 与从未选中过的 no-selection 混为一谈
@@ -152,7 +159,7 @@
 ## 下一步（Next）
 
 - 唯一建议的下一步是继续剩余 `Phase 16` 工作。
-- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
+- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
 - 继续保持当前 shell / menu / loading / toast / event-driven sync contract 不变。
 
 ## 开始前优先阅读文件（Key Files）
@@ -170,7 +177,7 @@
 
 ## 验证（Verification）
 
-- 本轮验证重点是 `Phase 16C` selection continuity、compare reload restore 与 stale / unavailable shell 语义：
+- 本轮验证重点是 `Phase 16C fix-1` row 次信息可见性与 editable input 字体链修复：
   - `cargo check -p fc-ui-slint`
   - `cargo test -p fc-ui-slint`
 - 本轮未运行 `cargo run -p fc-ui-slint`：
@@ -182,9 +189,9 @@
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > `docs/upgrade-plan-rust-1.94-slint-1.15.md` 只在需要升级与独立 edition 里程碑归档背景时再阅读。  
-> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
+> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
 > 把当前稳定基线视为：workspace `version = "0.2.18"`、workspace `edition = "2024"`、`rust-toolchain = 1.94.0`、workspace `rust-version = 1.94`、`slint = 1.15.1`、`slint-build = 1.15.1`，且 `15.2E`、event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`、non-input context-menu visual polish、`Analysis success` native text-surface right-click、section header 左对齐修复均已稳定。  
-> 当前默认进入 `Phase 16`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C`、或 edition `2024` 兼容修复。  
+> 当前默认进入 `Phase 16`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C` / `16C fix-1`、或 edition `2024` 兼容修复。  
 > 保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变。
 
 ## 更新契约（Mandatory）

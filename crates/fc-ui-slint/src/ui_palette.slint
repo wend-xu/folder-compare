@@ -150,4 +150,7 @@ export global UiTypography {
     // Shared typography token for read-only selectable content that must keep
     // mixed Latin/CJK punctuation stable across Slint text-engine upgrades.
     out property <string> selectable_content_font_family: "PingFang SC";
+    // Shared typography token for editable inputs so all text-entry surfaces
+    // keep the same CJK-safe fallback chain.
+    out property <string> editable_input_font_family: "PingFang SC";
 }

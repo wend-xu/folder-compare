@@ -1763,15 +1763,15 @@ fn format_navigator_parent_path(parent_path: &str) -> String {
 fn navigator_secondary_text(row: &CompareEntryRowViewModel) -> String {
     let secondary = match row.status.as_str() {
         "left-only" => match row.entry_kind.as_str() {
-            "directory" => "Only on left directory".to_string(),
-            "symlink" => "Only on left symlink".to_string(),
-            "other" => "Only on left special entry".to_string(),
+            "directory" => "Directory only on left".to_string(),
+            "symlink" => "Symlink only on left".to_string(),
+            "other" => "Special entry only on left".to_string(),
             _ => navigator_single_side_file_secondary_text("left", &row.relative_path),
         },
         "right-only" => match row.entry_kind.as_str() {
-            "directory" => "Only on right directory".to_string(),
-            "symlink" => "Only on right symlink".to_string(),
-            "other" => "Only on right special entry".to_string(),
+            "directory" => "Directory only on right".to_string(),
+            "symlink" => "Symlink only on right".to_string(),
+            "other" => "Special entry only on right".to_string(),
             _ => navigator_single_side_file_secondary_text("right", &row.relative_path),
         },
         "equal" => navigator_equal_secondary_text(row),
@@ -1800,18 +1800,17 @@ fn navigator_secondary_text(row: &CompareEntryRowViewModel) -> String {
 
 fn navigator_equal_secondary_text(row: &CompareEntryRowViewModel) -> String {
     match (row.entry_kind.as_str(), row.detail_kind.as_str()) {
-        ("directory", _) => "Directory present on both sides".to_string(),
-        ("symlink", _) => "Symlink content compare deferred".to_string(),
-        ("file", "text-diff") => "Text content matched".to_string(),
+        ("directory", _) => "Directory on both sides".to_string(),
+        ("symlink", _) => "Symlink compare deferred".to_string(),
+        ("file", "text-diff") => "Text matched".to_string(),
         ("file", "file-comparison") => {
             let base = navigator_file_comparison_matched_text(&row.relative_path);
             format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
         }
-        ("file", "text-detail-deferred") => format!(
-            "Text detail deferred{}",
-            navigator_text_detail_reason_suffix(&row.detail)
-        ),
-        ("file", "message") => "File content matched".to_string(),
+        ("file", "text-detail-deferred") => {
+            format!("Deferred text detail{}", navigator_text_detail_reason_suffix(&row.detail))
+        }
+        ("file", "message") => "File matched".to_string(),
         _ => format!("{} matched", navigator_entry_kind_label(&row.entry_kind)),
     }
 }
@@ -1834,7 +1833,7 @@ fn navigator_different_secondary_text(row: &CompareEntryRowViewModel) -> String 
             format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
         }
         "text-detail-deferred" => format!(
-            "Changed file · text detail deferred{}",
+            "Deferred text diff{}",
             navigator_text_detail_reason_suffix(&row.detail)
         ),
         "message" => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
@@ -1849,37 +1848,37 @@ fn navigator_different_secondary_text(row: &CompareEntryRowViewModel) -> String 
 
 fn navigator_pending_secondary_text(row: &CompareEntryRowViewModel) -> String {
     match row.entry_kind.as_str() {
-        "symlink" => "Symlink content compare deferred".to_string(),
-        "directory" => "Directory compare deferred".to_string(),
+        "symlink" => "Symlink deferred".to_string(),
+        "directory" => "Directory deferred".to_string(),
         _ => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
     }
 }
 
-fn navigator_single_side_file_secondary_text(side: &str, relative_path: &str) -> String {
-    if let Some(kind) = navigator_unavailable_preview_file_kind(relative_path) {
-        return format!("Only on {side} {kind} · text preview unavailable");
+fn navigator_single_side_file_secondary_text(_side: &str, relative_path: &str) -> String {
+    if let Some(kind) = navigator_capability_file_kind(relative_path) {
+        return format!("{kind} · no text preview");
     }
 
-    format!("Only on {side} · preview loads for UTF-8 text")
+    "Text-only preview".to_string()
 }
 
 fn navigator_file_comparison_matched_text(relative_path: &str) -> String {
-    if let Some(kind) = navigator_unavailable_preview_file_kind(relative_path) {
-        return format!("Matched {kind} · text preview unavailable");
+    if let Some(kind) = navigator_capability_file_kind(relative_path) {
+        return format!("{kind} · no text preview");
     }
 
-    "File compare matched · preview loads for UTF-8 text".to_string()
+    "Text-only preview".to_string()
 }
 
 fn navigator_file_comparison_differs_text(relative_path: &str) -> String {
-    if let Some(kind) = navigator_unavailable_preview_file_kind(relative_path) {
-        return format!("{kind} differs · detailed text diff unavailable");
+    if let Some(kind) = navigator_capability_file_kind(relative_path) {
+        return format!("{kind} · no text diff");
     }
 
-    "Non-text/binary compare differs · detailed text diff unavailable".to_string()
+    "No text diff".to_string()
 }
 
-fn navigator_unavailable_preview_file_kind(relative_path: &str) -> Option<&'static str> {
+fn navigator_capability_file_kind(relative_path: &str) -> Option<&'static str> {
     let extension = Path::new(relative_path)
         .extension()
         .and_then(|value| value.to_str())
@@ -1900,7 +1899,7 @@ fn navigator_unavailable_preview_file_kind(relative_path: &str) -> Option<&'stat
             | "heif"
             | "icns"
             | "psd",
-        ) => Some("image file"),
+        ) => Some("Image"),
         Some(
             "pdf"
             | "zip"
@@ -1943,7 +1942,7 @@ fn navigator_unavailable_preview_file_kind(relative_path: &str) -> Option<&'stat
             | "xlsx"
             | "ppt"
             | "pptx",
-        ) => Some("binary-like file"),
+        ) => Some("Binary"),
         _ => None,
     }
 }
@@ -1959,7 +1958,7 @@ fn navigator_entry_kind_label(kind: &str) -> &'static str {
 
 fn navigator_text_diff_summary(detail: &str) -> Option<String> {
     let body = detail.strip_prefix("text summary:")?.trim();
-    let hunks = extract_prefixed_token(body, "hunks=").map(|value| format!("{value} hunks"));
+    let hunks = extract_prefixed_token(body, "hunks=").map(|value| format!("{value}h"));
     let added = extract_prefixed_token(body, "+")
         .filter(|value| value != "0")
         .map(|value| format!("+{value}"));
@@ -1968,7 +1967,7 @@ fn navigator_text_diff_summary(detail: &str) -> Option<String> {
         .map(|value| format!("-{value}"));
     let context = extract_prefixed_token(body, "ctx=")
         .filter(|value| value != "0")
-        .map(|value| format!("{value} ctx"));
+        .map(|value| format!("{value}ctx"));
     let parts = [hunks, added, removed, context]
         .into_iter()
         .flatten()
@@ -2218,7 +2217,7 @@ mod tests {
         assert_eq!(projected[0].parent_path, "assets/js/runtime");
         assert_eq!(
             projected[0].secondary_text,
-            "Only on right · preview loads for UTF-8 text"
+            "Text-only preview"
         );
     }
 
@@ -2242,7 +2241,7 @@ mod tests {
         let projected = state.navigator_row_projections();
         assert_eq!(
             projected[0].secondary_text,
-            "Only on left image file · text preview unavailable"
+            "Image · no text preview"
         );
     }
 
@@ -2270,11 +2269,7 @@ mod tests {
         };
 
         let projected = state.navigator_row_projections();
-        assert!(
-            projected[0]
-                .secondary_text
-                .contains("detailed text diff unavailable")
-        );
+        assert_eq!(projected[0].secondary_text, "Image · no text diff · 1B / 2B");
     }
 
     #[test]
@@ -2340,7 +2335,7 @@ mod tests {
         let projected = state.navigator_row_projections();
         assert_eq!(
             projected[0].secondary_text,
-            "Text diff · 2 hunks · +4 · -1 · 8 ctx"
+            "Text diff · 2h · +4 · -1 · 8ctx"
         );
     }
 

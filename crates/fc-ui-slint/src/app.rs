@@ -644,6 +644,7 @@ slint::slint! {
                 input-type: root.revealed ? InputType.text : InputType.password;
                 color: #33485d;
                 font-size: 13px;
+                font-family: UiTypography.editable_input_font_family;
                 selection-background-color: #c9daec;
                 selection-foreground-color: #23384d;
                 accessible-role: none;
@@ -885,6 +886,10 @@ slint::slint! {
                 }
             }
         }
+    }
+
+    component AppLineEdit inherits LineEdit {
+        font-family: UiTypography.editable_input_font_family;
     }
 
     component DiffCopyHotspot inherits Rectangle {
@@ -1166,7 +1171,7 @@ slint::slint! {
                                         color: #5d6d7e;
                                         vertical-alignment: center;
                                     }
-                                    LineEdit {
+                                    AppLineEdit {
                                         text <=> root.left_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
@@ -1190,7 +1195,7 @@ slint::slint! {
                                         color: #5d6d7e;
                                         vertical-alignment: center;
                                     }
-                                    LineEdit {
+                                    AppLineEdit {
                                         text <=> root.right_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
@@ -1517,7 +1522,7 @@ slint::slint! {
                                         color: #5d6d7e;
                                         vertical-alignment: center;
                                     }
-                                    LineEdit {
+                                    AppLineEdit {
                                         text <=> root.entry_filter;
                                         horizontal-stretch: 1;
                                         enabled: !root.running;
@@ -1719,7 +1724,7 @@ slint::slint! {
                                                 }
                                             }
                                             HorizontalLayout {
-                                                spacing: 5px;
+                                                spacing: 4px;
                                                 Text {
                                                     text: row_item.secondary_text;
                                                     color: row_item.detail_text_color;
@@ -1743,7 +1748,7 @@ slint::slint! {
                                                     highlight_fill: row_item.match_fill;
                                                     font_size: 11px;
                                                     font_weight: 400;
-                                                    max-width: 180px;
+                                                    max-width: 108px;
                                                 }
                                             }
                                         }
@@ -2848,7 +2853,7 @@ slint::slint! {
                             color: #4f6074;
                             vertical-alignment: center;
                         }
-                        LineEdit {
+                        AppLineEdit {
                             text <=> root.provider_settings_timeout;
                             width: 140px;
                             height: 28px;
@@ -2874,7 +2879,7 @@ slint::slint! {
                                 color: #4f6074;
                                 vertical-alignment: center;
                             }
-                            LineEdit {
+                            AppLineEdit {
                                 text <=> root.provider_settings_endpoint;
                                 horizontal-stretch: 1;
                                 height: 28px;
@@ -2903,7 +2908,7 @@ slint::slint! {
                                 color: #4f6074;
                                 vertical-alignment: center;
                             }
-                            LineEdit {
+                            AppLineEdit {
                                 text <=> root.provider_settings_model;
                                 horizontal-stretch: 1;
                                 height: 28px;
