@@ -66,6 +66,8 @@ pub struct NavigatorRowProjection {
     pub parent_path: String,
     /// Secondary summary explaining why this row is diff/equal/left/right.
     pub secondary_text: String,
+    /// Row-level tooltip completion text (full filename + full parent path when present).
+    pub tooltip_text: String,
     /// Whether current filter matched the display name.
     pub display_name_matches_filter: bool,
     /// Whether current filter matched the weak parent-path context.
@@ -663,6 +665,7 @@ impl AppState {
             .into_iter()
             .map(|(source_index, row)| {
                 let (parent_path_raw, display_name) = split_relative_path_leaf(&row.relative_path);
+                let full_parent_path = normalize_navigator_parent_path(&parent_path_raw);
                 let parent_path = format_navigator_parent_path(&parent_path_raw);
                 let relative_path_lower = row.relative_path.to_lowercase();
                 let display_name_lower = display_name.to_lowercase();
@@ -683,6 +686,7 @@ impl AppState {
                 NavigatorRowProjection {
                     source_index,
                     secondary_text: navigator_secondary_text(&row),
+                    tooltip_text: navigator_row_tooltip_text(&display_name, &full_parent_path),
                     row,
                     display_name,
                     parent_path,
@@ -1744,10 +1748,14 @@ fn split_relative_path_leaf(relative_path: &str) -> (String, String) {
     }
 }
 
-fn format_navigator_parent_path(parent_path: &str) -> String {
-    let normalized = parent_path
+fn normalize_navigator_parent_path(parent_path: &str) -> String {
+    parent_path
         .trim_matches(|ch| ch == '/' || ch == '\\')
-        .replace('\\', "/");
+        .replace('\\', "/")
+}
+
+fn format_navigator_parent_path(parent_path: &str) -> String {
+    let normalized = normalize_navigator_parent_path(parent_path);
     if normalized.is_empty() {
         String::new()
     } else {
@@ -1757,6 +1765,14 @@ fn format_navigator_parent_path(parent_path: &str) -> String {
             NAVIGATOR_PARENT_PATH_HEAD_CHARS,
             NAVIGATOR_PARENT_PATH_TAIL_CHARS,
         )
+    }
+}
+
+fn navigator_row_tooltip_text(display_name: &str, full_parent_path: &str) -> String {
+    if full_parent_path.is_empty() {
+        display_name.to_string()
+    } else {
+        format!("{display_name}\n{full_parent_path}")
     }
 }
 
@@ -2215,9 +2231,37 @@ mod tests {
         assert_eq!(projected.len(), 1);
         assert_eq!(projected[0].display_name, "fernetBrowser.js");
         assert_eq!(projected[0].parent_path, "assets/js/runtime");
+        assert_eq!(projected[0].secondary_text, "Text-only preview");
         assert_eq!(
-            projected[0].secondary_text,
-            "Text-only preview"
+            projected[0].tooltip_text,
+            "fernetBrowser.js\nassets/js/runtime"
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_keeps_full_parent_path_for_tooltip_completion() {
+        let full_parent_path = "workspace/frontend/src/components/navigation/sidebar/results";
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: format!("{full_parent_path}/fernetBrowser.js"),
+                status: "right-only".to_string(),
+                detail: "only on right".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "message".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(projected.len(), 1);
+        assert!(projected[0].parent_path.contains('…'));
+        assert_eq!(
+            projected[0].tooltip_text,
+            format!("fernetBrowser.js\n{full_parent_path}")
         );
     }
 

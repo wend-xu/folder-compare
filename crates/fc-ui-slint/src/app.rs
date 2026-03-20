@@ -937,11 +937,12 @@ slint::slint! {
         in property <string> placeholder_text;
         in property <bool> enabled: true;
         callback edited(string);
-        callback tooltip_requested(string, length, length);
+        callback tooltip_requested(string, length, length, length);
         callback tooltip_closed();
 
         out property <bool> has_focus: line_edit.has-focus;
         property <length> text_lane_padding: 18px;
+        property <length> tooltip_x_inset: 8px;
         property <bool> can_show_tooltip: root.enabled
             && !root.has_focus
             && root.text != ""
@@ -965,14 +966,17 @@ slint::slint! {
         forward-focus: line_edit;
 
         hover_sensor := TouchArea {
+            width: parent.width;
+            height: parent.height;
             enabled: root.enabled && root.text != "";
 
             changed has-hover => {
                 if self.has-hover && root.can_show_tooltip {
                     root.tooltip_requested(
                         root.text,
-                        self.absolute-position.x,
-                        self.absolute-position.y + self.height + 4px,
+                        self.absolute-position.x + root.tooltip_x_inset,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
                     );
                 } else {
                     root.tooltip_closed();
@@ -984,8 +988,9 @@ slint::slint! {
                     if self.has-hover && root.can_show_tooltip {
                         root.tooltip_requested(
                             root.text,
-                            self.absolute-position.x,
-                            self.absolute-position.y + self.height + 4px,
+                            self.absolute-position.x + root.tooltip_x_inset,
+                            self.absolute-position.y,
+                            self.absolute-position.y + self.height,
                         );
                     } else {
                         root.tooltip_closed();
@@ -1009,6 +1014,10 @@ slint::slint! {
         }
 
         text_probe := Text {
+            x: 0px;
+            y: 0px;
+            width: 0px;
+            height: 0px;
             visible: false;
             text: root.text;
             font-size: line_edit.font-size;
@@ -1087,6 +1096,7 @@ slint::slint! {
         in property <[string]> row_details;
         in property <[string]> row_display_names;
         in property <[string]> row_parent_paths;
+        in property <[string]> row_tooltip_texts;
         in property <[string]> row_secondary_texts;
         in property <[int]> row_source_indices;
         in property <[bool]> row_can_load_diff;
@@ -1188,7 +1198,9 @@ slint::slint! {
         in-out property <bool> tooltip_visible: false;
         in-out property <string> tooltip_text: "";
         in-out property <length> tooltip_anchor_x: 0px;
-        in-out property <length> tooltip_anchor_y: 0px;
+        in-out property <length> tooltip_anchor_top: 0px;
+        in-out property <length> tooltip_anchor_bottom: 0px;
+        property <length> tooltip_gap: 6px;
         property <bool> has_selected_result: root.selected_row >= 0;
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
@@ -1204,23 +1216,16 @@ slint::slint! {
         property <length> workbench_header_height: 66px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
-        function point_in_bounds(
-            point_x: length,
-            point_y: length,
-            item_x: length,
-            item_y: length,
-            item_width: length,
-            item_height: length,
-        ) -> bool {
-            return point_x >= item_x
-                && point_x <= item_x + item_width
-                && point_y >= item_y
-                && point_y <= item_y + item_height;
-        }
-        function show_tooltip(text: string, anchor_x: length, anchor_y: length) {
+        function show_tooltip(
+            text: string,
+            anchor_x: length,
+            anchor_top: length,
+            anchor_bottom: length,
+        ) {
             root.tooltip_text = text;
             root.tooltip_anchor_x = anchor_x;
-            root.tooltip_anchor_y = anchor_y;
+            root.tooltip_anchor_top = anchor_top;
+            root.tooltip_anchor_bottom = anchor_bottom;
             root.tooltip_visible = text != "";
         }
         function hide_tooltip() {
@@ -1327,11 +1332,12 @@ slint::slint! {
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
                                         placeholder_text: "Choose left folder";
-                                        tooltip_requested(value, anchor_x, anchor_y) => {
+                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
                                             root.show_tooltip(
                                                 value,
                                                 anchor_x - root.absolute-position.x,
                                                 anchor_y - root.absolute-position.y,
+                                                anchor_bottom - root.absolute-position.y,
                                             );
                                         }
                                         tooltip_closed => {
@@ -1361,11 +1367,12 @@ slint::slint! {
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
                                         placeholder_text: "Choose right folder";
-                                        tooltip_requested(value, anchor_x, anchor_y) => {
+                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
                                             root.show_tooltip(
                                                 value,
                                                 anchor_x - root.absolute-position.x,
                                                 anchor_y - root.absolute-position.y,
+                                                anchor_bottom - root.absolute-position.y,
                                             );
                                         }
                                         tooltip_closed => {
@@ -1701,11 +1708,12 @@ slint::slint! {
                                         edited(value) => {
                                             root.filter_changed(value);
                                         }
-                                        tooltip_requested(value, anchor_x, anchor_y) => {
+                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
                                             root.show_tooltip(
                                                 value,
                                                 anchor_x - root.absolute-position.x,
                                                 anchor_y - root.absolute-position.y,
+                                                anchor_bottom - root.absolute-position.y,
                                             );
                                         }
                                         tooltip_closed => {
@@ -1812,12 +1820,14 @@ slint::slint! {
                                 ListView {
                                     vertical-stretch: 1;
                                     for row_path[index] in root.row_paths: row_item := Rectangle {
+                                        property <length> tooltip_x_inset: 8px;
                                         property <int> source_index: root.row_source_indices[index];
                                         property <string> row_status: root.row_statuses[index];
                                         property <bool> row_unavailable: !root.row_can_load_diff[index];
                                         property <bool> row_selected: source_index == root.selected_row;
                                         property <string> display_name: root.row_display_names[index];
                                         property <string> parent_path: root.row_parent_paths[index];
+                                        property <string> tooltip_text: root.row_tooltip_texts[index];
                                         property <string> secondary_text: root.row_secondary_texts[index];
                                         property <string> row_status_label: row_status == "different"
                                             ? "diff"
@@ -1875,50 +1885,19 @@ slint::slint! {
                                         property <brush> match_fill: row_selected
                                             ? UiPalette.results_row_selected_match_background
                                             : UiPalette.results_row_match_background;
-                                        function update_row_tooltip(mouse_x: length, mouse_y: length) {
-                                            if display_name_label.is_truncated
-                                                && root.point_in_bounds(
-                                                    mouse_x,
-                                                    mouse_y,
-                                                    display_name_label.absolute-position.x - row_item.absolute-position.x,
-                                                    display_name_label.absolute-position.y - row_item.absolute-position.y,
-                                                    display_name_label.width,
-                                                    display_name_label.height,
-                                                ) {
+                                        function update_row_tooltip(
+                                            anchor_x: length,
+                                            anchor_top: length,
+                                            anchor_bottom: length,
+                                        ) {
+                                            if row_item.tooltip_text != ""
+                                                && (display_name_label.is_truncated
+                                                    || (parent_path_label.visible && parent_path_label.is_truncated)) {
                                                 root.show_tooltip(
-                                                    row_item.display_name,
-                                                    display_name_label.absolute-position.x - root.absolute-position.x,
-                                                    display_name_label.absolute-position.y + display_name_label.height - root.absolute-position.y + 4px,
-                                                );
-                                            } else if secondary_text_label.text != ""
-                                                && secondary_text_label.preferred-width > secondary_text_label.width + 1px
-                                                && root.point_in_bounds(
-                                                    mouse_x,
-                                                    mouse_y,
-                                                    secondary_text_label.absolute-position.x - row_item.absolute-position.x,
-                                                    secondary_text_label.absolute-position.y - row_item.absolute-position.y,
-                                                    secondary_text_label.width,
-                                                    secondary_text_label.height,
-                                                ) {
-                                                root.show_tooltip(
-                                                    row_item.secondary_text,
-                                                    secondary_text_label.absolute-position.x - root.absolute-position.x,
-                                                    secondary_text_label.absolute-position.y + secondary_text_label.height - root.absolute-position.y + 4px,
-                                                );
-                                            } else if parent_path_label.visible
-                                                && parent_path_label.is_truncated
-                                                && root.point_in_bounds(
-                                                    mouse_x,
-                                                    mouse_y,
-                                                    parent_path_label.absolute-position.x - row_item.absolute-position.x,
-                                                    parent_path_label.absolute-position.y - row_item.absolute-position.y,
-                                                    parent_path_label.width,
-                                                    parent_path_label.height,
-                                                ) {
-                                                root.show_tooltip(
-                                                    row_item.parent_path,
-                                                    parent_path_label.absolute-position.x - root.absolute-position.x,
-                                                    parent_path_label.absolute-position.y + parent_path_label.height - root.absolute-position.y + 4px,
+                                                    row_item.tooltip_text,
+                                                    anchor_x + row_item.tooltip_x_inset - root.absolute-position.x,
+                                                    anchor_top - root.absolute-position.y,
+                                                    anchor_bottom - root.absolute-position.y,
                                                 );
                                             } else {
                                                 root.hide_tooltip();
@@ -1984,10 +1963,16 @@ slint::slint! {
                                         }
 
                                         TouchArea {
+                                            width: parent.width;
+                                            height: parent.height;
                                             enabled: !root.diff_loading;
                                             changed has-hover => {
                                                 if self.has-hover {
-                                                    row_item.update_row_tooltip(self.mouse-x, self.mouse-y);
+                                                    row_item.update_row_tooltip(
+                                                        self.absolute-position.x,
+                                                        self.absolute-position.y,
+                                                        self.absolute-position.y + self.height,
+                                                    );
                                                 } else {
                                                     root.hide_tooltip();
                                                 }
@@ -1998,7 +1983,11 @@ slint::slint! {
                                             }
                                             pointer-event(event) => {
                                                 if event.kind == PointerEventKind.move {
-                                                    row_item.update_row_tooltip(self.mouse-x, self.mouse-y);
+                                                    row_item.update_row_tooltip(
+                                                        self.absolute-position.x,
+                                                        self.absolute-position.y,
+                                                        self.absolute-position.y + self.height,
+                                                    );
                                                 } else if event.kind == PointerEventKind.down {
                                                     root.hide_tooltip();
                                                 }
@@ -2873,13 +2862,18 @@ slint::slint! {
             property <length> max_bubble_width: min(520px, max(180px, root.width - panel_margin * 2));
             property <length> bubble_width: tooltip_panel.width;
             property <length> bubble_height: tooltip_panel.height;
+            property <length> preferred_above_y: root.tooltip_anchor_top - bubble_height - root.tooltip_gap;
+            property <length> preferred_below_y: root.tooltip_anchor_bottom + root.tooltip_gap;
             x: max(
                 panel_margin,
                 min(root.tooltip_anchor_x, max(panel_margin, root.width - bubble_width - panel_margin))
             );
             y: max(
                 panel_margin,
-                min(root.tooltip_anchor_y, max(panel_margin, root.height - bubble_height - panel_margin))
+                min(
+                    preferred_above_y >= panel_margin ? preferred_above_y : preferred_below_y,
+                    max(panel_margin, root.height - bubble_height - panel_margin),
+                )
             );
             width: bubble_width;
             height: bubble_height;
@@ -3697,6 +3691,7 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_row_details(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_display_names(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_parent_paths(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_tooltip_texts(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_secondary_texts(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_source_indices(Rc::new(VecModel::<i32>::default()).into());
     window.set_row_can_load_diff(Rc::new(VecModel::<bool>::default()).into());
@@ -3869,6 +3864,15 @@ fn sync_window_state(
             window.get_row_parent_paths(),
             row_parent_paths,
             "row_parent_paths",
+        );
+        let row_tooltip_texts = projected_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.tooltip_text.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_tooltip_texts(),
+            row_tooltip_texts,
+            "row_tooltip_texts",
         );
         let row_secondary_texts = projected_rows
             .iter()

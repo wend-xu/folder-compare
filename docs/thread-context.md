@@ -6,8 +6,9 @@
 
 ## 本轮更新说明（2026-03-20）
 
-- 本轮执行 `Phase 17A`，只做统一 tooltip 基建与长文本可见性收口，不改 IA、不改 compare/diff/analysis 核心数据结构，不把 tooltip 扩成新的说明层或全局 controller。
+- 本轮执行 `Phase 17A fix-1`，只收口 Results / Navigator tooltip 触发稳定性、shared overlay 定位与 Compare/Search 输入框长文本裁切，不改 IA、不改 compare/diff/analysis 核心数据结构，不把 tooltip 扩成新的说明层或全局 controller。
 - 已完成并关闭：
+  - `Phase 17A fix-1`
   - `Phase 17A`
   - `Phase 16C fix-1`
   - `Phase 16C`
@@ -54,8 +55,9 @@
   - `Results / Navigator` row 次信息已进一步收缩为 capability-first 短语，弱 parent-path 会更早让出宽度
   - `Compare Inputs`、`Search`、`Provider Settings`、`API Key` 输入框已统一走 CJK-safe editable input font token，修复全角标点 TOFU
   - window-local shared tooltip 基建已落地
-  - `Results / Navigator` row 的截断 filename / capability-first 次信息 / parent-path 已支持 tooltip 补全文本
-  - `Compare Inputs` 左右路径与 `Filter / Scope -> Search` 长文本输入已支持非编辑态 tooltip 补全文本
+  - `Results / Navigator` row 现已收口为 row-level tooltip：当 filename 或 parent-path 截断时，整行 hover 可稳定补全完整 filename 与完整 parent path
+  - `Compare Inputs` 左右路径与 `Filter / Scope -> Search` 长文本输入已支持非编辑态 tooltip 补全文本，且长值会先裁切在输入框内，不再突破 Sidebar 边界
+  - shared tooltip overlay 默认优先显示在目标上方；上方空间不足时再降级到下方
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
   - connected tabs + attached workbench surface 不变
@@ -67,14 +69,14 @@
   - UI 继续使用内联 `slint::slint!`
 - 为什么下一步才是剩余 `Phase 17`：
   - `Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1` 已把 Sidebar 表达、flat-list 结果扫描能力，以及 File View 状态联动收口到当前稳定基线；
-  - `Phase 17A` 已在此基础上补齐克制的 tooltip completion layer，但没有重开 IA、tree mode、settings framework 或 compare 能力；
+  - `Phase 17A` 已在此基础上补齐克制的 tooltip completion layer，`Phase 17A fix-1` 则进一步把 row hover 稳定性、输入框裁切与 overlay 定位收口，但没有重开 IA、tree mode、settings framework 或 compare 能力；
   - 因此下一线程应继续剩余 `Phase 17` 工作，而不是继续重开 `15.3A` 到 `15.8 fix-1`、`16A` 到 `16C fix-1`、或 edition 兼容修复。
 
 ## 快照（Snapshot）
 
 - 日期：`2026-03-20`（Asia/Shanghai）
-- 分支：当前执行 `Phase 17A`
-- 工作区：`fc-ui-slint` shared tooltip overlay、row truncated-text completion、Compare/Search 输入框 tooltip、主文档同步改动
+- 分支：当前执行 `Phase 17A fix-1`
+- 工作区：`fc-ui-slint` shared tooltip overlay、row-level tooltip completion、Compare/Search 输入框 tooltip + clipping、主文档同步改动
 - 最近提交：
   - `0a8769d` Phase 16A fix-1
   - `1311f96` edition-2024 milestone
@@ -86,7 +88,7 @@
 
 ## 当前目标（Execution Focus）
 
-1. `Phase 17A` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
+1. `Phase 17A fix-1` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
 2. `Results / Navigator` 当前稳定 contract 是 flat list：filename-first 主信息、reason summary 次信息、parent-path 弱信息，以及仅基于现有 `path / name` 搜索 contract 的轻量命中高亮。
 3. selection / file-view 当前稳定 contract：
    - Search / Status 改变后，当前项仍可见则保留；否则清掉左侧可见选中态，右侧进入 stale selection
@@ -95,16 +97,18 @@
 4. row / input 当前补充 contract：
    - row 次信息优先表达是否可 `text diff` / `text preview`，并使用短语以适配当前 Sidebar 宽度
    - 普通输入框与 `ApiKeyLineEdit` 共用 `UiTypography.editable_input_font_family`，避免 `slint 1.15.1` 默认 editable widget 字体链导致的全角字符 TOFU
-   - tooltip 当前是 window-local shared overlay，只承担被截断文本的补全；已接入 row filename / secondary / parent-path，以及 Compare/Search 长输入值
-5. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`，也不要重开独立 workspace `edition = "2024"` 里程碑。
+   - tooltip 当前是 window-local shared overlay，只承担被截断文本的补全；Results row 已收口为 row-level tooltip，只补全完整 filename + 完整 parent path；Compare/Search 继续只补全输入完整值
+   - shared tooltip overlay 默认优先上方定位；空间不足时降级到下方
+   - `TooltipLineEdit` 包装层会继续保留 native editable behavior，同时把可见输入宽度收紧在控件矩形内
+5. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`、`Phase 17A fix-1`，也不要重开独立 workspace `edition = "2024"` 里程碑。
 6. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `Phase 17A`
+  - `Phase 17A fix-1`
   - window-local tooltip 基建
-  - `Results / Navigator` / `Compare Inputs` / `Search` 的长文本补全
+  - `Results / Navigator` / `Compare Inputs` / `Search` 的长文本补全与裁切收口
 - Out of Scope：
   - tree / hierarchy / grouping navigation
   - 排序系统
@@ -151,8 +155,9 @@
   - `Results / Navigator` row 保留 parent-path 作为弱 disambiguation 信息，不引入 tree / hierarchy / grouping
   - `Results / Navigator` 搜索命中高亮仅基于当前 `path / name` contract，不引入 detail/content 搜索
   - tooltip 当前是一个共享的 window-local overlay；它只在文本被截断时补全文本，不承担新的说明职责
-  - `Results / Navigator` row 的 filename / secondary summary / parent-path 在截断时都可通过 tooltip 查看完整文本
-  - `Compare Inputs` 左右路径与 `Filter / Scope -> Search` 在非编辑态、长文本被截断时可通过 tooltip 查看完整值
+  - `Results / Navigator` row 的 tooltip 已收口为 row-level completion：当 filename 或 parent-path 截断时，整行 hover 可查看完整 filename 与完整 parent path
+  - `Compare Inputs` 左右路径与 `Filter / Scope -> Search` 在非编辑态、长文本被截断时可通过 tooltip 查看完整值，且文本会先被裁切在输入框内
+  - shared tooltip overlay 默认优先在目标上方展示，若空间不足则自动降级到下方
   - Search / Status 改变后，若当前 source row 仍在新集合中则保持选中；若不在新集合中，则左侧清掉可见选中态，右侧保留 stale path 语义，不自动跳到第一项
   - compare 重跑后只按同一路径做低风险恢复；若同一路径仍存在且在当前 filter 下可见，则恢复选中并自动刷新 File View；否则进入 stale selection
   - row secondary summary 现在更主动提示 non-text / binary compare 与常见 preview-unavailable 文件类型，帮助用户预判右侧 viewer 能力，并通过更短文案适配当前 Sidebar 宽度
@@ -167,7 +172,7 @@
 ## 下一步（Next）
 
 - 唯一建议的下一步是继续剩余 `Phase 17` 工作。
-- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
+- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
 - 继续保持当前 shell / menu / loading / toast / event-driven sync contract 不变。
 
 ## 开始前优先阅读文件（Key Files）
@@ -185,7 +190,7 @@
 
 ## 验证（Verification）
 
-- 本轮验证重点是 `Phase 17A` tooltip 基建与长文本补全接线：
+- 本轮验证重点是 `Phase 17A fix-1` 的 row tooltip 稳定性、输入框裁切与 shared overlay 定位：
   - `cargo check -p fc-ui-slint`
   - `cargo test -p fc-ui-slint`
 - 本轮未运行 `cargo run -p fc-ui-slint`：
@@ -197,9 +202,9 @@
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > `docs/upgrade-plan-rust-1.94-slint-1.15.md` 只在需要升级与独立 edition 里程碑归档背景时再阅读。  
-> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`、`Phase 17A`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
+> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`、`Phase 17A`、`Phase 17A fix-1`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
 > 把当前稳定基线视为：workspace `version = "0.2.18"`、workspace `edition = "2024"`、`rust-toolchain = 1.94.0`、workspace `rust-version = 1.94`、`slint = 1.15.1`、`slint-build = 1.15.1`，且 `15.2E`、event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`、non-input context-menu visual polish、`Analysis success` native text-surface right-click、section header 左对齐修复均已稳定。  
-> 当前默认进入剩余 `Phase 17`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C` / `16C fix-1` / `Phase 17A`、或 edition `2024` 兼容修复。  
+> 当前默认进入剩余 `Phase 17`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C` / `16C fix-1` / `Phase 17A` / `Phase 17A fix-1`、或 edition `2024` 兼容修复。  
 > 保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变。
 
 ## 更新契约（Mandatory）
