@@ -6,8 +6,9 @@
 
 ## 本轮更新说明（2026-03-20）
 
-- 本轮执行 `Phase 16B`，只做 `Results / Navigator` 结果项信息模型与定位效率增强，不改 IA、不改 compare/diff/analysis 核心数据结构。
+- 本轮执行 `Phase 16C`，只做 `Results / Navigator` 与右侧 `File View` 之间的 selection / stale / unavailable 一致性收口，不改 IA、不改 compare/diff/analysis 核心数据结构。
 - 已完成并关闭：
+  - `Phase 16C`
   - `Phase 16A`
   - `Phase 16A fix-1`
   - `Phase 16B`
@@ -43,6 +44,10 @@
   - `Results / Navigator` 顶部集合状态条已落地
   - `Results / Navigator` row 已收口为 filename-first 主信息、reason summary 次信息、parent-path 弱信息
   - `Results / Navigator` 已支持基于现有 `path / name` contract 的克制命中高亮
+  - Search / Status 改变后的 selection policy 已收口为“可保留则保留，不可保留则显式 stale，不自动跳到第一项”
+  - compare 重跑后已支持基于同一路径的低风险恢复；无法恢复时进入 stale selection
+  - row secondary summary 已更贴近右侧真实 viewer 能力，尤其是 non-text / binary / preview-unavailable 项
+  - `Diff / Analysis` 已区分 `no selection` 与 `stale selection`，并收口基础 unavailable / ready / waiting 语义
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
   - connected tabs + attached workbench surface 不变
@@ -53,15 +58,15 @@
   - loading-mask / toast boundary 不变
   - UI 继续使用内联 `slint::slint!`
 - 为什么下一步才是 `Phase 16`：
-  - `Phase 16A`、`16A fix-1`、`16B` 已把 Sidebar 表达与 flat-list 结果扫描能力收口到当前稳定基线；
+  - `Phase 16A`、`16A fix-1`、`16B`、`16C` 已把 Sidebar 表达、flat-list 结果扫描能力，以及 File View 状态联动收口到当前稳定基线；
   - 现有主文档已经不再把已完成 closeout 与 16A/16B 当作待执行清单；
-  - 因此下一线程应继续剩余 `Phase 16` 工作，而不是继续重开 `15.3A` 到 `15.8 fix-1`、`16A`、`16A fix-1`、`16B` 或 edition 兼容修复。
+  - 因此下一线程应继续剩余 `Phase 16` 工作，而不是继续重开 `15.3A` 到 `15.8 fix-1`、`16A`、`16A fix-1`、`16B`、`16C` 或 edition 兼容修复。
 
 ## 快照（Snapshot）
 
 - 日期：`2026-03-20`（Asia/Shanghai）
-- 分支：当前执行 `Phase 16B`
-- 工作区：`fc-ui-slint` Results / Navigator row 表达层、搜索命中高亮与主文档同步改动
+- 分支：当前执行 `Phase 16C`
+- 工作区：`fc-ui-slint` selection continuity、compare reload restore、row/file-view capability 文案与主文档同步改动
 - 最近提交：
   - `0a8769d` Phase 16A fix-1
   - `1311f96` edition-2024 milestone
@@ -73,22 +78,26 @@
 
 ## 当前目标（Execution Focus）
 
-1. `Phase 16B` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
+1. `Phase 16C` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
 2. `Results / Navigator` 当前稳定 contract 是 flat list：filename-first 主信息、reason summary 次信息、parent-path 弱信息，以及仅基于现有 `path / name` 搜索 contract 的轻量命中高亮。
-3. 后续线程继续 `Phase 16` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`，也不要重开独立 workspace `edition = "2024"` 里程碑。
-4. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
+3. selection / file-view 当前稳定 contract：
+   - Search / Status 改变后，当前项仍可见则保留；否则清掉左侧可见选中态，右侧进入 stale selection
+   - compare 重跑后仅按同一路径做基础恢复；无法稳定恢复则保持 stale selection，不自动跳转
+   - `Diff / Analysis` 明确区分 `no selection`、`stale selection`、`unavailable` 与 `ready/waiting`
+4. 后续线程继续 `Phase 16` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`，也不要重开独立 workspace `edition = "2024"` 里程碑。
+5. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `Phase 16B`
-  - `Results / Navigator` row 信息层级收口
-  - filename / parent-path 扫描效率增强
-  - 仅基于现有 `path / name` contract 的命中高亮
+  - `Phase 16C`
+  - Search / Status 变化后的 selection continuity 收口
+  - compare 重跑后的基础恢复策略
+  - row 语义与右侧 unavailable / preview capability 对齐
+  - `Diff / Analysis` 基础状态切换一致性
 - Out of Scope：
   - tree / hierarchy / grouping navigation
   - 排序系统
-  - selection continuity / compare 重跑恢复
   - 内容搜索
   - Diff / Analysis 主体改造
   - edition `2024` 兼容修复回合
@@ -122,14 +131,19 @@
   - `Compare Status` 右键菜单支持 `Copy Summary` / `Copy Detail`
   - `Compare Status` 折叠区与展开 tray 区都支持同一套上下文菜单
   - `Filter / Scope -> Search` 当前 contract 收口为 path/name 匹配
+  - Search 命中高亮当前仍是 row-local label 级高亮；若未来需要 match-span / substring highlight，应由更下层提供 match positions 或预切分结果，Slint 视图层只负责渲染
   - `Filter / Scope` 不再向用户重复显示单独的 `scope` 文案
   - `Results / Navigator` 顶部摘要现在表达当前结果集合状态（`Showing visible / total ...`）
   - `Results / Navigator` row 顶部主信息现在优先展示 filename / leaf path segment，而不是整条路径文本
   - `Results / Navigator` row 次信息现在优先表达 `diff / equal / left / right` 的原因摘要，而不是直接暴露原始 detail 文本
   - `Results / Navigator` row 保留 parent-path 作为弱 disambiguation 信息，不引入 tree / hierarchy / grouping
   - `Results / Navigator` 搜索命中高亮仅基于当前 `path / name` contract，不引入 detail/content 搜索
+  - Search / Status 改变后，若当前 source row 仍在新集合中则保持选中；若不在新集合中，则左侧清掉可见选中态，右侧保留 stale path 语义，不自动跳到第一项
+  - compare 重跑后只按同一路径做低风险恢复；若同一路径仍存在且在当前 filter 下可见，则恢复选中并自动刷新 File View；否则进入 stale selection
+  - row secondary summary 现在更主动提示 non-text / binary compare 与常见 preview-unavailable 文件类型，帮助用户预判右侧 viewer 能力
   - Analysis success 正文文本支持 native text-surface `Copy` / `Select All` right-click
   - Analysis success section header 标题继续保持显式左对齐，且不会遮挡右上角 inline `Copy`
+  - `Diff` 与 `Analysis` 当前都已支持显式 stale selection 文案，不再把 filtered-out selection 与从未选中过的 no-selection 混为一谈
 - 运行时：
   - compare / diff / analysis 后台完成态继续通过 presenter notifier + `slint::Weak::upgrade_in_event_loop` 回推 UI
   - `Results / Navigator` 与 `Diff` 行模型继续使用 persistent `VecModel`
@@ -138,7 +152,7 @@
 ## 下一步（Next）
 
 - 唯一建议的下一步是继续剩余 `Phase 16` 工作。
-- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
+- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
 - 继续保持当前 shell / menu / loading / toast / event-driven sync contract 不变。
 
 ## 开始前优先阅读文件（Key Files）
@@ -156,7 +170,7 @@
 
 ## 验证（Verification）
 
-- 本轮验证重点是 `Phase 16B` Results / Navigator row 表达与命中高亮：
+- 本轮验证重点是 `Phase 16C` selection continuity、compare reload restore 与 stale / unavailable shell 语义：
   - `cargo check -p fc-ui-slint`
   - `cargo test -p fc-ui-slint`
 - 本轮未运行 `cargo run -p fc-ui-slint`：
@@ -168,9 +182,9 @@
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > `docs/upgrade-plan-rust-1.94-slint-1.15.md` 只在需要升级与独立 edition 里程碑归档背景时再阅读。  
-> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
+> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
 > 把当前稳定基线视为：workspace `version = "0.2.18"`、workspace `edition = "2024"`、`rust-toolchain = 1.94.0`、workspace `rust-version = 1.94`、`slint = 1.15.1`、`slint-build = 1.15.1`，且 `15.2E`、event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`、non-input context-menu visual polish、`Analysis success` native text-surface right-click、section header 左对齐修复均已稳定。  
-> 当前默认进入 `Phase 16`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B`、或 edition `2024` 兼容修复。  
+> 当前默认进入 `Phase 16`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C`、或 edition `2024` 兼容修复。  
 > 保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变。
 
 ## 更新契约（Mandatory）

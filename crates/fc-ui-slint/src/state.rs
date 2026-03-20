@@ -18,6 +18,8 @@ const NAVIGATOR_SECONDARY_MAX_CHARS: usize = 96;
 pub enum DiffShellState {
     /// No row selected in Results / Navigator.
     NoSelection,
+    /// A previous file path exists, but the row is no longer active in current results.
+    StaleSelection,
     /// Diff or preview loading is in progress.
     Loading,
     /// Detailed diff payload is ready.
@@ -35,8 +37,14 @@ pub enum DiffShellState {
 pub enum AnalysisPanelState {
     /// No row selected in Results / Navigator.
     NoSelection,
-    /// One row is selected, but no analysis result is available yet.
-    NotStarted,
+    /// A previous file path exists, but the row is no longer active in current results.
+    StaleSelection,
+    /// One row is selected and analysis is waiting for diff context.
+    WaitingForDiff,
+    /// One row is selected and analysis can start immediately.
+    Ready,
+    /// One row is selected, but analysis cannot start for this selection.
+    Unavailable,
     /// AI analysis is currently running.
     Loading,
     /// AI analysis failed in the current session.
@@ -164,6 +172,17 @@ impl Default for AppState {
 }
 
 impl AppState {
+    fn has_selection_path(&self) -> bool {
+        self.selected_relative_path
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    fn has_stale_selection(&self) -> bool {
+        self.selected_row.is_none() && self.has_selection_path()
+    }
+
     fn selected_entry_row(&self) -> Option<&CompareEntryRowViewModel> {
         self.selected_row.and_then(|idx| self.entry_rows.get(idx))
     }
@@ -195,6 +214,36 @@ impl AppState {
             Some(value) => Some(format!("type .{}", value.to_ascii_lowercase())),
             None => Some("type file".to_string()),
         }
+    }
+
+    fn selected_row_can_load_analysis(&self) -> bool {
+        self.selected_entry_row()
+            .map(|row| row.can_load_analysis)
+            .unwrap_or(false)
+    }
+
+    fn analysis_waiting_for_diff_context(&self) -> bool {
+        if self.selected_row.is_none() || !self.selected_row_can_load_analysis() {
+            return false;
+        }
+        if self
+            .diff_error_message
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
+        self.diff_loading || self.selected_diff.is_none()
+    }
+
+    fn analysis_selection_unavailable(&self) -> bool {
+        self.selected_row.is_some()
+            && !self.analysis_loading
+            && self.analysis_result.is_none()
+            && !self.analysis_waiting_for_diff_context()
+            && !self.analysis_can_start_now()
     }
 
     fn diff_payload_unavailable_message(&self) -> Option<String> {
@@ -293,7 +342,11 @@ impl AppState {
     /// Returns normalized Diff shell state for state panel and top header.
     pub fn diff_shell_state(&self) -> DiffShellState {
         if self.selected_row.is_none() {
-            return DiffShellState::NoSelection;
+            return if self.has_stale_selection() {
+                DiffShellState::StaleSelection
+            } else {
+                DiffShellState::NoSelection
+            };
         }
         if self.diff_loading {
             return DiffShellState::Loading;
@@ -322,6 +375,7 @@ impl AppState {
     pub fn diff_shell_state_label(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "No Selection".to_string(),
+            DiffShellState::StaleSelection => "Stale".to_string(),
             DiffShellState::Loading => "Loading".to_string(),
             DiffShellState::DetailedReady => "Detailed Ready".to_string(),
             DiffShellState::PreviewReady => "Preview Ready".to_string(),
@@ -334,6 +388,7 @@ impl AppState {
     pub fn diff_shell_state_token(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "no-selection".to_string(),
+            DiffShellState::StaleSelection => "stale-selection".to_string(),
             DiffShellState::Loading => "loading".to_string(),
             DiffShellState::DetailedReady => "detailed-ready".to_string(),
             DiffShellState::PreviewReady => "preview-ready".to_string(),
@@ -346,6 +401,7 @@ impl AppState {
     pub fn diff_shell_state_tone(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "neutral".to_string(),
+            DiffShellState::StaleSelection => "warn".to_string(),
             DiffShellState::Loading => "info".to_string(),
             DiffShellState::DetailedReady => "success".to_string(),
             DiffShellState::PreviewReady => "info".to_string(),
@@ -367,6 +423,9 @@ impl AppState {
 
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "Choose a row from Results / Navigator.".to_string(),
+            DiffShellState::StaleSelection => {
+                "Previous selection is no longer active.".to_string()
+            }
             DiffShellState::Loading => {
                 if self.diff_is_preview_mode() {
                     "Preparing preview lines...".to_string()
@@ -419,6 +478,7 @@ impl AppState {
     pub fn diff_shell_title_text(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "No file selected".to_string(),
+            DiffShellState::StaleSelection => "Selection no longer active".to_string(),
             DiffShellState::Loading => {
                 if self.diff_is_preview_mode() {
                     "Loading preview".to_string()
@@ -462,6 +522,10 @@ impl AppState {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => {
                 "Choose one row from Results / Navigator to open the file-level Diff view."
+                    .to_string()
+            }
+            DiffShellState::StaleSelection => {
+                "The previously opened file is not part of the current visible Results / Navigator set."
                     .to_string()
             }
             DiffShellState::Loading => {
@@ -510,6 +574,14 @@ impl AppState {
             DiffShellState::NoSelection => {
                 "Changed files open Detailed Diff. Left Only / Right Only / Equal entries open Preview."
                     .to_string()
+            }
+            DiffShellState::StaleSelection => {
+                if self.running {
+                    "Compare is still running. The previous path will be rechecked when results arrive."
+                        .to_string()
+                } else {
+                    "Adjust Search/Status filters or select a visible row to continue.".to_string()
+                }
             }
             DiffShellState::Loading => self.diff_context_hint_text(),
             DiffShellState::Unavailable | DiffShellState::Error => self
@@ -942,7 +1014,11 @@ impl AppState {
     /// Returns normalized Analysis panel state for header and body rendering.
     pub fn analysis_panel_state(&self) -> AnalysisPanelState {
         if self.selected_row.is_none() {
-            return AnalysisPanelState::NoSelection;
+            return if self.has_stale_selection() {
+                AnalysisPanelState::StaleSelection
+            } else {
+                AnalysisPanelState::NoSelection
+            };
         }
         if self.analysis_loading {
             return AnalysisPanelState::Loading;
@@ -958,14 +1034,26 @@ impl AppState {
         if self.analysis_result.is_some() {
             return AnalysisPanelState::Success;
         }
-        AnalysisPanelState::NotStarted
+        if self.analysis_waiting_for_diff_context() {
+            return AnalysisPanelState::WaitingForDiff;
+        }
+        if self.analysis_can_start_now() {
+            return AnalysisPanelState::Ready;
+        }
+        if self.analysis_selection_unavailable() {
+            return AnalysisPanelState::Unavailable;
+        }
+        AnalysisPanelState::Ready
     }
 
     /// Returns short state badge text for Analysis shell.
     pub fn analysis_state_label(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "No Selection".to_string(),
-            AnalysisPanelState::NotStarted => "Not Started".to_string(),
+            AnalysisPanelState::StaleSelection => "Stale".to_string(),
+            AnalysisPanelState::WaitingForDiff => "Waiting".to_string(),
+            AnalysisPanelState::Ready => "Ready".to_string(),
+            AnalysisPanelState::Unavailable => "Unavailable".to_string(),
             AnalysisPanelState::Loading => "Analyzing".to_string(),
             AnalysisPanelState::Error => "Failed".to_string(),
             AnalysisPanelState::Success => "Ready".to_string(),
@@ -976,7 +1064,10 @@ impl AppState {
     pub fn analysis_state_token(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "no-selection".to_string(),
-            AnalysisPanelState::NotStarted => "not-started".to_string(),
+            AnalysisPanelState::StaleSelection => "stale-selection".to_string(),
+            AnalysisPanelState::WaitingForDiff => "waiting".to_string(),
+            AnalysisPanelState::Ready => "ready".to_string(),
+            AnalysisPanelState::Unavailable => "unavailable".to_string(),
             AnalysisPanelState::Loading => "loading".to_string(),
             AnalysisPanelState::Error => "error".to_string(),
             AnalysisPanelState::Success => "success".to_string(),
@@ -987,16 +1078,13 @@ impl AppState {
     pub fn analysis_state_tone(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "neutral".to_string(),
+            AnalysisPanelState::StaleSelection => "warn".to_string(),
+            AnalysisPanelState::WaitingForDiff => "info".to_string(),
+            AnalysisPanelState::Ready => "neutral".to_string(),
+            AnalysisPanelState::Unavailable => "warn".to_string(),
             AnalysisPanelState::Loading => "info".to_string(),
             AnalysisPanelState::Error => "error".to_string(),
             AnalysisPanelState::Success => "success".to_string(),
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "neutral".to_string()
-                } else {
-                    "warn".to_string()
-                }
-            }
         }
     }
 
@@ -1006,14 +1094,26 @@ impl AppState {
             AnalysisPanelState::NoSelection => {
                 "Choose one changed text file from Results / Navigator.".to_string()
             }
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "Diff context is ready. Run Analyze to generate a review conclusion."
-                        .to_string()
-                } else if !self.analysis_hint_text().trim().is_empty() {
+            AnalysisPanelState::StaleSelection => {
+                "The previous selection is no longer part of the current Results / Navigator set."
+                    .to_string()
+            }
+            AnalysisPanelState::WaitingForDiff => {
+                if !self.analysis_hint_text().trim().is_empty() {
                     abbreviate_middle(&self.analysis_hint_text(), 116, 88, 22)
                 } else {
-                    "Analysis is not ready for this selection yet.".to_string()
+                    "Diff context is loading for the selected file.".to_string()
+                }
+            }
+            AnalysisPanelState::Ready => {
+                "Diff context is ready. Run Analyze to generate a review conclusion."
+                    .to_string()
+            }
+            AnalysisPanelState::Unavailable => {
+                if !self.analysis_hint_text().trim().is_empty() {
+                    abbreviate_middle(&self.analysis_hint_text(), 116, 88, 22)
+                } else {
+                    "Analysis is unavailable for this selection.".to_string()
                 }
             }
             AnalysisPanelState::Loading => {
@@ -1088,13 +1188,16 @@ impl AppState {
     pub fn analysis_state_title_text(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "No file selected".to_string(),
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "Analysis ready to start".to_string()
-                } else if self.analysis_available {
-                    "Analysis is waiting for diff context".to_string()
+            AnalysisPanelState::StaleSelection => "Selection no longer active".to_string(),
+            AnalysisPanelState::WaitingForDiff => {
+                "Analysis is waiting for diff context".to_string()
+            }
+            AnalysisPanelState::Ready => "Analysis ready to start".to_string(),
+            AnalysisPanelState::Unavailable => {
+                if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
+                    "Analysis requires provider configuration".to_string()
                 } else {
-                    "Analysis is not ready yet".to_string()
+                    "Analysis unavailable for this selection".to_string()
                 }
             }
             AnalysisPanelState::Loading => "Analysis in progress".to_string(),
@@ -1110,14 +1213,26 @@ impl AppState {
                 "Select one row in Results / Navigator to open the file-level Analysis view."
                     .to_string()
             }
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "The selected file already has reviewable diff context. Run Analyze when you want a structured risk review."
-                        .to_string()
-                } else if !self.analysis_hint_text().trim().is_empty() {
+            AnalysisPanelState::StaleSelection => {
+                "The previously focused file is not part of the current visible Results / Navigator set."
+                    .to_string()
+            }
+            AnalysisPanelState::WaitingForDiff => {
+                if self.diff_loading {
+                    "Detailed diff or preview is still loading for the selected file.".to_string()
+                } else {
+                    "Load detailed diff or preview context before requesting analysis.".to_string()
+                }
+            }
+            AnalysisPanelState::Ready => {
+                "The selected file already has reviewable diff context. Run Analyze when you want a structured risk review."
+                    .to_string()
+            }
+            AnalysisPanelState::Unavailable => {
+                if !self.analysis_hint_text().trim().is_empty() {
                     self.analysis_hint_text()
                 } else {
-                    "Prepare detailed diff context before requesting analysis.".to_string()
+                    "Analysis is unavailable for the current selection.".to_string()
                 }
             }
             AnalysisPanelState::Loading => {
@@ -1141,10 +1256,18 @@ impl AppState {
             AnalysisPanelState::NoSelection => {
                 "Analysis only runs for changed text files with loadable diff context.".to_string()
             }
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    self.analysis_technical_context_text()
-                } else if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
+            AnalysisPanelState::StaleSelection => {
+                if self.running {
+                    "Compare is still running. The previous path will be rechecked when results arrive."
+                        .to_string()
+                } else {
+                    "Adjust Search/Status filters or select a visible row to continue.".to_string()
+                }
+            }
+            AnalysisPanelState::WaitingForDiff => self.analysis_technical_context_text(),
+            AnalysisPanelState::Ready => self.analysis_technical_context_text(),
+            AnalysisPanelState::Unavailable => {
+                if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
                     "Complete endpoint, API key, and model in Provider Settings before using the remote provider."
                         .to_string()
                 } else {
@@ -1643,13 +1766,13 @@ fn navigator_secondary_text(row: &CompareEntryRowViewModel) -> String {
             "directory" => "Only on left directory".to_string(),
             "symlink" => "Only on left symlink".to_string(),
             "other" => "Only on left special entry".to_string(),
-            _ => "Only on left".to_string(),
+            _ => navigator_single_side_file_secondary_text("left", &row.relative_path),
         },
         "right-only" => match row.entry_kind.as_str() {
             "directory" => "Only on right directory".to_string(),
             "symlink" => "Only on right symlink".to_string(),
             "other" => "Only on right special entry".to_string(),
-            _ => "Only on right".to_string(),
+            _ => navigator_single_side_file_secondary_text("right", &row.relative_path),
         },
         "equal" => navigator_equal_secondary_text(row),
         "different" => navigator_different_secondary_text(row),
@@ -1680,10 +1803,10 @@ fn navigator_equal_secondary_text(row: &CompareEntryRowViewModel) -> String {
         ("directory", _) => "Directory present on both sides".to_string(),
         ("symlink", _) => "Symlink content compare deferred".to_string(),
         ("file", "text-diff") => "Text content matched".to_string(),
-        ("file", "file-comparison") => format!(
-            "File compare matched{}",
-            navigator_file_compare_sizes_suffix(&row.detail)
-        ),
+        ("file", "file-comparison") => {
+            let base = navigator_file_comparison_matched_text(&row.relative_path);
+            format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
+        }
         ("file", "text-detail-deferred") => format!(
             "Text detail deferred{}",
             navigator_text_detail_reason_suffix(&row.detail)
@@ -1706,10 +1829,10 @@ fn navigator_different_secondary_text(row: &CompareEntryRowViewModel) -> String 
             "Type mismatch{}",
             navigator_type_mismatch_suffix(&row.detail)
         ),
-        "file-comparison" => format!(
-            "File compare differs{}",
-            navigator_file_compare_sizes_suffix(&row.detail)
-        ),
+        "file-comparison" => {
+            let base = navigator_file_comparison_differs_text(&row.relative_path);
+            format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
+        }
         "text-detail-deferred" => format!(
             "Changed file · text detail deferred{}",
             navigator_text_detail_reason_suffix(&row.detail)
@@ -1729,6 +1852,99 @@ fn navigator_pending_secondary_text(row: &CompareEntryRowViewModel) -> String {
         "symlink" => "Symlink content compare deferred".to_string(),
         "directory" => "Directory compare deferred".to_string(),
         _ => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
+    }
+}
+
+fn navigator_single_side_file_secondary_text(side: &str, relative_path: &str) -> String {
+    if let Some(kind) = navigator_unavailable_preview_file_kind(relative_path) {
+        return format!("Only on {side} {kind} · text preview unavailable");
+    }
+
+    format!("Only on {side} · preview loads for UTF-8 text")
+}
+
+fn navigator_file_comparison_matched_text(relative_path: &str) -> String {
+    if let Some(kind) = navigator_unavailable_preview_file_kind(relative_path) {
+        return format!("Matched {kind} · text preview unavailable");
+    }
+
+    "File compare matched · preview loads for UTF-8 text".to_string()
+}
+
+fn navigator_file_comparison_differs_text(relative_path: &str) -> String {
+    if let Some(kind) = navigator_unavailable_preview_file_kind(relative_path) {
+        return format!("{kind} differs · detailed text diff unavailable");
+    }
+
+    "Non-text/binary compare differs · detailed text diff unavailable".to_string()
+}
+
+fn navigator_unavailable_preview_file_kind(relative_path: &str) -> Option<&'static str> {
+    let extension = Path::new(relative_path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.trim().to_ascii_lowercase());
+    match extension.as_deref() {
+        Some(
+            "jpg"
+            | "jpeg"
+            | "png"
+            | "gif"
+            | "bmp"
+            | "webp"
+            | "ico"
+            | "tif"
+            | "tiff"
+            | "avif"
+            | "heic"
+            | "heif"
+            | "icns"
+            | "psd",
+        ) => Some("image file"),
+        Some(
+            "pdf"
+            | "zip"
+            | "tar"
+            | "gz"
+            | "bz2"
+            | "xz"
+            | "7z"
+            | "rar"
+            | "jar"
+            | "war"
+            | "ear"
+            | "bin"
+            | "dat"
+            | "db"
+            | "sqlite"
+            | "sqlite3"
+            | "mp3"
+            | "wav"
+            | "flac"
+            | "ogg"
+            | "m4a"
+            | "mp4"
+            | "mov"
+            | "avi"
+            | "mkv"
+            | "exe"
+            | "dll"
+            | "so"
+            | "dylib"
+            | "class"
+            | "wasm"
+            | "ttf"
+            | "otf"
+            | "woff"
+            | "woff2"
+            | "doc"
+            | "docx"
+            | "xls"
+            | "xlsx"
+            | "ppt"
+            | "pptx",
+        ) => Some("binary-like file"),
+        _ => None,
     }
 }
 
@@ -2000,7 +2216,65 @@ mod tests {
         assert_eq!(projected.len(), 1);
         assert_eq!(projected[0].display_name, "fernetBrowser.js");
         assert_eq!(projected[0].parent_path, "assets/js/runtime");
-        assert_eq!(projected[0].secondary_text, "Only on right");
+        assert_eq!(
+            projected[0].secondary_text,
+            "Only on right · preview loads for UTF-8 text"
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_marks_image_preview_as_unavailable() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/logo.jpg".to_string(),
+                status: "left-only".to_string(),
+                detail: "only on left".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "none".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(
+            projected[0].secondary_text,
+            "Only on left image file · text preview unavailable"
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_marks_file_compare_diff_as_unavailable() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/logo.png".to_string(),
+                status: "different".to_string(),
+                detail: "file compare: left=1B right=2B content_checked=true".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "file-comparison".to_string(),
+                can_load_diff: false,
+                diff_blocked_reason: Some(
+                    "entry was compared as non-text/binary candidate, detailed text diff unavailable"
+                        .to_string(),
+                ),
+                can_load_analysis: false,
+                analysis_blocked_reason: Some(
+                    "entry was compared as non-text/binary candidate, detailed text diff unavailable"
+                        .to_string(),
+                ),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert!(
+            projected[0]
+                .secondary_text
+                .contains("detailed text diff unavailable")
+        );
     }
 
     #[test]
@@ -2179,6 +2453,9 @@ mod tests {
         let mut state = AppState::default();
         assert_eq!(state.diff_shell_state(), DiffShellState::NoSelection);
 
+        state.selected_relative_path = Some("src/main.rs".to_string());
+        assert_eq!(state.diff_shell_state(), DiffShellState::StaleSelection);
+
         state.selected_row = Some(0);
         state.entry_rows = sample_rows();
         state.diff_loading = true;
@@ -2284,7 +2561,7 @@ mod tests {
     }
 
     #[test]
-    fn analysis_panel_state_distinguishes_no_selection_not_started_and_success() {
+    fn analysis_panel_state_distinguishes_no_selection_waiting_ready_and_success() {
         let mut state = AppState::default();
         assert_eq!(
             state.analysis_panel_state(),
@@ -2293,10 +2570,11 @@ mod tests {
 
         state.selected_row = Some(0);
         state.entry_rows = sample_rows();
-        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::NotStarted);
+        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::WaitingForDiff);
 
         state.analysis_available = true;
         state.selected_diff = Some(sample_preview_panel("preview", "line"));
+        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::Ready);
         assert_eq!(state.analysis_state_title_text(), "Analysis ready to start");
 
         state.analysis_result = Some(AnalysisResultViewModel {
@@ -2308,6 +2586,52 @@ mod tests {
             review_suggestions: vec!["Add coverage".to_string()],
         });
         assert_eq!(state.analysis_panel_state(), AnalysisPanelState::Success);
+    }
+
+    #[test]
+    fn analysis_panel_state_marks_stale_and_unavailable_selection() {
+        let stale_state = AppState {
+            selected_relative_path: Some("assets/logo.jpg".to_string()),
+            ..AppState::default()
+        };
+        assert_eq!(
+            stale_state.analysis_panel_state(),
+            AnalysisPanelState::StaleSelection
+        );
+
+        let unavailable_state = AppState {
+            selected_row: Some(0),
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/logo.jpg".to_string(),
+                status: "left-only".to_string(),
+                detail: "only on left".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "none".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some(
+                    "AI analysis is only available for changed file entries".to_string(),
+                ),
+            }],
+            selected_relative_path: Some("assets/logo.jpg".to_string()),
+            selected_diff: Some(sample_preview_panel(
+                "single-side preview unavailable",
+                "[preview unavailable] binary content is not supported",
+            )),
+            analysis_hint: Some(
+                "AI analysis is only available for changed file entries".to_string(),
+            ),
+            ..AppState::default()
+        };
+        assert_eq!(
+            unavailable_state.analysis_panel_state(),
+            AnalysisPanelState::Unavailable
+        );
+        assert_eq!(
+            unavailable_state.analysis_state_title_text(),
+            "Analysis unavailable for this selection"
+        );
     }
 
     #[test]

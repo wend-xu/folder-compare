@@ -1060,6 +1060,7 @@ slint::slint! {
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
         property <bool> diff_show_shell: root.diff_shell_state_token == "no-selection"
+            || root.diff_shell_state_token == "stale-selection"
             || root.diff_shell_state_token == "loading"
             || root.diff_shell_state_token == "unavailable"
             || root.diff_shell_state_token == "error"
@@ -1866,7 +1867,8 @@ slint::slint! {
                                                             label: root.diff_result_status_label;
                                                             tone: root.diff_result_status_tone;
                                                         }
-                                                        if root.diff_shell_state_token == "loading"
+                                                        if root.diff_shell_state_token == "stale-selection"
+                                                            || root.diff_shell_state_token == "loading"
                                                             || root.diff_shell_state_token == "unavailable"
                                                             || root.diff_shell_state_token == "error" : StatusPill {
                                                             label: root.diff_shell_state_label;

@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 16B)
+# Folder Compare Architecture (Current Baseline after Phase 16C)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 16C`
   - `Phase 16A`
   - `Phase 16A fix-1`
   - `Phase 16B`
@@ -29,13 +30,14 @@
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
+  - `Phase 16C` is complete
   - `Phase 16A` is complete
   - `Phase 16A fix-1` is complete
   - `Phase 16B` is complete
-  - Sidebar IA remains unchanged, but `Compare Status`, `Filter / Scope`, and `Results / Navigator` now use the tightened `Phase 16A + 16A fix-1 + 16B` presentation contract
+  - Sidebar IA remains unchanged, but `Compare Status`, `Filter / Scope`, `Results / Navigator`, and the shared File View shell now use the tightened `Phase 16A + 16A fix-1 + 16B + 16C` presentation contract
 - Why `Phase 16` still remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
-  - `Phase 16A`, `16A fix-1`, and `16B` closed the Sidebar expression and row-scanability pass without reopening old closeouts;
+  - `Phase 16A`, `16A fix-1`, `16B`, and `16C` closed the Sidebar expression, row-scanability, and file-view state-consistency pass without reopening old closeouts;
   - the next thread should therefore continue the remaining `Phase 16` work instead of reopening `15.3A` to `15.8 fix-1` or edition-2024 tasks.
 
 ## Phase 15 summary
@@ -110,13 +112,17 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - primary information: status pill + filename / leaf path segment
   - secondary information: concise reason summary for `diff / equal / left / right`
   - weak information: parent-path context for disambiguation only
-  - path/name filter hits use subtle row-local highlight on the matched filename or parent-path context
+  - path/name filter hits use subtle row-local label-level highlight on the matched filename or parent-path context
+  - future match-span / substring highlight must come from lower-layer match positions or pre-split render segments; the Slint view layer should remain render-only and must not take on complex match parsing logic
   - the list remains flat; no tree, grouping, or alternate navigation mode was introduced
+  - Search / Status filter changes keep the current selection only when the source row remains visible; otherwise the visible selection clears and the File View enters an explicit stale-selection state instead of auto-jumping to the first row
+  - compare rerun restoration stays intentionally simple: restore by the same relative path when it still exists and is still visible under the current filter; otherwise keep a stale-selection context and require an explicit reselection
+  - row secondary summaries now lean toward current File View capability, especially for non-text / binary compare rows and common preview-unavailable file types, so the list better signals when the right side will land in an unavailable state
 
 ### Diff and Analysis shell
 
 - `Diff` keeps the compact File Context Header and the explicit shell-driven state machine:
-  - `no-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`
+  - `no-selection|stale-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`
 - Single-side preview remains first-class:
   - `left-only`, `right-only`, and `equal` all use the preview path when appropriate
   - preview columns stay side-aware (`left/right`)
@@ -127,7 +133,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - mirrored header `viewport-x`
   - content-end scrollbar-safe spacer
 - `Analysis` keeps its explicit state machine:
-  - `no-selection -> not-started -> loading -> error|success`
+  - `no-selection|stale-selection -> waiting|ready|unavailable -> loading -> error|success`
 - `Analysis success` remains a structured review-conclusion panel:
   - `Summary`
   - `Risk Level`
@@ -202,6 +208,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - No `Phase 16` work was mixed into the phase15 closeout.
 - No new IA, tree mode, or Compare View mode was introduced.
 - No new theme system, global loading controller, or global notification controller was introduced.
+- No character-level substring highlight was introduced; current results highlighting remains the low-cost label-level pass described above.
 - No overlay interception, private pointer plumbing, or custom caret/selection/editing logic was added for editable inputs or selectable text.
 - The large inline `slint::slint!` surface was not externalized because the cleanup benefit is still below the migration cost on the current baseline.
 
@@ -232,7 +239,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 ## Next implementation priority
 
-1. Continue the remaining `Phase 16` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A` baseline.
+1. Continue the remaining `Phase 16` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C` baseline.
    - acceptance: result navigation continues to improve without introducing tree mode or breaking the accepted workspace shell.
 2. Keep the shipped `15.5` to `15.8 fix-1` contracts unchanged while `Phase 16` lands.
    - acceptance: editable-input context menus, the `API Key` secret contract, `Compare Status` summary-first boundary, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, and persistent `VecModel` all remain intact.
