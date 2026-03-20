@@ -6,8 +6,9 @@
 
 ## 本轮更新说明（2026-03-20）
 
-- 本轮执行 `Phase 17B`，只把 `App Bar -> Provider Settings` 升级为更通用的 `Settings`，建立第一轮 `Provider / Behavior` 分区，并落地首个非 Provider 偏好项 `Hidden files`；不重开 compare/diff/analysis 核心数据结构，不引入完整 settings framework，也不把 hidden-files 语义下沉到 `fc-core`。
+- 本轮执行 `Phase 17B fix-1`，在 `Phase 17B` 已建立的 `Settings -> Provider / Behavior` 基线上，收口 Settings modal 尺寸稳定性、把 settings persistence contract 明确为 `settings.toml` 唯一基线加一次性 legacy migration，并把 hidden-files 暂不下沉到 `fc-core` 的判断写入主文档；不引入完整 settings framework，也不重开 compare/diff/analysis 核心数据结构。
 - 已完成并关闭：
+  - `Phase 17B fix-1`
   - `Phase 17B`
   - `Phase 17A fix-1`
   - `Phase 17A`
@@ -60,7 +61,8 @@
   - `Compare Inputs` 左右路径与 `Filter / Scope -> Search` 长文本输入已支持非编辑态 tooltip 补全文本，且长值会先裁切在输入框内，不再突破 Sidebar 边界
   - shared tooltip overlay 默认优先显示在目标上方；上方空间不足时再降级到下方
   - `App Bar -> Settings` 已替换 `Provider Settings`，并提供第一轮 `Provider / Behavior` 分区骨架
-  - persisted settings 已升级为 `settings.toml`，并兼容回读 legacy `provider_settings.toml`
+  - Settings modal 当前以最大内容态固定容器尺寸；`Provider / Behavior` 与 `Mock / OpenAI-compatible` 间切换不再改变外层容器尺寸
+  - persisted settings 当前以 `settings.toml` 为唯一活跃基线；若只存在 legacy `provider_settings.toml`，启动时会一次性迁移到 `settings.toml`
   - `Settings -> Behavior` 已落地首个偏好项：`Hidden files` 默认显示/隐藏策略；该偏好保存后会立即作用到当前 `Results / Navigator` 可见集合，并影响后续 compare 结果展示
   - `Hidden files` 当前仅是 UI 偏好，不修改 compare request / `fc-core` contract；若它让当前项不可见，则沿用现有 stale selection 语义，Results 顶部摘要会显式提示被 Settings 隐藏的数量
 - 保持不变：
@@ -81,8 +83,8 @@
 ## 快照（Snapshot）
 
 - 日期：`2026-03-20`（Asia/Shanghai）
-- 分支：当前执行 `Phase 17B`
-- 工作区：`fc-ui-slint` Settings modal 第一轮分区、通用 settings persistence、hidden-files behavior preference、主文档同步改动
+- 分支：当前执行 `Phase 17B fix-1`
+- 工作区：`fc-ui-slint` Settings modal 尺寸稳定性、settings persistence contract 收口、hidden-files behavior preference、主文档同步改动
 - 最近提交：
   - `0a8769d` Phase 16A fix-1
   - `1311f96` edition-2024 milestone
@@ -179,7 +181,7 @@
   - Analysis success 正文文本支持 native text-surface `Copy` / `Select All` right-click
   - Analysis success section header 标题继续保持显式左对齐，且不会遮挡右上角 inline `Copy`
   - `Diff` 与 `Analysis` 当前都已支持显式 stale selection 文案，不再把 filtered-out selection 与从未选中过的 no-selection 混为一谈
-  - persisted settings 当前保存到 `settings.toml`，缺省时兼容回读 legacy `provider_settings.toml`
+  - persisted settings 当前保存到 `settings.toml`；若仅存在 legacy `provider_settings.toml`，启动时会一次性迁移到新文件，之后继续以 `settings.toml` 为唯一活跃基线
 - 运行时：
   - compare / diff / analysis 后台完成态继续通过 presenter notifier + `slint::Weak::upgrade_in_event_loop` 回推 UI
   - `Results / Navigator` 与 `Diff` 行模型继续使用 persistent `VecModel`

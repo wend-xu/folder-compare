@@ -170,15 +170,11 @@ pub fn settings_file_path() -> PathBuf {
     settings_dir().join(SETTINGS_FILE_NAME)
 }
 
-/// Loads application settings from disk, falling back to the legacy provider-only file.
+/// Loads application settings from disk, migrating the legacy provider-only file when needed.
 pub fn load_app_preferences() -> anyhow::Result<Option<AppPreferences>> {
     let path = settings_file_path();
     if path.exists() {
-        let raw = std::fs::read_to_string(&path)
-            .with_context(|| format!("read settings from {}", path.display()))?;
-        let parsed: AppPreferencesToml = toml::from_str(&raw)
-            .with_context(|| format!("parse settings from {}", path.display()))?;
-        return Ok(Some(parsed.into()));
+        return read_settings_file(&path).map(Some);
     }
 
     let legacy_path = legacy_provider_settings_file_path();
@@ -186,22 +182,15 @@ pub fn load_app_preferences() -> anyhow::Result<Option<AppPreferences>> {
         return Ok(None);
     }
 
-    let raw = std::fs::read_to_string(&legacy_path).with_context(|| {
+    let migrated = read_legacy_provider_settings_file(&legacy_path)?;
+    save_app_preferences(&migrated).with_context(|| {
         format!(
-            "read legacy provider settings from {}",
-            legacy_path.display()
+            "migrate legacy provider settings from {} to {}",
+            legacy_path.display(),
+            path.display()
         )
     })?;
-    let parsed: ProviderSettingsToml = toml::from_str(&raw).with_context(|| {
-        format!(
-            "parse legacy provider settings from {}",
-            legacy_path.display()
-        )
-    })?;
-    Ok(Some(AppPreferences {
-        provider: parsed.into(),
-        behavior: BehaviorSettings::default(),
-    }))
+    Ok(Some(migrated))
 }
 
 /// Saves application settings to disk and returns the written path.
@@ -216,6 +205,7 @@ pub fn save_app_preferences(settings: &AppPreferences) -> anyhow::Result<PathBuf
     let serialized = toml::to_string_pretty(&payload).context("serialize settings to toml")?;
     std::fs::write(&path, serialized)
         .with_context(|| format!("write settings to {}", path.display()))?;
+    cleanup_legacy_provider_settings_file();
     Ok(path)
 }
 
@@ -296,6 +286,30 @@ fn legacy_provider_settings_file_path() -> PathBuf {
     settings_dir().join(LEGACY_PROVIDER_SETTINGS_FILE_NAME)
 }
 
+fn read_settings_file(path: &std::path::Path) -> anyhow::Result<AppPreferences> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("read settings from {}", path.display()))?;
+    let parsed: AppPreferencesToml =
+        toml::from_str(&raw).with_context(|| format!("parse settings from {}", path.display()))?;
+    Ok(parsed.into())
+}
+
+fn read_legacy_provider_settings_file(path: &std::path::Path) -> anyhow::Result<AppPreferences> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("read legacy provider settings from {}", path.display()))?;
+    let parsed: ProviderSettingsToml = toml::from_str(&raw)
+        .with_context(|| format!("parse legacy provider settings from {}", path.display()))?;
+    Ok(AppPreferences {
+        provider: parsed.into(),
+        behavior: BehaviorSettings::default(),
+    })
+}
+
+fn cleanup_legacy_provider_settings_file() {
+    let legacy_path = legacy_provider_settings_file_path();
+    let _ = std::fs::remove_file(&legacy_path);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,7 +350,7 @@ mod tests {
     }
 
     #[test]
-    fn load_falls_back_to_legacy_provider_settings_file() {
+    fn load_migrates_legacy_provider_settings_file() {
         let dir = tempfile::tempdir().expect("temp dir should be created");
         let _settings_guard = TestSettingsDirGuard::new(dir.path());
 
@@ -357,5 +371,43 @@ mod tests {
             .expect("settings should exist");
         assert_eq!(loaded.provider, legacy_settings);
         assert_eq!(loaded.behavior, BehaviorSettings::default());
+        assert!(settings_file_path().exists());
+        assert!(!legacy_provider_settings_file_path().exists());
+    }
+
+    #[test]
+    fn load_prefers_settings_file_over_legacy_provider_settings_file() {
+        let dir = tempfile::tempdir().expect("temp dir should be created");
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
+
+        let settings = AppPreferences {
+            provider: ProviderSettings {
+                provider_kind: AiProviderKind::Mock,
+                openai_endpoint: String::new(),
+                openai_api_key: String::new(),
+                openai_model: "gpt-4o-mini".to_string(),
+                timeout_secs: 30,
+            },
+            behavior: BehaviorSettings {
+                show_hidden_files: false,
+            },
+        };
+        save_app_preferences(&settings).expect("settings should be saved");
+
+        let legacy_payload = toml::to_string_pretty(&ProviderSettingsToml {
+            provider_kind: AiProviderKind::OpenAiCompatible,
+            openai_endpoint: "https://api.example.com/v1".to_string(),
+            openai_api_key: "sk-legacy".to_string(),
+            openai_model: "gpt-4o-mini".to_string(),
+            timeout_secs: 55,
+        })
+        .expect("legacy payload should serialize");
+        std::fs::write(legacy_provider_settings_file_path(), legacy_payload)
+            .expect("legacy settings should be written");
+
+        let loaded = load_app_preferences()
+            .expect("load should succeed")
+            .expect("settings should exist");
+        assert_eq!(loaded, settings);
     }
 }

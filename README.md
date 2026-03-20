@@ -39,7 +39,7 @@
 - Compare Status 保持 summary-first
 - `Compare Status` 支持块内 `Show details / Hide details` tray 与 `Copy Summary` / `Copy Detail`
 - `Compare Status` 折叠区与展开 tray 区都支持同一套上下文菜单
-- `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入框使用 `slint 1.15.1` 原生 editable-input context menu
+- `Compare Inputs`、`Filter / Scope -> Search`、`Settings -> Provider` 普通输入框使用 `slint 1.15.1` 原生 editable-input context menu
 - `Filter / Scope -> Search` 当前 contract 为 path/name 匹配
 - `Provider Settings -> API Key` 使用专用 `ApiKeyLineEdit`
   - hidden：`Paste` only
@@ -68,7 +68,7 @@
   - `Key Points`
   - `Review Suggestions`
   - `Notes`
-- Provider Settings：全局 modal、Save/Cancel、持久化恢复
+- Settings：全局 modal、`Provider / Behavior` section、Save/Cancel、持久化恢复
 - 版本号单一事实来源：workspace `Cargo.toml`
 - macOS bundle / DMG / ZIP 版本从 workspace manifest 派生
 
@@ -100,15 +100,16 @@ cargo run -p fc-ui-slint
 1. 输入或 Browse 选择 Left/Right 目录
 2. 点击 Compare
 3. 在 Results 选择文件查看 Diff
-4. 如需配置 provider：App Bar -> `Provider Settings`
+4. 如需配置 provider 或 behavior：App Bar -> `Settings`
 5. 切换到 Analysis 并点击 Analyze
 
-## 6. Provider Settings / OpenAI-compatible
+## 6. Settings / OpenAI-compatible
 
 ### 配置入口与持久化
 
-- 配置入口：App Bar -> `Provider Settings`
-- 持久化文件名：`provider_settings.toml`
+- 配置入口：App Bar -> `Settings`
+- 持久化文件名：`settings.toml`
+- 若只存在旧版 `provider_settings.toml`，应用会在启动时一次性迁移到 `settings.toml`
 - 配置目录优先级：
   - `FOLDER_COMPARE_CONFIG_DIR`
   - macOS：`~/Library/Application Support/folder-compare`

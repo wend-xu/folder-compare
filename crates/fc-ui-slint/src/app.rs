@@ -3064,10 +3064,10 @@ slint::slint! {
             TouchArea {}
 
             SectionCard {
-                width: min(760px, parent.width - 36px);
-                height: root.settings_section == 0
-                    ? (root.settings_provider_mode == 1 ? 474px : 388px)
-                    : 338px;
+                property <length> dialog_width: min(760px, parent.width - 36px);
+                property <length> dialog_height: min(474px, parent.height - 40px);
+                width: self.dialog_width;
+                height: self.dialog_height;
                 x: (parent.width - self.width) / 2;
                 y: max(20px, (parent.height - self.height) / 2);
                 border-color: #dfe5ed;
@@ -3093,10 +3093,12 @@ slint::slint! {
                     }
 
                     HorizontalLayout {
+                        vertical-stretch: 1;
                         spacing: 14px;
 
                         Rectangle {
                             width: 132px;
+                            vertical-stretch: 1;
                             background: transparent;
 
                             VerticalLayout {
@@ -3139,6 +3141,7 @@ slint::slint! {
 
                         Rectangle {
                             horizontal-stretch: 1;
+                            vertical-stretch: 1;
                             background: transparent;
 
                             if root.settings_section == 0 : VerticalLayout {

@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 17B)
+# Folder Compare Architecture (Current Baseline after Phase 17B fix-1)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 17B fix-1`
   - `Phase 17B`
   - `Phase 17A fix-1`
   - `Phase 17A`
@@ -34,6 +35,7 @@
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
+  - `Phase 17B fix-1` is complete
   - `Phase 17B` is complete
   - `Phase 17A fix-1` is complete
   - `Phase 17A` is complete
@@ -43,11 +45,13 @@
   - `Phase 16A fix-1` is complete
   - `Phase 16B` is complete
   - Sidebar IA remains unchanged, and `Phase 17B` keeps the accepted `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + 17A + 17A fix-1` presentation contract while upgrading `App Bar -> Settings`, adding one first-round `Provider / Behavior` split, and introducing one persisted hidden-files visibility preference without reopening compare/core contracts
+  - `Phase 17B fix-1` stabilizes the Settings modal container against section/provider-mode content changes, and narrows settings persistence to one authoritative `settings.toml` contract with one-time legacy migration
 - Why `Phase 17` now remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
   - `Phase 16A`, `16A fix-1`, `16B`, `16C`, and `16C fix-1` closed the Sidebar expression, row-scanability, file-view state-consistency, and follow-up readability / typography regression pass without reopening old closeouts;
   - `Phase 17A` added a restrained tooltip-completion baseline for truncated text, and `Phase 17A fix-1` then stabilized that baseline without changing IA, row semantics, or input/menu contracts;
   - `Phase 17B` then generalized `Provider Settings` into `Settings`, added a minimal expandable preferences skeleton, and kept hidden-files visibility as a UI-side results preference instead of widening `fc-core`;
+  - `Phase 17B fix-1` then tightened the Settings container and persistence contract without widening the scope into a full settings framework or compare/core policy change;
   - the next thread should therefore continue the remaining `Phase 17` work instead of reopening `15.3A` to `15.8 fix-1`, `16A` to `16C fix-1`, or edition-2024 tasks.
 
 ## Phase 15 summary
@@ -222,13 +226,17 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 ### Settings and persistence
 
 - Settings now live in one global modal launched from `App Bar -> Settings`.
+- The Settings modal now keeps one fixed desktop-tool footprint based on the current largest content state, so switching `Provider / Behavior` and `Mock / OpenAI-compatible` does not resize the outer container.
 - The first-round Settings split is intentionally small:
   - `Provider`
   - `Behavior`
 - `Provider` keeps the existing AI provider configuration flow and dedicated `API Key` secret-field contract.
 - `Behavior` currently exposes one persisted preference: whether dot-prefixed files and folders are shown by default in `Results / Navigator`.
+- `Hidden files` is currently a UI / presentation preference: it changes the default visible Results / Navigator set and its summary copy, but it does not change compare request semantics, compare-summary counts, or any `fc-core` API contract.
+- The project should only reconsider moving hidden-file policy into `fc-core` when compare request building, shared statistics, export, cache behavior, or future tree-mode navigation all need the same policy source.
 - Persistence stays in `settings.rs`.
-- Saved settings now use `settings.toml` with the existing config-dir override, and loading falls back to legacy `provider_settings.toml` when the new file is not present.
+- Saved settings now use `settings.toml` with the existing config-dir override.
+- Legacy `provider_settings.toml` is no longer a standing fallback contract; it is only a one-time migration source when `settings.toml` is absent, and successful migration re-establishes `settings.toml` as the only active baseline.
 - The edition-2024 milestone did not change the product contract here; it only retained direct compatibility fixes around settings load/save lock lifetime and test-only directory override handling.
 
 ## What intentionally did not change
