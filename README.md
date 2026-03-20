@@ -38,7 +38,9 @@
 - Workspace 保持 `Diff / Analysis` 共享壳层：`Tabs -> Header -> Content`
 - Compare Status 保持 summary-first
 - `Compare Status` 支持块内 `Show details / Hide details` tray 与 `Copy Summary` / `Copy Detail`
+- `Compare Status` 折叠区与展开 tray 区都支持同一套上下文菜单
 - `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入框使用 `slint 1.15.1` 原生 editable-input context menu
+- `Filter / Scope -> Search` 当前 contract 为 path/name 匹配
 - `Provider Settings -> API Key` 使用专用 `ApiKeyLineEdit`
   - hidden：`Paste` only
   - visible：`Select All`、`Copy`、`Paste`、`Cut`

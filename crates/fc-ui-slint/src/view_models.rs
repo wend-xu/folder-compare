@@ -24,14 +24,13 @@ pub struct CompareEntryRowViewModel {
 }
 
 impl CompareEntryRowViewModel {
-    /// Returns true when filter text matches path or detail (case-insensitive).
+    /// Returns true when filter text matches path/name only (case-insensitive).
     pub fn matches_filter(&self, filter: &str) -> bool {
         let needle = filter.trim().to_lowercase();
         if needle.is_empty() {
             return true;
         }
         self.relative_path.to_lowercase().contains(&needle)
-            || self.detail.to_lowercase().contains(&needle)
     }
 }
 

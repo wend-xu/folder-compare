@@ -37,6 +37,7 @@
   - `Analysis success` native text-surface right-click 已落地
   - section header 左对齐修复已落地
   - `Compare Status` 块内 detail tray + `Copy Summary` / `Copy Detail` 已落地
+  - `Compare Status` 折叠区与展开 tray 区的右键菜单覆盖已统一
   - `Results / Navigator` 顶部集合状态条已落地
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
@@ -109,6 +110,8 @@
   - `SelectableDiffText` 与 `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
   - `Compare Status` 继续保持 summary-first，并在块内支持 `Show details / Hide details` tray
   - `Compare Status` 右键菜单支持 `Copy Summary` / `Copy Detail`
+  - `Compare Status` 折叠区与展开 tray 区都支持同一套上下文菜单
+  - `Filter / Scope -> Search` 当前 contract 收口为 path/name 匹配
   - `Filter / Scope` 不再向用户重复显示单独的 `scope` 文案
   - `Results / Navigator` 顶部摘要现在表达当前结果集合状态（`Showing visible / total ...`）
   - Analysis success 正文文本支持 native text-surface `Copy` / `Select All` right-click

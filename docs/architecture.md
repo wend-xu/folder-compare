@@ -94,9 +94,10 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - `Compare Status` remains one static sidebar result block:
   - summary-first by default
   - inline `Show details / Hide details` tray inside the block
+  - shared context-menu coverage on both the collapsed summary surface and the expanded detail tray
   - no modal or secondary report flow
 - Filter flow remains state-driven:
-  - search text
+  - path/name search text
   - segmented status scope (`All / Diff / Equal / Left / Right`)
   - segmented visual state stays in lockstep with filter state
   - the user-facing summary no longer repeats status scope as a second `scope` label

@@ -1180,11 +1180,8 @@ slint::slint! {
                                         }
                                     }
                                     Text {
-                                        text: root.running
-                                            ? "Running compare..."
-                                            : (root.left_root == "" || root.right_root == ""
-                                                ? "Select left and right folders."
-                                                : "Ready to compare.");
+                                        visible: !root.running && (root.left_root == "" || root.right_root == "");
+                                        text: "Select left and right folders.";
                                         color: #6c7a89;
                                         overflow: elide;
                                         vertical-alignment: center;
@@ -1370,6 +1367,19 @@ slint::slint! {
                                                                     horizontal-stretch: 1;
                                                                 }
                                                             }
+
+                                                            TouchArea {
+                                                                pointer-event(event) => {
+                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                        root.compare_status_context_menu_requested(
+                                                                            root.compare_summary_copy_text,
+                                                                            root.compare_detail_copy_text,
+                                                                        );
+                                                                    }
+                                                                }
+                                                            }
                                                         }
 
                                                         if root.warnings_text != "" : Rectangle {
@@ -1392,6 +1402,19 @@ slint::slint! {
                                                                     horizontal-stretch: 1;
                                                                 }
                                                             }
+
+                                                            TouchArea {
+                                                                pointer-event(event) => {
+                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                        root.compare_status_context_menu_requested(
+                                                                            root.compare_summary_copy_text,
+                                                                            root.compare_detail_copy_text,
+                                                                        );
+                                                                    }
+                                                                }
+                                                            }
                                                         }
 
                                                         if root.error_text != "" : Rectangle {
@@ -1412,6 +1435,19 @@ slint::slint! {
                                                                     font-size: 12px;
                                                                     wrap: word-wrap;
                                                                     horizontal-stretch: 1;
+                                                                }
+                                                            }
+
+                                                            TouchArea {
+                                                                pointer-event(event) => {
+                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                        root.compare_status_context_menu_requested(
+                                                                            root.compare_summary_copy_text,
+                                                                            root.compare_detail_copy_text,
+                                                                        );
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -1446,7 +1482,7 @@ slint::slint! {
                                         text <=> root.entry_filter;
                                         horizontal-stretch: 1;
                                         enabled: !root.running;
-                                        placeholder-text: "path or detail";
+                                        placeholder-text: "path or name";
                                         edited(value) => {
                                             root.filter_changed(value);
                                         }

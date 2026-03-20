@@ -1638,7 +1638,7 @@ mod tests {
     }
 
     #[test]
-    fn non_empty_filter_matches_path_or_detail() {
+    fn non_empty_filter_matches_path_or_name_only() {
         let state = AppState {
             entry_rows: sample_rows(),
             entry_filter: "logo".to_string(),
@@ -1650,12 +1650,20 @@ mod tests {
 
         let state = AppState {
             entry_rows: sample_rows(),
-            entry_filter: "text summary".to_string(),
+            entry_filter: "main.rs".to_string(),
             ..AppState::default()
         };
         let filtered = state.filtered_entry_rows_with_index();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].0, 0);
+
+        let state = AppState {
+            entry_rows: sample_rows(),
+            entry_filter: "text summary".to_string(),
+            ..AppState::default()
+        };
+        let filtered = state.filtered_entry_rows_with_index();
+        assert!(filtered.is_empty());
     }
 
     #[test]
