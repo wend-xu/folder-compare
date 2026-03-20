@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 17A fix-1)
+# Folder Compare Architecture (Current Baseline after Phase 17B)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 17B`
   - `Phase 17A fix-1`
   - `Phase 17A`
   - `Phase 16C fix-1`
@@ -33,6 +34,7 @@
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
+  - `Phase 17B` is complete
   - `Phase 17A fix-1` is complete
   - `Phase 17A` is complete
   - `Phase 16C fix-1` is complete
@@ -40,11 +42,12 @@
   - `Phase 16A` is complete
   - `Phase 16A fix-1` is complete
   - `Phase 16B` is complete
-  - Sidebar IA remains unchanged, and `Phase 17A fix-1` keeps the accepted `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + 17A` presentation contract while tightening tooltip trigger stability, tooltip placement, and input clipping
+  - Sidebar IA remains unchanged, and `Phase 17B` keeps the accepted `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + 17A + 17A fix-1` presentation contract while upgrading `App Bar -> Settings`, adding one first-round `Provider / Behavior` split, and introducing one persisted hidden-files visibility preference without reopening compare/core contracts
 - Why `Phase 17` now remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
   - `Phase 16A`, `16A fix-1`, `16B`, `16C`, and `16C fix-1` closed the Sidebar expression, row-scanability, file-view state-consistency, and follow-up readability / typography regression pass without reopening old closeouts;
   - `Phase 17A` added a restrained tooltip-completion baseline for truncated text, and `Phase 17A fix-1` then stabilized that baseline without changing IA, row semantics, or input/menu contracts;
+  - `Phase 17B` then generalized `Provider Settings` into `Settings`, added a minimal expandable preferences skeleton, and kept hidden-files visibility as a UI-side results preference instead of widening `fc-core`;
   - the next thread should therefore continue the remaining `Phase 17` work instead of reopening `15.3A` to `15.8 fix-1`, `16A` to `16C fix-1`, or edition-2024 tasks.
 
 ## Phase 15 summary
@@ -52,7 +55,7 @@
 - `Phase 15.3A` aligned version ownership around the workspace manifest and packaging script.
 - `Phase 15.3B` locked Rust to `1.94.0` and raised workspace `rust-version` to `1.94`.
 - `Phase 15.4` moved the workspace to `slint 1.15.1` / `slint-build 1.15.1` without widening product scope.
-- `Phase 15.5` shipped editable-input context-menu coverage on native Slint surfaces for `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings`, while keeping `Provider Settings -> API Key` on one dedicated `ApiKeyLineEdit` with a narrower secret contract.
+- `Phase 15.5` shipped editable-input context-menu coverage on native Slint surfaces for `Compare Inputs`, `Filter / Scope -> Search`, and what is now `Settings -> Provider`, while keeping `Settings -> Provider -> API Key` on one dedicated `ApiKeyLineEdit` with a narrower secret contract.
 - `Phase 15.5 fix-1` repaired mixed Latin/CJK glyph fallback for read-only selectable content.
 - `Phase 15.5 fix-2` moved that glyph-fallback policy onto the shared `UiTypography.selectable_content_font_family` token.
 - `Phase 15.5 fix-3` moved `Diff` detail horizontal scrolling onto an explicit `ScrollView` viewport with a content-end scrollbar-safe spacer.
@@ -126,6 +129,10 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - future match-span / substring highlight must come from lower-layer match positions or pre-split render segments; the Slint view layer should remain render-only and must not take on complex match parsing logic
   - the list remains flat; no tree, grouping, or alternate navigation mode was introduced
   - Search / Status filter changes keep the current selection only when the source row remains visible; otherwise the visible selection clears and the File View enters an explicit stale-selection state instead of auto-jumping to the first row
+  - `Settings -> Behavior` now owns one persisted hidden-files visibility preference (`Show` / `Hide`) for dot-prefixed files and folders
+  - that hidden-files preference applies immediately to the current visible Results / Navigator set and also affects future compare result presentation, but it does not widen the compare request / `fc-core` contract
+  - when the hidden-files preference removes the selected row from the visible set, the application reuses the existing stale-selection contract instead of auto-restoring or auto-jumping
+  - the collection summary explicitly reports when entries are currently hidden by `Settings`, so this preference does not blur into `Search` or status-scope filtering
   - compare rerun restoration stays intentionally simple: restore by the same relative path when it still exists and is still visible under the current filter; otherwise keep a stale-selection context and require an explicit reselection
   - row secondary summaries now lean toward current File View capability, especially for non-text / binary compare rows and common preview-unavailable file types, so the list better signals when the right side will land in an unavailable state
   - `Phase 16C fix-1` keeps filename-first scanning intact by shortening secondary summaries to capability-first phrases (`Text diff`, `Text-only preview`, `No text diff`, `No text preview`) and by letting weak parent-path context yield width earlier on narrow sidebars
@@ -180,10 +187,10 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 ### Editable-input integration
 
-- `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings` ordinary inputs use the native editable-input context menu from `slint 1.15.1`.
+- `Compare Inputs`, `Filter / Scope -> Search`, and `Settings -> Provider` ordinary inputs use the native editable-input context menu from `slint 1.15.1`.
 - Those ordinary editable inputs now share one CJK-safe typography token (`UiTypography.editable_input_font_family`) so full-width punctuation and mixed Latin/CJK input stay stable on the `slint 1.15.1` baseline instead of relying on the default widget font chain.
 - `Compare Inputs` left/right path fields and `Filter / Scope -> Search` now opt into the same window-local tooltip completion layer when long text is visually truncated and the input is in a non-editing state, while the custom wrapper keeps the editable control sized to the visible field so long values do not break the Sidebar boundary.
-- `Provider Settings -> API Key` keeps one dedicated `ApiKeyLineEdit`:
+- `Settings -> Provider -> API Key` keeps one dedicated `ApiKeyLineEdit`:
   - hidden state: `Paste` only
   - visible state: `Select All`, `Copy`, `Paste`, `Cut`
   - hidden state still blocks hidden-state `Cmd/Ctrl+A/C/X`
@@ -212,17 +219,23 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - `Results / Navigator` and `Diff` row models stay initialized as persistent `VecModel` instances and update through `set_vec()` only when relevant source payload changes.
 - Cache-aware projection and menu close-on-selection / busy-start behavior remain intact.
 
-### Provider settings and persistence
+### Settings and persistence
 
-- Provider settings remain a global modal launched from `App Bar -> Provider Settings`.
+- Settings now live in one global modal launched from `App Bar -> Settings`.
+- The first-round Settings split is intentionally small:
+  - `Provider`
+  - `Behavior`
+- `Provider` keeps the existing AI provider configuration flow and dedicated `API Key` secret-field contract.
+- `Behavior` currently exposes one persisted preference: whether dot-prefixed files and folders are shown by default in `Results / Navigator`.
 - Persistence stays in `settings.rs`.
-- Saved settings still use `provider_settings.toml` with the existing config-dir override.
+- Saved settings now use `settings.toml` with the existing config-dir override, and loading falls back to legacy `provider_settings.toml` when the new file is not present.
 - The edition-2024 milestone did not change the product contract here; it only retained direct compatibility fixes around settings load/save lock lifetime and test-only directory override handling.
 
 ## What intentionally did not change
 
 - No `Phase 16` work was mixed into the phase15 closeout.
 - No new IA, tree mode, or Compare View mode was introduced.
+- No compare-level hidden-entry policy was pushed into `fc-core`; hidden-files visibility remains a first-round UI preference only.
 - No new theme system, global loading controller, or global notification controller was introduced.
 - No global tooltip controller, native-backend tooltip binding, or explanation-heavy hover system was introduced.
 - No character-level substring highlight was introduced; current results highlighting remains the low-cost label-level pass described above.
@@ -243,6 +256,9 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - trigger: only if mouse-driven row copy becomes a demonstrated productivity gap beyond the current keyboard copy and double-click fallback.
 - `P2` Search clear-affordance convergence:
   - trigger: only if the native desktop style exposes a stable clear action or the application deliberately adopts a different widget style.
+- `P2` Compare-level hidden-entry policy:
+  - trigger: only if users need `Compare Status` and compare-summary counts to exclude hidden entries at source rather than via the current UI-level visibility preference.
+  - boundary: do not mix this with the first-round `Settings -> Behavior` skeleton; widening `fc-core` must be justified separately.
 - `P2` Results match-span highlight:
   - trigger: only if the current label-level highlight is demonstrated to be insufficient for navigation speed on the flat list.
   - boundary: matching positions or pre-split render segments must come from a lower layer; the Slint view stays render-only and does not own substring parsing logic.
@@ -259,10 +275,10 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 ## Next implementation priority
 
-1. Continue the remaining `Phase 17` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1` baseline.
+1. Continue the remaining `Phase 17` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1 + Phase 17B` baseline.
    - acceptance: visibility and navigation ergonomics keep improving without introducing tree mode or breaking the accepted workspace shell.
-2. Keep the shipped `15.5` to `15.8 fix-1` contracts plus the `Phase 17A + Phase 17A fix-1` tooltip/input boundary unchanged while later `Phase 17` work lands.
-   - acceptance: editable-input context menus, the `API Key` secret contract, `Compare Status` summary-first boundary, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, persistent `VecModel`, and tooltip-as-completion-only all remain intact.
+2. Keep the shipped `15.5` to `15.8 fix-1` contracts plus the `Phase 17A + Phase 17A fix-1 + Phase 17B` settings/results boundary unchanged while later `Phase 17` work lands.
+   - acceptance: editable-input context menus, the `API Key` secret contract, `Compare Status` summary-first boundary, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, persistent `VecModel`, tooltip-as-completion-only, and the first-round `Settings -> Provider / Behavior` skeleton all remain intact.
 
 ## Documentation update contract
 

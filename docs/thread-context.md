@@ -6,8 +6,9 @@
 
 ## 本轮更新说明（2026-03-20）
 
-- 本轮执行 `Phase 17A fix-1`，只收口 Results / Navigator tooltip 触发稳定性、shared overlay 定位与 Compare/Search 输入框长文本裁切，不改 IA、不改 compare/diff/analysis 核心数据结构，不把 tooltip 扩成新的说明层或全局 controller。
+- 本轮执行 `Phase 17B`，只把 `App Bar -> Provider Settings` 升级为更通用的 `Settings`，建立第一轮 `Provider / Behavior` 分区，并落地首个非 Provider 偏好项 `Hidden files`；不重开 compare/diff/analysis 核心数据结构，不引入完整 settings framework，也不把 hidden-files 语义下沉到 `fc-core`。
 - 已完成并关闭：
+  - `Phase 17B`
   - `Phase 17A fix-1`
   - `Phase 17A`
   - `Phase 16C fix-1`
@@ -53,30 +54,35 @@
   - row secondary summary 已更贴近右侧真实 viewer 能力，尤其是 non-text / binary / preview-unavailable 项
   - `Diff / Analysis` 已区分 `no selection` 与 `stale selection`，并收口基础 unavailable / ready / waiting 语义
   - `Results / Navigator` row 次信息已进一步收缩为 capability-first 短语，弱 parent-path 会更早让出宽度
-  - `Compare Inputs`、`Search`、`Provider Settings`、`API Key` 输入框已统一走 CJK-safe editable input font token，修复全角标点 TOFU
+  - `Compare Inputs`、`Search`、`Settings -> Provider`、`API Key` 输入框已统一走 CJK-safe editable input font token，修复全角标点 TOFU
   - window-local shared tooltip 基建已落地
   - `Results / Navigator` row 现已收口为 row-level tooltip：当 filename 或 parent-path 截断时，整行 hover 可稳定补全完整 filename 与完整 parent path
   - `Compare Inputs` 左右路径与 `Filter / Scope -> Search` 长文本输入已支持非编辑态 tooltip 补全文本，且长值会先裁切在输入框内，不再突破 Sidebar 边界
   - shared tooltip overlay 默认优先显示在目标上方；上方空间不足时再降级到下方
+  - `App Bar -> Settings` 已替换 `Provider Settings`，并提供第一轮 `Provider / Behavior` 分区骨架
+  - persisted settings 已升级为 `settings.toml`，并兼容回读 legacy `provider_settings.toml`
+  - `Settings -> Behavior` 已落地首个偏好项：`Hidden files` 默认显示/隐藏策略；该偏好保存后会立即作用到当前 `Results / Navigator` 可见集合，并影响后续 compare 结果展示
+  - `Hidden files` 当前仅是 UI 偏好，不修改 compare request / `fc-core` contract；若它让当前项不可见，则沿用现有 stale selection 语义，Results 顶部摘要会显式提示被 Settings 隐藏的数量
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
   - connected tabs + attached workbench surface 不变
   - `Diff/Analysis` shell 不变
   - editable-input context-menu contract 不变
-  - `Provider Settings -> API Key` secret contract 不变
+  - `Settings -> Provider -> API Key` secret contract 不变
   - window-local non-input context-menu core contract 不变
   - loading-mask / toast boundary 不变
   - UI 继续使用内联 `slint::slint!`
 - 为什么下一步才是剩余 `Phase 17`：
   - `Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1` 已把 Sidebar 表达、flat-list 结果扫描能力，以及 File View 状态联动收口到当前稳定基线；
-  - `Phase 17A` 已在此基础上补齐克制的 tooltip completion layer，`Phase 17A fix-1` 则进一步把 row hover 稳定性、输入框裁切与 overlay 定位收口，但没有重开 IA、tree mode、settings framework 或 compare 能力；
+  - `Phase 17A` 已在此基础上补齐克制的 tooltip completion layer，`Phase 17A fix-1` 则进一步把 row hover 稳定性、输入框裁切与 overlay 定位收口；
+  - `Phase 17B` 则把设置入口升级到最小可扩展骨架，并以 UI 偏好方式收口 hidden-files 默认可见性，而没有重开完整 settings framework、tree mode 或 compare/core contract；
   - 因此下一线程应继续剩余 `Phase 17` 工作，而不是继续重开 `15.3A` 到 `15.8 fix-1`、`16A` 到 `16C fix-1`、或 edition 兼容修复。
 
 ## 快照（Snapshot）
 
 - 日期：`2026-03-20`（Asia/Shanghai）
-- 分支：当前执行 `Phase 17A fix-1`
-- 工作区：`fc-ui-slint` shared tooltip overlay、row-level tooltip completion、Compare/Search 输入框 tooltip + clipping、主文档同步改动
+- 分支：当前执行 `Phase 17B`
+- 工作区：`fc-ui-slint` Settings modal 第一轮分区、通用 settings persistence、hidden-files behavior preference、主文档同步改动
 - 最近提交：
   - `0a8769d` Phase 16A fix-1
   - `1311f96` edition-2024 milestone
@@ -88,27 +94,32 @@
 
 ## 当前目标（Execution Focus）
 
-1. `Phase 17A fix-1` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
+1. `Phase 17B` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
 2. `Results / Navigator` 当前稳定 contract 是 flat list：filename-first 主信息、reason summary 次信息、parent-path 弱信息，以及仅基于现有 `path / name` 搜索 contract 的轻量命中高亮。
 3. selection / file-view 当前稳定 contract：
    - Search / Status 改变后，当前项仍可见则保留；否则清掉左侧可见选中态，右侧进入 stale selection
    - compare 重跑后仅按同一路径做基础恢复；无法稳定恢复则保持 stale selection，不自动跳转
    - `Diff / Analysis` 明确区分 `no selection`、`stale selection`、`unavailable` 与 `ready/waiting`
-4. row / input 当前补充 contract：
+   - `Settings -> Behavior -> Hidden files` 保存后若让当前项不可见，也沿用同一套 stale selection 收口，不自动跳转
+4. settings / row / input 当前补充 contract：
+   - `App Bar -> Settings` 是新的全局设置入口，当前只做第一轮 `Provider / Behavior` 分区，不引入完整 settings framework
+   - `Settings -> Provider` 继续承接原有 provider 配置能力；`Settings -> Behavior` 当前只承载 `Hidden files`
+   - `Hidden files` 当前只作用于 `Results / Navigator` 可见集合与其顶部摘要，不改变 `Search` 的 `path / name` contract，也不改变 `Compare Status` summary-first 统计来源
    - row 次信息优先表达是否可 `text diff` / `text preview`，并使用短语以适配当前 Sidebar 宽度
    - 普通输入框与 `ApiKeyLineEdit` 共用 `UiTypography.editable_input_font_family`，避免 `slint 1.15.1` 默认 editable widget 字体链导致的全角字符 TOFU
    - tooltip 当前是 window-local shared overlay，只承担被截断文本的补全；Results row 已收口为 row-level tooltip，只补全完整 filename + 完整 parent path；Compare/Search 继续只补全输入完整值
    - shared tooltip overlay 默认优先上方定位；空间不足时降级到下方
    - `TooltipLineEdit` 包装层会继续保留 native editable behavior，同时把可见输入宽度收紧在控件矩形内
-5. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`、`Phase 17A fix-1`，也不要重开独立 workspace `edition = "2024"` 里程碑。
+5. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`，也不要重开独立 workspace `edition = "2024"` 里程碑。
 6. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - `Phase 17A fix-1`
-  - window-local tooltip 基建
-  - `Results / Navigator` / `Compare Inputs` / `Search` 的长文本补全与裁切收口
+  - `Phase 17B`
+  - `Settings` 入口升级
+  - `Provider / Behavior` 第一轮分区
+  - `Hidden files` 首个非 Provider 偏好项与结果可见性收口
 - Out of Scope：
   - tree / hierarchy / grouping navigation
   - 排序系统
@@ -116,6 +127,8 @@
   - Diff / Analysis 主体改造
   - edition `2024` 兼容修复回合
   - 新的全局菜单 / loading / toast / controller 方案
+  - 完整 settings framework
+  - compare-level hidden-entry policy
 
 ## 硬契约（Do Not Break）
 
@@ -124,12 +137,12 @@
 3. `fc-ui-slint` 负责 orchestration / presentation，不承载 core 业务规则。
 4. Workspace 结构保持 `Tabs -> Header -> Content`，connected workspace tabs + attached workbench surface 是 accepted baseline。
 5. Compare Status 保持 summary-first，不演化为第二个重型详情面板。
-6. `Compare Inputs`、`Filter / Scope -> Search`、`Provider Settings` 普通输入框继续走 `slint 1.15.1` 原生 editable-input context menu。
-7. `Provider Settings -> API Key` 继续保持专用 `ApiKeyLineEdit`：hidden=`Paste` only；visible=`Select All`、`Copy`、`Paste`、`Cut`。
+6. `Compare Inputs`、`Filter / Scope -> Search`、`Settings -> Provider` 普通输入框继续走 `slint 1.15.1` 原生 editable-input context menu。
+7. `Settings -> Provider -> API Key` 继续保持专用 `ApiKeyLineEdit`：hidden=`Paste` only；visible=`Select All`、`Copy`、`Paste`、`Cut`。
 8. `Analysis success` 正文文本继续走 Slint native text surface（`ContextMenuArea` + `TextInput.copy()/select-all()`）；section header / chrome 继续走 window-local `Copy` / `Copy Summary` 菜单；`Risk Level` 继续保持显式 `Copy` 按钮-only。
 9. 不重新引入 broad `50ms` polling，不回退 persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`。
 10. 不把 editable input 字体策略散落到多个局部组件，继续通过共享 typography token 统一控制。
-11. 不把剩余 `Phase 17`、新菜单方案、或新的产品行为变更混入当前文档 closeout。
+11. 不把完整 settings framework、compare-level hidden policy、剩余 `Phase 17` 之外的新产品行为变更混入当前文档 closeout。
 
 ## 当前稳定事实（Stable Facts）
 
@@ -139,6 +152,7 @@
   - `docs/macos_dmg.sh` 继续从 workspace manifest 派生 bundle / DMG / ZIP 版本
 - UI / shell：
   - `15.2E` 已在当前基线上发货
+  - `App Bar -> Settings` 现已替代 `Provider Settings`，并提供第一轮 `Provider / Behavior` 分区骨架
   - `Diff` 与 `Analysis` 共用已验收的 workbench shell，不改 tabs / header / content 层次
   - `Diff` detail 长行横向滚动维持显式 `ScrollView` 视口，尾行通过 scrollbar-safe spacer 避免被横向滚动条遮挡
   - `SelectableDiffText` 与 `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
@@ -158,12 +172,14 @@
   - `Results / Navigator` row 的 tooltip 已收口为 row-level completion：当 filename 或 parent-path 截断时，整行 hover 可查看完整 filename 与完整 parent path
   - `Compare Inputs` 左右路径与 `Filter / Scope -> Search` 在非编辑态、长文本被截断时可通过 tooltip 查看完整值，且文本会先被裁切在输入框内
   - shared tooltip overlay 默认优先在目标上方展示，若空间不足则自动降级到下方
+  - `Settings -> Behavior -> Hidden files` 当前只影响 `Results / Navigator` 可见集合；摘要会显式提示被 Settings 隐藏的数量，但 `Compare Status` 仍保持 summary-first 原始统计
   - Search / Status 改变后，若当前 source row 仍在新集合中则保持选中；若不在新集合中，则左侧清掉可见选中态，右侧保留 stale path 语义，不自动跳到第一项
   - compare 重跑后只按同一路径做低风险恢复；若同一路径仍存在且在当前 filter 下可见，则恢复选中并自动刷新 File View；否则进入 stale selection
   - row secondary summary 现在更主动提示 non-text / binary compare 与常见 preview-unavailable 文件类型，帮助用户预判右侧 viewer 能力，并通过更短文案适配当前 Sidebar 宽度
   - Analysis success 正文文本支持 native text-surface `Copy` / `Select All` right-click
   - Analysis success section header 标题继续保持显式左对齐，且不会遮挡右上角 inline `Copy`
   - `Diff` 与 `Analysis` 当前都已支持显式 stale selection 文案，不再把 filtered-out selection 与从未选中过的 no-selection 混为一谈
+  - persisted settings 当前保存到 `settings.toml`，缺省时兼容回读 legacy `provider_settings.toml`
 - 运行时：
   - compare / diff / analysis 后台完成态继续通过 presenter notifier + `slint::Weak::upgrade_in_event_loop` 回推 UI
   - `Results / Navigator` 与 `Diff` 行模型继续使用 persistent `VecModel`
@@ -172,7 +188,7 @@
 ## 下一步（Next）
 
 - 唯一建议的下一步是继续剩余 `Phase 17` 工作。
-- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
+- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1 + Phase 17B` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
 - 继续保持当前 shell / menu / loading / toast / event-driven sync contract 不变。
 
 ## 开始前优先阅读文件（Key Files）
@@ -190,11 +206,11 @@
 
 ## 验证（Verification）
 
-- 本轮验证重点是 `Phase 17A fix-1` 的 row tooltip 稳定性、输入框裁切与 shared overlay 定位：
+- 本轮验证重点是 `Phase 17B` 的 Settings 入口升级、settings persistence 与 hidden-files preference 收口：
   - `cargo check -p fc-ui-slint`
   - `cargo test -p fc-ui-slint`
 - 本轮未运行 `cargo run -p fc-ui-slint`：
-  - 原因：本轮未在此线程内做桌面 GUI smoke；真实视觉与交互验收仍保留给人工
+  - 原因：本轮未在此线程内做桌面 GUI smoke；Settings 分区布局与 hidden-files 交互的真实视觉验收仍保留给人工
 
 ## 新线程提示词模板（Handoff Prompt）
 
@@ -202,9 +218,9 @@
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > `docs/upgrade-plan-rust-1.94-slint-1.15.md` 只在需要升级与独立 edition 里程碑归档背景时再阅读。  
-> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`、`Phase 17A`、`Phase 17A fix-1`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
+> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
 > 把当前稳定基线视为：workspace `version = "0.2.18"`、workspace `edition = "2024"`、`rust-toolchain = 1.94.0`、workspace `rust-version = 1.94`、`slint = 1.15.1`、`slint-build = 1.15.1`，且 `15.2E`、event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`、non-input context-menu visual polish、`Analysis success` native text-surface right-click、section header 左对齐修复均已稳定。  
-> 当前默认进入剩余 `Phase 17`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C` / `16C fix-1` / `Phase 17A` / `Phase 17A fix-1`、或 edition `2024` 兼容修复。  
+> 当前默认进入剩余 `Phase 17`，不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C` / `16C fix-1` / `Phase 17A` / `Phase 17A fix-1` / `Phase 17B`、或 edition `2024` 兼容修复。  
 > 保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变。
 
 ## 更新契约（Mandatory）

@@ -133,8 +133,10 @@ pub struct AppState {
     pub analysis_openai_model: String,
     /// OpenAI-compatible request timeout input in seconds.
     pub analysis_request_timeout_secs: u64,
-    /// Provider settings dialog error message.
-    pub provider_settings_error_message: Option<String>,
+    /// Whether hidden files stay visible in Results / Navigator.
+    pub show_hidden_files: bool,
+    /// Settings dialog error message.
+    pub settings_error_message: Option<String>,
 }
 
 impl Default for AppState {
@@ -168,7 +170,8 @@ impl Default for AppState {
             analysis_openai_api_key: String::new(),
             analysis_openai_model: "gpt-4o-mini".to_string(),
             analysis_request_timeout_secs: 30,
-            provider_settings_error_message: None,
+            show_hidden_files: true,
+            settings_error_message: None,
         }
     }
 }
@@ -425,9 +428,7 @@ impl AppState {
 
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "Choose a row from Results / Navigator.".to_string(),
-            DiffShellState::StaleSelection => {
-                "Previous selection is no longer active.".to_string()
-            }
+            DiffShellState::StaleSelection => "Previous selection is no longer active.".to_string(),
             DiffShellState::Loading => {
                 if self.diff_is_preview_mode() {
                     "Preparing preview lines...".to_string()
@@ -650,10 +651,7 @@ impl AppState {
         self.entry_rows
             .iter()
             .enumerate()
-            .filter(|(_, row)| {
-                row.matches_filter(&self.entry_filter)
-                    && status_filter_matches(&row.status, status_filter.as_str())
-            })
+            .filter(|(_, row)| self.row_visible_in_results(row, status_filter.as_str()))
             .map(|(index, row)| (index, row.clone()))
             .collect()
     }
@@ -707,10 +705,7 @@ impl AppState {
         let status_filter = normalize_status_filter_token(&self.entry_status_filter);
         self.entry_rows
             .get(index)
-            .map(|row| {
-                row.matches_filter(&self.entry_filter)
-                    && status_filter_matches(&row.status, status_filter.as_str())
-            })
+            .map(|row| self.row_visible_in_results(row, status_filter.as_str()))
             .unwrap_or(false)
     }
 
@@ -720,15 +715,26 @@ impl AppState {
         let visible = self
             .entry_rows
             .iter()
-            .filter(|row| {
-                row.matches_filter(&self.entry_filter)
-                    && status_filter_matches(&row.status, status_filter.as_str())
-            })
+            .filter(|row| self.row_visible_in_results(row, status_filter.as_str()))
             .count();
+        let hidden_by_settings = if self.show_hidden_files {
+            0
+        } else {
+            self.entry_rows
+                .iter()
+                .filter(|row| {
+                    self.row_matches_filter_controls(row, status_filter.as_str())
+                        && is_hidden_relative_path(&row.relative_path)
+                })
+                .count()
+        };
         let total =
             summary_metric_usize(&self.summary_text, "total=").unwrap_or(self.entry_rows.len());
         let query = self.entry_filter.trim();
         let mut parts = vec![format!("Showing {visible} / {total}")];
+        if hidden_by_settings > 0 {
+            parts.push(format!("{hidden_by_settings} hidden by Settings"));
+        }
         if !query.is_empty() {
             parts.push(format!(
                 "Search: \"{}\"",
@@ -1110,8 +1116,7 @@ impl AppState {
                 }
             }
             AnalysisPanelState::Ready => {
-                "Diff context is ready. Run Analyze to generate a review conclusion."
-                    .to_string()
+                "Diff context is ready. Run Analyze to generate a review conclusion.".to_string()
             }
             AnalysisPanelState::Unavailable => {
                 if !self.analysis_hint_text().trim().is_empty() {
@@ -1272,7 +1277,7 @@ impl AppState {
             AnalysisPanelState::Ready => self.analysis_technical_context_text(),
             AnalysisPanelState::Unavailable => {
                 if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
-                    "Complete endpoint, API key, and model in Provider Settings before using the remote provider."
+                    "Complete endpoint, API key, and model in Settings -> Provider before using the remote provider."
                         .to_string()
                 } else {
                     self.analysis_technical_context_text()
@@ -1531,11 +1536,9 @@ impl AppState {
         self.analysis_request_timeout_secs.to_string()
     }
 
-    /// Returns provider settings error text for UI rendering.
-    pub fn provider_settings_error_text(&self) -> String {
-        self.provider_settings_error_message
-            .clone()
-            .unwrap_or_default()
+    /// Returns settings error text for UI rendering.
+    pub fn settings_error_text(&self) -> String {
+        self.settings_error_message.clone().unwrap_or_default()
     }
 
     /// Builds one AI config snapshot from current UI state.
@@ -1555,6 +1558,19 @@ impl AppState {
             && !self.diff_loading
             && self.selected_diff.is_some()
             && (!self.analysis_remote_mode() || self.analysis_remote_config_ready())
+    }
+
+    fn row_matches_filter_controls(
+        &self,
+        row: &CompareEntryRowViewModel,
+        status_filter: &str,
+    ) -> bool {
+        row.matches_filter(&self.entry_filter) && status_filter_matches(&row.status, status_filter)
+    }
+
+    fn row_visible_in_results(&self, row: &CompareEntryRowViewModel, status_filter: &str) -> bool {
+        self.row_matches_filter_controls(row, status_filter)
+            && (self.show_hidden_files || !is_hidden_relative_path(&row.relative_path))
     }
 
     fn compare_mode_token(&self) -> Option<String> {
@@ -1748,6 +1764,15 @@ fn split_relative_path_leaf(relative_path: &str) -> (String, String) {
     }
 }
 
+fn is_hidden_relative_path(relative_path: &str) -> bool {
+    relative_path
+        .trim_matches(|ch| ch == '/' || ch == '\\')
+        .split(['/', '\\'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .any(|part| part.starts_with('.'))
+}
+
 fn normalize_navigator_parent_path(parent_path: &str) -> String {
     parent_path
         .trim_matches(|ch| ch == '/' || ch == '\\')
@@ -1824,7 +1849,10 @@ fn navigator_equal_secondary_text(row: &CompareEntryRowViewModel) -> String {
             format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
         }
         ("file", "text-detail-deferred") => {
-            format!("Deferred text detail{}", navigator_text_detail_reason_suffix(&row.detail))
+            format!(
+                "Deferred text detail{}",
+                navigator_text_detail_reason_suffix(&row.detail)
+            )
         }
         ("file", "message") => "File matched".to_string(),
         _ => format!("{} matched", navigator_entry_kind_label(&row.entry_kind)),
@@ -1901,63 +1929,14 @@ fn navigator_capability_file_kind(relative_path: &str) -> Option<&'static str> {
         .map(|value| value.trim().to_ascii_lowercase());
     match extension.as_deref() {
         Some(
-            "jpg"
-            | "jpeg"
-            | "png"
-            | "gif"
-            | "bmp"
-            | "webp"
-            | "ico"
-            | "tif"
-            | "tiff"
-            | "avif"
-            | "heic"
-            | "heif"
-            | "icns"
-            | "psd",
+            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "ico" | "tif" | "tiff" | "avif"
+            | "heic" | "heif" | "icns" | "psd",
         ) => Some("Image"),
         Some(
-            "pdf"
-            | "zip"
-            | "tar"
-            | "gz"
-            | "bz2"
-            | "xz"
-            | "7z"
-            | "rar"
-            | "jar"
-            | "war"
-            | "ear"
-            | "bin"
-            | "dat"
-            | "db"
-            | "sqlite"
-            | "sqlite3"
-            | "mp3"
-            | "wav"
-            | "flac"
-            | "ogg"
-            | "m4a"
-            | "mp4"
-            | "mov"
-            | "avi"
-            | "mkv"
-            | "exe"
-            | "dll"
-            | "so"
-            | "dylib"
-            | "class"
-            | "wasm"
-            | "ttf"
-            | "otf"
-            | "woff"
-            | "woff2"
-            | "doc"
-            | "docx"
-            | "xls"
-            | "xlsx"
-            | "ppt"
-            | "pptx",
+            "pdf" | "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "jar" | "war" | "ear"
+            | "bin" | "dat" | "db" | "sqlite" | "sqlite3" | "mp3" | "wav" | "flac" | "ogg" | "m4a"
+            | "mp4" | "mov" | "avi" | "mkv" | "exe" | "dll" | "so" | "dylib" | "class" | "wasm"
+            | "ttf" | "otf" | "woff" | "woff2" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx",
         ) => Some("Binary"),
         _ => None,
     }
@@ -2211,6 +2190,67 @@ mod tests {
     }
 
     #[test]
+    fn hidden_files_preference_filters_dot_prefixed_entries() {
+        let rows = vec![
+            CompareEntryRowViewModel {
+                relative_path: ".gitignore".to_string(),
+                ..CompareEntryRowViewModel::default()
+            },
+            CompareEntryRowViewModel {
+                relative_path: "src/main.rs".to_string(),
+                ..CompareEntryRowViewModel::default()
+            },
+            CompareEntryRowViewModel {
+                relative_path: "assets/.cache/logo.png".to_string(),
+                ..CompareEntryRowViewModel::default()
+            },
+        ];
+
+        let hidden = AppState {
+            entry_rows: rows.clone(),
+            show_hidden_files: false,
+            ..AppState::default()
+        };
+        let visible = hidden.filtered_entry_rows_with_index();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].1.relative_path, "src/main.rs");
+
+        let shown = AppState {
+            entry_rows: rows,
+            show_hidden_files: true,
+            ..AppState::default()
+        };
+        assert_eq!(shown.filtered_entry_rows_with_index().len(), 3);
+    }
+
+    #[test]
+    fn results_collection_text_mentions_hidden_entries_filtered_by_settings() {
+        let state = AppState {
+            entry_rows: vec![
+                CompareEntryRowViewModel {
+                    relative_path: ".env".to_string(),
+                    status: "different".to_string(),
+                    ..CompareEntryRowViewModel::default()
+                },
+                CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    ..CompareEntryRowViewModel::default()
+                },
+            ],
+            summary_text: "mode=normal total=2 equal=0 different=2 left_only=0 right_only=0 pending=0 skipped=0 deferred=0 oversized_text=0".to_string(),
+            entry_status_filter: "different".to_string(),
+            show_hidden_files: false,
+            ..AppState::default()
+        };
+
+        assert_eq!(
+            state.results_collection_text(),
+            "Showing 1 / 2 · 1 hidden by Settings · Diff"
+        );
+    }
+
+    #[test]
     fn navigator_row_projection_promotes_leaf_name_and_parent_context() {
         let state = AppState {
             entry_rows: vec![CompareEntryRowViewModel {
@@ -2283,10 +2323,7 @@ mod tests {
         };
 
         let projected = state.navigator_row_projections();
-        assert_eq!(
-            projected[0].secondary_text,
-            "Image · no text preview"
-        );
+        assert_eq!(projected[0].secondary_text, "Image · no text preview");
     }
 
     #[test]
@@ -2313,7 +2350,10 @@ mod tests {
         };
 
         let projected = state.navigator_row_projections();
-        assert_eq!(projected[0].secondary_text, "Image · no text diff · 1B / 2B");
+        assert_eq!(
+            projected[0].secondary_text,
+            "Image · no text diff · 1B / 2B"
+        );
     }
 
     #[test]
@@ -2609,7 +2649,10 @@ mod tests {
 
         state.selected_row = Some(0);
         state.entry_rows = sample_rows();
-        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::WaitingForDiff);
+        assert_eq!(
+            state.analysis_panel_state(),
+            AnalysisPanelState::WaitingForDiff
+        );
 
         state.analysis_available = true;
         state.selected_diff = Some(sample_preview_panel("preview", "line"));

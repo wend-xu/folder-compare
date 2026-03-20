@@ -3,7 +3,7 @@
 use crate::bridge;
 use crate::commands::UiCommand;
 use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
-use crate::settings::{self, ProviderSettings};
+use crate::settings::{self, AppPreferences, BehaviorSettings, ProviderSettings};
 use crate::state::AppState;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -63,22 +63,23 @@ impl Presenter {
                 }
                 // Keep settings I/O outside the state mutex so edition-2024
                 // temporary drop-order changes cannot extend the lock lifetime.
-                let loaded_settings = settings::load_provider_settings();
+                let loaded_settings = settings::load_app_preferences();
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 match loaded_settings {
                     Ok(Some(saved)) => {
-                        state.analysis_provider_kind = saved.provider_kind;
-                        state.analysis_openai_endpoint = saved.openai_endpoint;
-                        state.analysis_openai_api_key = saved.openai_api_key;
-                        state.analysis_openai_model = saved.openai_model;
-                        state.analysis_request_timeout_secs = saved.timeout_secs.max(1);
-                        state.provider_settings_error_message = None;
+                        state.analysis_provider_kind = saved.provider.provider_kind;
+                        state.analysis_openai_endpoint = saved.provider.openai_endpoint;
+                        state.analysis_openai_api_key = saved.provider.openai_api_key;
+                        state.analysis_openai_model = saved.provider.openai_model;
+                        state.analysis_request_timeout_secs = saved.provider.timeout_secs.max(1);
+                        state.show_hidden_files = saved.behavior.show_hidden_files;
+                        state.settings_error_message = None;
                     }
                     Ok(None) => {}
                     Err(err) => {
-                        state.provider_settings_error_message =
-                            Some(format!("Failed to load provider settings: {err}"));
-                        state.status_text = "Provider settings load failed".to_string();
+                        state.settings_error_message =
+                            Some(format!("Failed to load settings: {err}"));
+                        state.status_text = "Settings load failed".to_string();
                     }
                 }
             }
@@ -155,18 +156,19 @@ impl Presenter {
                 state.analysis_openai_model = value;
                 state.analysis_error_message = None;
             }
-            UiCommand::SaveProviderSettings {
+            UiCommand::SaveAppSettings {
                 provider_kind,
                 endpoint,
                 api_key,
                 model,
                 timeout_secs_text,
+                show_hidden_files,
             } => {
                 let timeout_secs = match parse_timeout_secs(&timeout_secs_text) {
                     Ok(value) => value,
                     Err(err) => {
                         let mut state = self.state.lock().expect("state mutex poisoned");
-                        state.provider_settings_error_message = Some(err);
+                        state.settings_error_message = Some(err);
                         return;
                     }
                 };
@@ -181,7 +183,9 @@ impl Presenter {
                     state.analysis_openai_api_key = api_key;
                     state.analysis_openai_model = model;
                     state.analysis_request_timeout_secs = timeout_secs;
+                    state.show_hidden_files = show_hidden_files;
                     state.clear_analysis_panel();
+                    Self::reconcile_selected_row_visibility(&mut state);
                     state.analysis_hint = Some(match provider_kind {
                         fc_ai::AiProviderKind::Mock => {
                             "Using mock provider. No remote request will be sent.".to_string()
@@ -191,33 +195,38 @@ impl Presenter {
                         }
                     });
 
-                    ProviderSettings {
-                        provider_kind,
-                        openai_endpoint: state.analysis_openai_endpoint.clone(),
-                        openai_api_key: state.analysis_openai_api_key.clone(),
-                        openai_model: state.analysis_openai_model.clone(),
-                        timeout_secs: state.analysis_request_timeout_secs,
+                    AppPreferences {
+                        provider: ProviderSettings {
+                            provider_kind,
+                            openai_endpoint: state.analysis_openai_endpoint.clone(),
+                            openai_api_key: state.analysis_openai_api_key.clone(),
+                            openai_model: state.analysis_openai_model.clone(),
+                            timeout_secs: state.analysis_request_timeout_secs,
+                        },
+                        behavior: BehaviorSettings {
+                            show_hidden_files: state.show_hidden_files,
+                        },
                     }
                 };
                 // Keep settings I/O outside the state mutex so edition-2024
                 // temporary drop-order changes cannot extend the lock lifetime.
-                let save_result = settings::save_provider_settings(&settings);
+                let save_result = settings::save_app_preferences(&settings);
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 match save_result {
                     Ok(_) => {
-                        state.provider_settings_error_message = None;
-                        state.status_text = "Provider settings saved".to_string();
+                        state.settings_error_message = None;
+                        state.status_text = "Settings saved".to_string();
                     }
                     Err(err) => {
-                        state.provider_settings_error_message =
-                            Some(format!("Failed to save provider settings: {err}"));
-                        state.status_text = "Provider settings save failed".to_string();
+                        state.settings_error_message =
+                            Some(format!("Failed to save settings: {err}"));
+                        state.status_text = "Settings save failed".to_string();
                     }
                 }
             }
-            UiCommand::ClearProviderSettingsError => {
+            UiCommand::ClearSettingsError => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.provider_settings_error_message = None;
+                state.settings_error_message = None;
             }
         }
     }
@@ -259,7 +268,10 @@ impl Presenter {
     }
 
     fn selection_path_at(state: &AppState, index: usize) -> Option<String> {
-        state.entry_rows.get(index).map(|row| row.relative_path.clone())
+        state
+            .entry_rows
+            .get(index)
+            .map(|row| row.relative_path.clone())
     }
 
     fn restore_selection_after_compare(
@@ -328,9 +340,10 @@ impl Presenter {
         let is_preview_mode =
             row.status == "left-only" || row.status == "right-only" || row.status == "equal";
         if !row.can_load_diff {
-            let reason = row.diff_blocked_reason.clone().unwrap_or_else(|| {
-                "selected row does not support detailed text diff".to_string()
-            });
+            let reason = row
+                .diff_blocked_reason
+                .clone()
+                .unwrap_or_else(|| "selected row does not support detailed text diff".to_string());
             state.diff_loading = false;
             state.diff_warning = Some(reason);
             state.analysis_hint =
@@ -849,7 +862,10 @@ mod tests {
             snapshot.analysis_hint.as_deref(),
             Some("Previous selection is no longer active in the current Results / Navigator set.")
         );
-        assert_eq!(snapshot.diff_shell_state(), crate::state::DiffShellState::StaleSelection);
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::StaleSelection
+        );
         assert_eq!(
             snapshot.analysis_panel_state(),
             crate::state::AnalysisPanelState::StaleSelection
@@ -890,7 +906,10 @@ mod tests {
         assert_eq!(snapshot.selected_relative_path.as_deref(), Some("a.txt"));
         assert_eq!(snapshot.entry_status_filter, "equal");
         assert_eq!(snapshot.filtered_entry_rows_with_index().len(), 1);
-        assert_eq!(snapshot.diff_shell_state(), crate::state::DiffShellState::StaleSelection);
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::StaleSelection
+        );
     }
 
     #[test]
@@ -898,8 +917,7 @@ mod tests {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
         fs::write(left.path().join("alpha.txt"), "left\n").expect("left file should be written");
-        fs::write(right.path().join("alpha.txt"), "right\n")
-            .expect("right file should be written");
+        fs::write(right.path().join("alpha.txt"), "right\n").expect("right file should be written");
         fs::write(left.path().join("beta.txt"), "same\n").expect("left file should be written");
         fs::write(right.path().join("beta.txt"), "same\n").expect("right file should be written");
 
@@ -923,7 +941,10 @@ mod tests {
         presenter.handle_command(UiCommand::UpdateEntryFilter("alpha".to_string()));
         let snapshot = presenter.state_snapshot();
         assert_eq!(snapshot.selected_row, Some(selected_index));
-        assert_eq!(snapshot.selected_relative_path.as_deref(), Some("alpha.txt"));
+        assert_eq!(
+            snapshot.selected_relative_path.as_deref(),
+            Some("alpha.txt")
+        );
         assert!(snapshot.selected_diff.is_some());
     }
 
@@ -932,8 +953,7 @@ mod tests {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
         fs::write(left.path().join("alpha.txt"), "left\n").expect("left file should be written");
-        fs::write(right.path().join("alpha.txt"), "right\n")
-            .expect("right file should be written");
+        fs::write(right.path().join("alpha.txt"), "right\n").expect("right file should be written");
         fs::write(left.path().join("beta.txt"), "same\n").expect("left file should be written");
         fs::write(right.path().join("beta.txt"), "same\n").expect("right file should be written");
 
@@ -1108,7 +1128,10 @@ mod tests {
         assert_eq!(snapshot.selected_row, None);
         assert_eq!(snapshot.selected_relative_path.as_deref(), Some("doc.txt"));
         assert!(snapshot.selected_diff.is_none());
-        assert_eq!(snapshot.diff_shell_state(), crate::state::DiffShellState::StaleSelection);
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::StaleSelection
+        );
     }
 
     #[test]
@@ -1352,7 +1375,10 @@ mod tests {
         assert!(snapshot.analysis_error_message.is_none());
         assert!(!snapshot.analysis_loading);
         assert!(snapshot.analysis_available);
-        assert_eq!(snapshot.analysis_panel_state(), crate::state::AnalysisPanelState::Ready);
+        assert_eq!(
+            snapshot.analysis_panel_state(),
+            crate::state::AnalysisPanelState::Ready
+        );
     }
 
     #[test]
@@ -1402,29 +1428,76 @@ mod tests {
     }
 
     #[test]
-    fn save_provider_settings_with_invalid_timeout_sets_error() {
+    fn save_settings_with_invalid_timeout_sets_error() {
         let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
-        presenter.handle_command(UiCommand::SaveProviderSettings {
+        presenter.handle_command(UiCommand::SaveAppSettings {
             provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
             endpoint: "https://api.example.com/v1".to_string(),
             api_key: "sk-test".to_string(),
             model: "gpt-4o-mini".to_string(),
             timeout_secs_text: "0".to_string(),
+            show_hidden_files: true,
         });
         let snapshot = presenter.state_snapshot();
-        assert!(snapshot.provider_settings_error_message.is_some());
+        assert!(snapshot.settings_error_message.is_some());
     }
 
     #[test]
-    fn initialize_loads_provider_settings_from_disk() {
+    fn save_settings_hiding_selected_row_marks_it_stale() {
+        let state = Arc::new(Mutex::new(AppState {
+            entry_rows: vec![
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: ".env".to_string(),
+                    status: "different".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+            ],
+            selected_row: Some(0),
+            selected_relative_path: Some(".env".to_string()),
+            show_hidden_files: true,
+            ..AppState::default()
+        }));
+        let presenter = Presenter::new(state);
+
+        presenter.handle_command(UiCommand::SaveAppSettings {
+            provider_kind: fc_ai::AiProviderKind::Mock,
+            endpoint: String::new(),
+            api_key: String::new(),
+            model: "gpt-4o-mini".to_string(),
+            timeout_secs_text: "30".to_string(),
+            show_hidden_files: false,
+        });
+
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, None);
+        assert_eq!(snapshot.selected_relative_path.as_deref(), Some(".env"));
+        assert!(!snapshot.show_hidden_files);
+    }
+
+    #[test]
+    fn initialize_loads_settings_from_disk() {
         let temp = tempfile::tempdir().expect("temp dir should be created");
         let _settings_guard = crate::settings::TestSettingsDirGuard::new(temp.path());
-        crate::settings::save_provider_settings(&ProviderSettings {
-            provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
-            openai_endpoint: "https://api.example.com/v1".to_string(),
-            openai_api_key: "sk-test".to_string(),
-            openai_model: "gpt-4o-mini".to_string(),
-            timeout_secs: 55,
+        crate::settings::save_app_preferences(&AppPreferences {
+            provider: ProviderSettings {
+                provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
+                openai_endpoint: "https://api.example.com/v1".to_string(),
+                openai_api_key: "sk-test".to_string(),
+                openai_model: "gpt-4o-mini".to_string(),
+                timeout_secs: 55,
+            },
+            behavior: BehaviorSettings {
+                show_hidden_files: false,
+            },
         })
         .expect("settings should be saved");
 
@@ -1442,5 +1515,6 @@ mod tests {
         assert_eq!(snapshot.analysis_openai_api_key, "sk-test");
         assert_eq!(snapshot.analysis_openai_model, "gpt-4o-mini");
         assert_eq!(snapshot.analysis_request_timeout_secs, 55);
+        assert!(!snapshot.show_hidden_files);
     }
 }

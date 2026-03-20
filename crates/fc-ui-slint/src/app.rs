@@ -1156,16 +1156,19 @@ slint::slint! {
         in property <string> analysis_review_suggestions_copy_text;
         in property <string> analysis_notes_copy_text;
         in property <string> analysis_full_copy_text;
-        in property <string> provider_settings_error_text;
+        in property <bool> show_hidden_files;
+        in property <string> settings_error_text;
         in-out property <int> workspace_tab: 0;
         in-out property <bool> compare_status_details_expanded: false;
-        in-out property <bool> provider_settings_open: false;
-        in-out property <int> provider_settings_mode: 0;
-        in-out property <string> provider_settings_endpoint;
-        in-out property <string> provider_settings_api_key;
-        in-out property <string> provider_settings_model;
-        in-out property <string> provider_settings_timeout;
-        in-out property <bool> provider_settings_show_api_key: false;
+        in-out property <bool> settings_open: false;
+        in-out property <int> settings_section: 0;
+        in-out property <int> settings_provider_mode: 0;
+        in-out property <string> settings_provider_endpoint;
+        in-out property <string> settings_provider_api_key;
+        in-out property <string> settings_provider_model;
+        in-out property <string> settings_provider_timeout;
+        in-out property <bool> settings_show_hidden_files: true;
+        in-out property <bool> settings_provider_show_api_key: false;
         in-out property <int> selected_row: -1;
         in property <string> selected_row_status;
         in property <string> diff_mode_label;
@@ -1245,9 +1248,9 @@ slint::slint! {
         callback analysis_endpoint_changed(string);
         callback analysis_api_key_changed(string);
         callback analysis_model_changed(string);
-        callback provider_settings_clicked();
-        callback provider_settings_save_clicked();
-        callback provider_settings_cancel_clicked();
+        callback settings_clicked();
+        callback settings_save_clicked();
+        callback settings_cancel_clicked();
         callback compare_status_context_menu_requested(string, string);
         callback results_context_menu_requested(string, string, string, bool);
         callback workspace_header_context_menu_requested(string, string, string, string, string);
@@ -1259,7 +1262,7 @@ slint::slint! {
             padding: 10px;
             spacing: 8px;
 
-            // Contract: app bar shell (title + global provider settings entry).
+            // Contract: app bar shell (title + global settings entry).
             SectionCard {
                 height: 36px;
                 border-color: #e5e9ef;
@@ -1277,18 +1280,19 @@ slint::slint! {
                         horizontal-stretch: 1;
                     }
                     ToolButton {
-                        label: "Provider Settings";
-                        button_min_width: 132px;
+                        label: "Settings";
+                        button_min_width: 96px;
                         control_height: 26px;
                         tapped => {
-                            root.provider_settings_mode = root.analysis_remote_mode ? 1 : 0;
-                            root.provider_settings_endpoint = root.analysis_endpoint;
-                            root.provider_settings_api_key = root.analysis_api_key;
-                            root.provider_settings_model = root.analysis_model;
-                            root.provider_settings_timeout = root.analysis_timeout_text;
-                            root.provider_settings_show_api_key = false;
-                            root.provider_settings_open = true;
-                            root.provider_settings_clicked();
+                            root.settings_provider_mode = root.analysis_remote_mode ? 1 : 0;
+                            root.settings_provider_endpoint = root.analysis_endpoint;
+                            root.settings_provider_api_key = root.analysis_api_key;
+                            root.settings_provider_model = root.analysis_model;
+                            root.settings_provider_timeout = root.analysis_timeout_text;
+                            root.settings_show_hidden_files = root.show_hidden_files;
+                            root.settings_provider_show_api_key = false;
+                            root.settings_open = true;
+                            root.settings_clicked();
                         }
                     }
                 }
@@ -2509,7 +2513,7 @@ slint::slint! {
                                                         overflow: elide;
                                                     }
                                                     Text {
-                                                        text: "Use Provider Settings in App Bar to edit.";
+                                                        text: "Use Settings in App Bar to edit.";
                                                         color: #7b8a99;
                                                         font-size: 11px;
                                                         vertical-alignment: center;
@@ -2856,7 +2860,7 @@ slint::slint! {
             }
         }
 
-        if root.tooltip_visible && root.tooltip_text != "" && !root.context_menu_open && !root.provider_settings_open : Rectangle {
+        if root.tooltip_visible && root.tooltip_text != "" && !root.context_menu_open && !root.settings_open : Rectangle {
             property <length> panel_margin: 10px;
             property <length> shadow_offset: 4px;
             property <length> max_bubble_width: min(520px, max(180px, root.width - panel_margin * 2));
@@ -3047,10 +3051,10 @@ slint::slint! {
             }
         }
 
-        // Contract: Provider Settings modal.
-        // Edits global provider config and validation errors; compare/diff workflow remains in main shell.
+        // Contract: Settings modal.
+        // Edits global provider config plus a small set of persisted preferences without changing the main shell workflow.
         Rectangle {
-            visible: root.provider_settings_open;
+            visible: root.settings_open;
             x: 0px;
             y: 0px;
             width: parent.width;
@@ -3060,24 +3064,26 @@ slint::slint! {
             TouchArea {}
 
             SectionCard {
-                width: 700px;
-                height: root.provider_settings_mode == 1 ? 430px : 338px;
+                width: min(760px, parent.width - 36px);
+                height: root.settings_section == 0
+                    ? (root.settings_provider_mode == 1 ? 474px : 388px)
+                    : 338px;
                 x: (parent.width - self.width) / 2;
-                y: 70px;
+                y: max(20px, (parent.height - self.height) / 2);
                 border-color: #dfe5ed;
                 background: #fcfdff;
 
                 VerticalLayout {
                     padding: 14px;
-                    spacing: 8px;
+                    spacing: 10px;
 
                     Text {
-                        text: "Provider Settings";
+                        text: "Settings";
                         color: #2f4966;
                         font-size: 18px;
                     }
                     Text {
-                        text: "Global configuration for AI analysis provider.";
+                        text: "Provider configuration and application defaults.";
                         color: #6a7888;
                     }
 
@@ -3087,111 +3093,241 @@ slint::slint! {
                     }
 
                     HorizontalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: "Mode";
-                            width: 104px;
-                            color: #4f6074;
-                            vertical-alignment: center;
-                        }
-                        SegmentedRail {
-                            height: 30px;
-                            HorizontalLayout {
-                                spacing: 0px;
-                                SegmentItem {
-                                    label: "Mock";
-                                    selected: root.provider_settings_mode == 0;
-                                    show_divider: false;
+                        spacing: 14px;
+
+                        Rectangle {
+                            width: 132px;
+                            background: transparent;
+
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                Text {
+                                    text: "Sections";
+                                    color: #718091;
+                                    font-size: 11px;
+                                }
+                                ToolButton {
+                                    label: "Provider";
+                                    active: root.settings_section == 0;
+                                    button_min_width: 132px;
+                                    control_height: 30px;
                                     tapped => {
-                                        root.provider_settings_mode = 0;
+                                        root.settings_section = 0;
                                     }
                                 }
-                                SegmentItem {
-                                    label: "OpenAI-compatible";
-                                    selected: root.provider_settings_mode == 1;
-                                    show_divider: true;
+                                ToolButton {
+                                    label: "Behavior";
+                                    active: root.settings_section == 1;
+                                    button_min_width: 132px;
+                                    control_height: 30px;
                                     tapped => {
-                                        root.provider_settings_mode = 1;
+                                        root.settings_section = 1;
                                     }
+                                }
+                                Rectangle {
+                                    vertical-stretch: 1;
                                 }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: "Timeout";
-                            width: 104px;
-                            color: #4f6074;
-                            vertical-alignment: center;
+                        Rectangle {
+                            width: 1px;
+                            vertical-stretch: 1;
+                            background: #e7ecf3;
                         }
-                        AppLineEdit {
-                            text <=> root.provider_settings_timeout;
-                            width: 140px;
-                            height: 28px;
-                        }
-                        Text {
-                            text: "seconds";
-                            color: #778595;
-                            vertical-alignment: center;
-                        }
+
                         Rectangle {
                             horizontal-stretch: 1;
-                        }
-                    }
+                            background: transparent;
 
-                    VerticalLayout {
-                        visible: root.provider_settings_mode == 1;
-                        spacing: 6px;
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "Endpoint";
-                                width: 104px;
-                                color: #4f6074;
-                                vertical-alignment: center;
+                            if root.settings_section == 0 : VerticalLayout {
+                                spacing: 10px;
+
+                                Text {
+                                    text: "Provider";
+                                    color: #3b4a5b;
+                                    font-size: 15px;
+                                }
+                                Text {
+                                    text: "Configure the AI analysis provider used by the Analysis tab.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Mode";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    SegmentedRail {
+                                        height: 30px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "Mock";
+                                                selected: root.settings_provider_mode == 0;
+                                                show_divider: false;
+                                                tapped => {
+                                                    root.settings_provider_mode = 0;
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "OpenAI-compatible";
+                                                selected: root.settings_provider_mode == 1;
+                                                show_divider: true;
+                                                tapped => {
+                                                    root.settings_provider_mode = 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Timeout";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    AppLineEdit {
+                                        text <=> root.settings_provider_timeout;
+                                        width: 140px;
+                                        height: 28px;
+                                    }
+                                    Text {
+                                        text: "seconds";
+                                        color: #778595;
+                                        vertical-alignment: center;
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                if root.settings_provider_mode == 1 : VerticalLayout {
+                                    spacing: 6px;
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: "Endpoint";
+                                            width: 110px;
+                                            color: #4f6074;
+                                            vertical-alignment: center;
+                                        }
+                                        AppLineEdit {
+                                            text <=> root.settings_provider_endpoint;
+                                            horizontal-stretch: 1;
+                                            height: 28px;
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: "API Key";
+                                            width: 110px;
+                                            color: #4f6074;
+                                            vertical-alignment: center;
+                                        }
+                                        ApiKeyLineEdit {
+                                            text <=> root.settings_provider_api_key;
+                                            horizontal-stretch: 1;
+                                            height: 28px;
+                                            revealed <=> root.settings_provider_show_api_key;
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: "Model";
+                                            width: 110px;
+                                            color: #4f6074;
+                                            vertical-alignment: center;
+                                        }
+                                        AppLineEdit {
+                                            text <=> root.settings_provider_model;
+                                            horizontal-stretch: 1;
+                                            height: 28px;
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    vertical-stretch: 1;
+                                }
                             }
-                            AppLineEdit {
-                                text <=> root.provider_settings_endpoint;
-                                horizontal-stretch: 1;
-                                height: 28px;
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "API Key";
-                                width: 104px;
-                                color: #4f6074;
-                                vertical-alignment: center;
-                            }
-                            ApiKeyLineEdit {
-                                text <=> root.provider_settings_api_key;
-                                horizontal-stretch: 1;
-                                height: 28px;
-                                revealed <=> root.provider_settings_show_api_key;
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "Model";
-                                width: 104px;
-                                color: #4f6074;
-                                vertical-alignment: center;
-                            }
-                            AppLineEdit {
-                                text <=> root.provider_settings_model;
-                                horizontal-stretch: 1;
-                                height: 28px;
+
+                            if root.settings_section == 1 : VerticalLayout {
+                                spacing: 10px;
+
+                                Text {
+                                    text: "Behavior";
+                                    color: #3b4a5b;
+                                    font-size: 15px;
+                                }
+                                Text {
+                                    text: "Control the default noise level and presentation of Results / Navigator.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Hidden files";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    SegmentedRail {
+                                        width: 220px;
+                                        height: 30px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "Show";
+                                                selected: root.settings_show_hidden_files;
+                                                show_divider: false;
+                                                tapped => {
+                                                    root.settings_show_hidden_files = true;
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Hide";
+                                                selected: !root.settings_show_hidden_files;
+                                                show_divider: true;
+                                                tapped => {
+                                                    root.settings_show_hidden_files = false;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Text {
+                                    text: "Applies to dot-prefixed files and folders in Results / Navigator. Save updates the current result list immediately and also affects future compares.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                Rectangle {
+                                    vertical-stretch: 1;
+                                }
                             }
                         }
                     }
 
                     Text {
-                        visible: root.provider_settings_error_text != "";
-                        text: root.provider_settings_error_text;
+                        visible: root.settings_error_text != "";
+                        text: root.settings_error_text;
                         color: #8c1d1d;
                         wrap: word-wrap;
                         horizontal-stretch: 1;
@@ -3212,8 +3348,8 @@ slint::slint! {
                             button_min_width: 108px;
                             control_height: 30px;
                             tapped => {
-                                root.provider_settings_open = false;
-                                root.provider_settings_cancel_clicked();
+                                root.settings_open = false;
+                                root.settings_cancel_clicked();
                             }
                         }
                         ToolButton {
@@ -3222,7 +3358,7 @@ slint::slint! {
                             button_min_width: 108px;
                             control_height: 30px;
                             tapped => {
-                                root.provider_settings_save_clicked();
+                                root.settings_save_clicked();
                             }
                         }
                     }
@@ -3672,6 +3808,7 @@ fn should_refresh_result_models(last_state: Option<&AppState>, next_state: &AppS
             last.entry_rows != next_state.entry_rows
                 || last.entry_filter != next_state.entry_filter
                 || last.entry_status_filter != next_state.entry_status_filter
+                || last.show_hidden_files != next_state.show_hidden_files
         }
     }
 }
@@ -3812,7 +3949,8 @@ fn sync_window_state(
     );
     window.set_analysis_notes_copy_text(state.analysis_notes_copy_text().into());
     window.set_analysis_full_copy_text(state.analysis_full_copy_text().into());
-    window.set_provider_settings_error_text(state.provider_settings_error_text().into());
+    window.set_show_hidden_files(state.show_hidden_files);
+    window.set_settings_error_text(state.settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     window.set_selected_row_status(state.selected_row_status_text().into());
     window.set_diff_mode_label(state.diff_mode_label().into());
@@ -4477,87 +4615,88 @@ pub fn run() -> anyhow::Result<()> {
         );
     });
 
-    // Provider settings lifecycle callbacks (open/cancel/save).
+    // Settings lifecycle callbacks (open/cancel/save).
     let app_weak = app.as_weak();
-    let provider_settings_bridge = bridge.clone();
-    let provider_settings_cache = Arc::clone(&sync_cache);
-    let provider_settings_context_menu_controller = context_menu_controller.clone();
-    let provider_settings_loading_mask_controller = loading_mask_controller.clone();
-    app.on_provider_settings_clicked(move || {
+    let settings_bridge = bridge.clone();
+    let settings_cache = Arc::clone(&sync_cache);
+    let settings_context_menu_controller = context_menu_controller.clone();
+    let settings_loading_mask_controller = loading_mask_controller.clone();
+    app.on_settings_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
-        provider_settings_context_menu_controller.close();
-        provider_settings_bridge.dispatch(UiCommand::ClearProviderSettingsError);
+        settings_context_menu_controller.close();
+        settings_bridge.dispatch(UiCommand::ClearSettingsError);
         sync_window_state_if_changed(
             &window,
-            &provider_settings_bridge,
-            &provider_settings_cache,
-            Some(&provider_settings_context_menu_controller),
-            &provider_settings_loading_mask_controller,
+            &settings_bridge,
+            &settings_cache,
+            Some(&settings_context_menu_controller),
+            &settings_loading_mask_controller,
             SyncMode::Passive,
         );
     });
 
     let app_weak = app.as_weak();
-    let provider_settings_cancel_bridge = bridge.clone();
-    let provider_settings_cancel_cache = Arc::clone(&sync_cache);
-    let provider_settings_cancel_context_menu_controller = context_menu_controller.clone();
-    let provider_settings_cancel_loading_mask_controller = loading_mask_controller.clone();
-    app.on_provider_settings_cancel_clicked(move || {
+    let settings_cancel_bridge = bridge.clone();
+    let settings_cancel_cache = Arc::clone(&sync_cache);
+    let settings_cancel_context_menu_controller = context_menu_controller.clone();
+    let settings_cancel_loading_mask_controller = loading_mask_controller.clone();
+    app.on_settings_cancel_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
-        provider_settings_cancel_context_menu_controller.close();
-        provider_settings_cancel_bridge.dispatch(UiCommand::ClearProviderSettingsError);
+        settings_cancel_context_menu_controller.close();
+        settings_cancel_bridge.dispatch(UiCommand::ClearSettingsError);
         sync_window_state_if_changed(
             &window,
-            &provider_settings_cancel_bridge,
-            &provider_settings_cancel_cache,
-            Some(&provider_settings_cancel_context_menu_controller),
-            &provider_settings_cancel_loading_mask_controller,
+            &settings_cancel_bridge,
+            &settings_cancel_cache,
+            Some(&settings_cancel_context_menu_controller),
+            &settings_cancel_loading_mask_controller,
             SyncMode::Passive,
         );
     });
 
     let app_weak = app.as_weak();
-    let provider_settings_save_bridge = bridge.clone();
-    let provider_settings_save_cache = Arc::clone(&sync_cache);
-    let provider_settings_toast_controller = toast_controller.clone();
-    let provider_settings_save_context_menu_controller = context_menu_controller.clone();
-    let provider_settings_save_loading_mask_controller = loading_mask_controller.clone();
-    app.on_provider_settings_save_clicked(move || {
+    let settings_save_bridge = bridge.clone();
+    let settings_save_cache = Arc::clone(&sync_cache);
+    let settings_toast_controller = toast_controller.clone();
+    let settings_save_context_menu_controller = context_menu_controller.clone();
+    let settings_save_loading_mask_controller = loading_mask_controller.clone();
+    app.on_settings_save_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
-        provider_settings_save_context_menu_controller.close();
-        let provider_kind = if window.get_provider_settings_mode() == 1 {
+        settings_save_context_menu_controller.close();
+        let provider_kind = if window.get_settings_provider_mode() == 1 {
             AiProviderKind::OpenAiCompatible
         } else {
             AiProviderKind::Mock
         };
-        provider_settings_save_bridge.dispatch(UiCommand::SaveProviderSettings {
+        settings_save_bridge.dispatch(UiCommand::SaveAppSettings {
             provider_kind,
-            endpoint: window.get_provider_settings_endpoint().to_string(),
-            api_key: window.get_provider_settings_api_key().to_string(),
-            model: window.get_provider_settings_model().to_string(),
-            timeout_secs_text: window.get_provider_settings_timeout().to_string(),
+            endpoint: window.get_settings_provider_endpoint().to_string(),
+            api_key: window.get_settings_provider_api_key().to_string(),
+            model: window.get_settings_provider_model().to_string(),
+            timeout_secs_text: window.get_settings_provider_timeout().to_string(),
+            show_hidden_files: window.get_settings_show_hidden_files(),
         });
         sync_window_state_if_changed(
             &window,
-            &provider_settings_save_bridge,
-            &provider_settings_save_cache,
-            Some(&provider_settings_save_context_menu_controller),
-            &provider_settings_save_loading_mask_controller,
+            &settings_save_bridge,
+            &settings_save_cache,
+            Some(&settings_save_context_menu_controller),
+            &settings_save_loading_mask_controller,
             SyncMode::Passive,
         );
-        if window.get_provider_settings_error_text().is_empty() {
-            window.set_provider_settings_open(false);
-            provider_settings_toast_controller.dispatch(ToastRequest::new(
-                "Provider settings saved",
+        if window.get_settings_error_text().is_empty() {
+            window.set_settings_open(false);
+            settings_toast_controller.dispatch(ToastRequest::new(
+                "Settings saved",
                 ToastTone::Success,
                 ToastPlacement::Toast,
             ));

@@ -38,16 +38,17 @@ pub enum UiCommand {
     UpdateAiApiKey(String),
     /// Updates OpenAI-compatible model input.
     UpdateAiModel(String),
-    /// Saves provider settings using dialog draft values.
-    SaveProviderSettings {
+    /// Saves application settings using dialog draft values.
+    SaveAppSettings {
         provider_kind: AiProviderKind,
         endpoint: String,
         api_key: String,
         model: String,
         timeout_secs_text: String,
+        show_hidden_files: bool,
     },
-    /// Clears provider settings validation/persistence error.
-    ClearProviderSettingsError,
+    /// Clears settings validation/persistence error.
+    ClearSettingsError,
 }
 
 /// Executes one compare request against `fc-core`.
