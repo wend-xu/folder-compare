@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 16C fix-1)
+# Folder Compare Architecture (Current Baseline after Phase 17A)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 17A`
   - `Phase 16C fix-1`
   - `Phase 16C`
   - `Phase 16A`
@@ -31,16 +32,18 @@
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
+  - `Phase 17A` is complete
   - `Phase 16C fix-1` is complete
   - `Phase 16C` is complete
   - `Phase 16A` is complete
   - `Phase 16A fix-1` is complete
   - `Phase 16B` is complete
-  - Sidebar IA remains unchanged, but `Compare Status`, `Filter / Scope`, `Results / Navigator`, and the shared File View shell now use the tightened `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1` presentation contract
-- Why `Phase 16` still remains the active train:
+  - Sidebar IA remains unchanged, and `Phase 17A` adds one window-local tooltip completion layer on top of the accepted `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1` presentation contract
+- Why `Phase 17` now remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
   - `Phase 16A`, `16A fix-1`, `16B`, `16C`, and `16C fix-1` closed the Sidebar expression, row-scanability, file-view state-consistency, and follow-up readability / typography regression pass without reopening old closeouts;
-  - the next thread should therefore continue the remaining `Phase 16` work instead of reopening `15.3A` to `15.8 fix-1` or edition-2024 tasks.
+  - `Phase 17A` then added a restrained tooltip-completion baseline for truncated text without changing IA, row semantics, or input/menu contracts;
+  - the next thread should therefore continue the remaining `Phase 17` work instead of reopening `15.3A` to `15.8 fix-1`, `16A` to `16C fix-1`, or edition-2024 tasks.
 
 ## Phase 15 summary
 
@@ -99,6 +102,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - compare trigger
   - summary-first status update
 - `Compare Inputs` keeps the same interaction model, with only a light presentation pass around input/browse/compare grouping.
+- `Compare Inputs` now add tooltip-only full-path completion on the existing left/right path inputs when the value is truncated and the field is not actively being edited.
 - `Compare Status` remains one static sidebar result block:
   - summary-first by default
   - inline `Show details / Hide details` tray inside the block
@@ -114,6 +118,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - primary information: status pill + filename / leaf path segment
   - secondary information: concise capability-first summary for `diff / equal / left / right`
   - weak information: parent-path context for disambiguation only
+  - truncated filename, capability summary, and parent-path text now use one shared window-local tooltip for full-text completion only; the tooltip does not carry new meaning beyond the row text already on screen
   - path/name filter hits use subtle row-local label-level highlight on the matched filename or parent-path context
   - future match-span / substring highlight must come from lower-layer match positions or pre-split render segments; the Slint view layer should remain render-only and must not take on complex match parsing logic
   - the list remains flat; no tree, grouping, or alternate navigation mode was introduced
@@ -174,6 +179,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 - `Compare Inputs`, `Filter / Scope -> Search`, and `Provider Settings` ordinary inputs use the native editable-input context menu from `slint 1.15.1`.
 - Those ordinary editable inputs now share one CJK-safe typography token (`UiTypography.editable_input_font_family`) so full-width punctuation and mixed Latin/CJK input stay stable on the `slint 1.15.1` baseline instead of relying on the default widget font chain.
+- `Compare Inputs` left/right path fields and `Filter / Scope -> Search` now opt into the same window-local tooltip completion layer when long text is visually truncated and the input is in a non-editing state.
 - `Provider Settings -> API Key` keeps one dedicated `ApiKeyLineEdit`:
   - hidden state: `Paste` only
   - visible state: `Select All`, `Copy`, `Paste`, `Cut`
@@ -185,6 +191,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 - `SelectableDiffText` and `SelectableSectionText` share `UiTypography.selectable_content_font_family`.
 - That shared token remains the accepted fix for the Slint `1.15.1` mixed Latin/CJK glyph fallback regression.
+- The tooltip completion layer also uses the shared readable-content typography path, so long filename/path completion does not introduce a second glyph-fallback policy.
 - Copy feedback remains lightweight and UI-local:
   - top-center overlay `toast`
   - no new global toast controller
@@ -213,6 +220,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - No `Phase 16` work was mixed into the phase15 closeout.
 - No new IA, tree mode, or Compare View mode was introduced.
 - No new theme system, global loading controller, or global notification controller was introduced.
+- No global tooltip controller, native-backend tooltip binding, or explanation-heavy hover system was introduced.
 - No character-level substring highlight was introduced; current results highlighting remains the low-cost label-level pass described above.
 - No overlay interception, private pointer plumbing, or custom caret/selection/editing logic was added for editable inputs or selectable text.
 - The large inline `slint::slint!` surface was not externalized because the cleanup benefit is still below the migration cost on the current baseline.
@@ -247,10 +255,10 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 ## Next implementation priority
 
-1. Continue the remaining `Phase 16` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1` baseline.
-   - acceptance: result navigation continues to improve without introducing tree mode or breaking the accepted workspace shell.
-2. Keep the shipped `15.5` to `15.8 fix-1` contracts unchanged while `Phase 16` lands.
-   - acceptance: editable-input context menus, the `API Key` secret contract, `Compare Status` summary-first boundary, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, and persistent `VecModel` all remain intact.
+1. Continue the remaining `Phase 17` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A` baseline.
+   - acceptance: visibility and navigation ergonomics keep improving without introducing tree mode or breaking the accepted workspace shell.
+2. Keep the shipped `15.5` to `15.8 fix-1` contracts plus the `Phase 17A` tooltip boundary unchanged while later `Phase 17` work lands.
+   - acceptance: editable-input context menus, the `API Key` secret contract, `Compare Status` summary-first boundary, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, persistent `VecModel`, and tooltip-as-completion-only all remain intact.
 
 ## Documentation update contract
 
@@ -261,4 +269,4 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - what is completed
   - what the current baseline is
   - what intentionally stays unchanged
-  - why the next step is the remaining `Phase 16` work
+  - why the next step is the remaining active phase work

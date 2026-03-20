@@ -266,6 +266,7 @@ slint::slint! {
         in property <brush> highlight_fill: rgba(231, 221, 176, 0.45);
         in property <length> font_size: 12px;
         in property <int> font_weight: 400;
+        out property <bool> is_truncated: label_text.preferred-width > self.width + 1px;
 
         clip: true;
         height: max(16px, label_text.preferred-height + 2px);
@@ -289,6 +290,45 @@ slint::slint! {
             font-weight: root.font_weight;
             vertical-alignment: center;
             overflow: elide;
+        }
+    }
+
+    component TooltipBubble inherits Rectangle {
+        in property <string> text;
+        in property <length> max_panel_width: 520px;
+        property <length> horizontal_padding: 10px;
+        property <length> vertical_padding: 7px;
+
+        border-width: 1px;
+        border-radius: 6px;
+        border-color: UiPalette.tooltip_border;
+        background: UiPalette.tooltip_background;
+        clip: true;
+
+        width: min(
+            root.max_panel_width,
+            max(96px, bubble_text.preferred-width + root.horizontal_padding * 2)
+        );
+        height: max(28px, bubble_text.preferred-height + root.vertical_padding * 2);
+
+        Rectangle {
+            x: 1px;
+            y: 1px;
+            width: max(0px, parent.width - 2px);
+            height: min(18px, max(0px, parent.height - 2px));
+            border-radius: 5px;
+            background: UiPalette.tooltip_inner_highlight;
+        }
+
+        bubble_text := Text {
+            x: root.horizontal_padding;
+            y: root.vertical_padding;
+            width: max(0px, parent.width - root.horizontal_padding * 2);
+            text: root.text;
+            color: UiPalette.tooltip_text;
+            font-size: 12px;
+            font-family: UiTypography.selectable_content_font_family;
+            wrap: word-wrap;
         }
     }
 
@@ -892,6 +932,90 @@ slint::slint! {
         font-family: UiTypography.editable_input_font_family;
     }
 
+    component TooltipLineEdit inherits Rectangle {
+        in-out property <string> text;
+        in property <string> placeholder_text;
+        in property <bool> enabled: true;
+        callback edited(string);
+        callback tooltip_requested(string, length, length);
+        callback tooltip_closed();
+
+        out property <bool> has_focus: line_edit.has-focus;
+        property <length> text_lane_padding: 18px;
+        property <bool> can_show_tooltip: root.enabled
+            && !root.has_focus
+            && root.text != ""
+            && text_probe.preferred-width > max(1px, line_edit.width - root.text_lane_padding);
+
+        changed text => {
+            if !root.can_show_tooltip {
+                root.tooltip_closed();
+            }
+        }
+
+        changed has_focus => {
+            if root.has_focus {
+                root.tooltip_closed();
+            }
+        }
+
+        min-height: line_edit.min-height;
+        max-height: line_edit.max-height;
+        preferred-height: line_edit.preferred-height;
+        forward-focus: line_edit;
+
+        hover_sensor := TouchArea {
+            enabled: root.enabled && root.text != "";
+
+            changed has-hover => {
+                if self.has-hover && root.can_show_tooltip {
+                    root.tooltip_requested(
+                        root.text,
+                        self.absolute-position.x,
+                        self.absolute-position.y + self.height + 4px,
+                    );
+                } else {
+                    root.tooltip_closed();
+                }
+            }
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    if self.has-hover && root.can_show_tooltip {
+                        root.tooltip_requested(
+                            root.text,
+                            self.absolute-position.x,
+                            self.absolute-position.y + self.height + 4px,
+                        );
+                    } else {
+                        root.tooltip_closed();
+                    }
+                } else if event.kind == PointerEventKind.down {
+                    root.tooltip_closed();
+                    line_edit.focus();
+                }
+            }
+
+            line_edit := AppLineEdit {
+                width: parent.width;
+                height: parent.height;
+                text <=> root.text;
+                enabled: root.enabled;
+                placeholder-text: root.placeholder_text;
+                edited(value) => {
+                    root.edited(value);
+                }
+            }
+        }
+
+        text_probe := Text {
+            visible: false;
+            text: root.text;
+            font-size: line_edit.font-size;
+            font-family: UiTypography.editable_input_font_family;
+        }
+    }
+
     component DiffCopyHotspot inherits Rectangle {
         in property <string> label;
         in property <string> feedback_label;
@@ -1061,6 +1185,10 @@ slint::slint! {
         in property <[string]> context_menu_action_labels;
         in property <[string]> context_menu_action_ids;
         in property <[bool]> context_menu_action_enabled;
+        in-out property <bool> tooltip_visible: false;
+        in-out property <string> tooltip_text: "";
+        in-out property <length> tooltip_anchor_x: 0px;
+        in-out property <length> tooltip_anchor_y: 0px;
         property <bool> has_selected_result: root.selected_row >= 0;
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
@@ -1076,6 +1204,29 @@ slint::slint! {
         property <length> workbench_header_height: 66px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
+        function point_in_bounds(
+            point_x: length,
+            point_y: length,
+            item_x: length,
+            item_y: length,
+            item_width: length,
+            item_height: length,
+        ) -> bool {
+            return point_x >= item_x
+                && point_x <= item_x + item_width
+                && point_y >= item_y
+                && point_y <= item_y + item_height;
+        }
+        function show_tooltip(text: string, anchor_x: length, anchor_y: length) {
+            root.tooltip_text = text;
+            root.tooltip_anchor_x = anchor_x;
+            root.tooltip_anchor_y = anchor_y;
+            root.tooltip_visible = text != "";
+        }
+        function hide_tooltip() {
+            root.tooltip_visible = false;
+            root.tooltip_text = "";
+        }
         callback compare_clicked();
         callback left_browse_clicked();
         callback right_browse_clicked();
@@ -1171,11 +1322,21 @@ slint::slint! {
                                         color: #5d6d7e;
                                         vertical-alignment: center;
                                     }
-                                    AppLineEdit {
+                                    TooltipLineEdit {
                                         text <=> root.left_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
-                                        placeholder-text: "Choose left folder";
+                                        placeholder_text: "Choose left folder";
+                                        tooltip_requested(value, anchor_x, anchor_y) => {
+                                            root.show_tooltip(
+                                                value,
+                                                anchor_x - root.absolute-position.x,
+                                                anchor_y - root.absolute-position.y,
+                                            );
+                                        }
+                                        tooltip_closed => {
+                                            root.hide_tooltip();
+                                        }
                                     }
                                     ToolButton {
                                         label: "Browse";
@@ -1195,11 +1356,21 @@ slint::slint! {
                                         color: #5d6d7e;
                                         vertical-alignment: center;
                                     }
-                                    AppLineEdit {
+                                    TooltipLineEdit {
                                         text <=> root.right_root;
                                         enabled: !root.running;
                                         horizontal-stretch: 1;
-                                        placeholder-text: "Choose right folder";
+                                        placeholder_text: "Choose right folder";
+                                        tooltip_requested(value, anchor_x, anchor_y) => {
+                                            root.show_tooltip(
+                                                value,
+                                                anchor_x - root.absolute-position.x,
+                                                anchor_y - root.absolute-position.y,
+                                            );
+                                        }
+                                        tooltip_closed => {
+                                            root.hide_tooltip();
+                                        }
                                     }
                                     ToolButton {
                                         label: "Browse";
@@ -1522,13 +1693,23 @@ slint::slint! {
                                         color: #5d6d7e;
                                         vertical-alignment: center;
                                     }
-                                    AppLineEdit {
+                                    TooltipLineEdit {
                                         text <=> root.entry_filter;
                                         horizontal-stretch: 1;
                                         enabled: !root.running;
-                                        placeholder-text: "path or name";
+                                        placeholder_text: "path or name";
                                         edited(value) => {
                                             root.filter_changed(value);
+                                        }
+                                        tooltip_requested(value, anchor_x, anchor_y) => {
+                                            root.show_tooltip(
+                                                value,
+                                                anchor_x - root.absolute-position.x,
+                                                anchor_y - root.absolute-position.y,
+                                            );
+                                        }
+                                        tooltip_closed => {
+                                            root.hide_tooltip();
                                         }
                                     }
                                     ToolButton {
@@ -1694,6 +1875,55 @@ slint::slint! {
                                         property <brush> match_fill: row_selected
                                             ? UiPalette.results_row_selected_match_background
                                             : UiPalette.results_row_match_background;
+                                        function update_row_tooltip(mouse_x: length, mouse_y: length) {
+                                            if display_name_label.is_truncated
+                                                && root.point_in_bounds(
+                                                    mouse_x,
+                                                    mouse_y,
+                                                    display_name_label.absolute-position.x - row_item.absolute-position.x,
+                                                    display_name_label.absolute-position.y - row_item.absolute-position.y,
+                                                    display_name_label.width,
+                                                    display_name_label.height,
+                                                ) {
+                                                root.show_tooltip(
+                                                    row_item.display_name,
+                                                    display_name_label.absolute-position.x - root.absolute-position.x,
+                                                    display_name_label.absolute-position.y + display_name_label.height - root.absolute-position.y + 4px,
+                                                );
+                                            } else if secondary_text_label.text != ""
+                                                && secondary_text_label.preferred-width > secondary_text_label.width + 1px
+                                                && root.point_in_bounds(
+                                                    mouse_x,
+                                                    mouse_y,
+                                                    secondary_text_label.absolute-position.x - row_item.absolute-position.x,
+                                                    secondary_text_label.absolute-position.y - row_item.absolute-position.y,
+                                                    secondary_text_label.width,
+                                                    secondary_text_label.height,
+                                                ) {
+                                                root.show_tooltip(
+                                                    row_item.secondary_text,
+                                                    secondary_text_label.absolute-position.x - root.absolute-position.x,
+                                                    secondary_text_label.absolute-position.y + secondary_text_label.height - root.absolute-position.y + 4px,
+                                                );
+                                            } else if parent_path_label.visible
+                                                && parent_path_label.is_truncated
+                                                && root.point_in_bounds(
+                                                    mouse_x,
+                                                    mouse_y,
+                                                    parent_path_label.absolute-position.x - row_item.absolute-position.x,
+                                                    parent_path_label.absolute-position.y - row_item.absolute-position.y,
+                                                    parent_path_label.width,
+                                                    parent_path_label.height,
+                                                ) {
+                                                root.show_tooltip(
+                                                    row_item.parent_path,
+                                                    parent_path_label.absolute-position.x - root.absolute-position.x,
+                                                    parent_path_label.absolute-position.y + parent_path_label.height - root.absolute-position.y + 4px,
+                                                );
+                                            } else {
+                                                root.hide_tooltip();
+                                            }
+                                        }
 
                                         height: 50px;
                                         border-width: 1px;
@@ -1713,7 +1943,7 @@ slint::slint! {
                                                     label: row_item.row_status_label;
                                                     tone: row_item.row_unavailable ? "neutral" : row_item.row_status_tone;
                                                 }
-                                                HighlightTextLabel {
+                                                display_name_label := HighlightTextLabel {
                                                     text: row_item.display_name;
                                                     text_color: row_item.path_text_color;
                                                     highlight: root.row_display_name_matches[index];
@@ -1725,7 +1955,7 @@ slint::slint! {
                                             }
                                             HorizontalLayout {
                                                 spacing: 4px;
-                                                Text {
+                                                secondary_text_label := Text {
                                                     text: row_item.secondary_text;
                                                     color: row_item.detail_text_color;
                                                     vertical-alignment: center;
@@ -1740,7 +1970,7 @@ slint::slint! {
                                                     vertical-alignment: center;
                                                     font-size: 11px;
                                                 }
-                                                HighlightTextLabel {
+                                                parent_path_label := HighlightTextLabel {
                                                     visible: row_item.parent_path != "";
                                                     text: row_item.parent_path;
                                                     text_color: row_item.context_text_color;
@@ -1755,10 +1985,23 @@ slint::slint! {
 
                                         TouchArea {
                                             enabled: !root.diff_loading;
+                                            changed has-hover => {
+                                                if self.has-hover {
+                                                    row_item.update_row_tooltip(self.mouse-x, self.mouse-y);
+                                                } else {
+                                                    root.hide_tooltip();
+                                                }
+                                            }
                                             clicked => {
+                                                root.hide_tooltip();
                                                 root.row_selected(row_item.source_index);
                                             }
                                             pointer-event(event) => {
+                                                if event.kind == PointerEventKind.move {
+                                                    row_item.update_row_tooltip(self.mouse-x, self.mouse-y);
+                                                } else if event.kind == PointerEventKind.down {
+                                                    root.hide_tooltip();
+                                                }
                                                 if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
                                                     root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
                                                     root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
@@ -1773,6 +2016,7 @@ slint::slint! {
                                         }
                                     }
                                     scrolled => {
+                                        root.hide_tooltip();
                                         root.context_menu_close_requested();
                                     }
                                 }
@@ -2620,6 +2864,41 @@ slint::slint! {
                         corner_radius: 6px;
                     }
                 }
+            }
+        }
+
+        if root.tooltip_visible && root.tooltip_text != "" && !root.context_menu_open && !root.provider_settings_open : Rectangle {
+            property <length> panel_margin: 10px;
+            property <length> shadow_offset: 4px;
+            property <length> max_bubble_width: min(520px, max(180px, root.width - panel_margin * 2));
+            property <length> bubble_width: tooltip_panel.width;
+            property <length> bubble_height: tooltip_panel.height;
+            x: max(
+                panel_margin,
+                min(root.tooltip_anchor_x, max(panel_margin, root.width - bubble_width - panel_margin))
+            );
+            y: max(
+                panel_margin,
+                min(root.tooltip_anchor_y, max(panel_margin, root.height - bubble_height - panel_margin))
+            );
+            width: bubble_width;
+            height: bubble_height;
+            background: transparent;
+
+            Rectangle {
+                x: 0px;
+                y: parent.shadow_offset;
+                width: parent.width;
+                height: parent.height;
+                border-radius: 6px;
+                background: UiPalette.tooltip_shadow;
+            }
+
+            tooltip_panel := TooltipBubble {
+                x: 0px;
+                y: 0px;
+                text: root.tooltip_text;
+                max_panel_width: parent.max_bubble_width;
             }
         }
 
