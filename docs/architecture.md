@@ -1,10 +1,12 @@
-# Folder Compare Architecture (Current Baseline after Phase 16A)
+# Folder Compare Architecture (Current Baseline after Phase 16B)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
   - `Phase 16A`
+  - `Phase 16A fix-1`
+  - `Phase 16B`
   - `Phase 15.3A`
   - `Phase 15.3B`
   - `Phase 15.4`
@@ -28,10 +30,12 @@
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
   - `Phase 16A` is complete
-  - Sidebar IA remains unchanged, but `Compare Status`, `Filter / Scope`, and `Results / Navigator` now use the tightened Phase 16A presentation contract
+  - `Phase 16A fix-1` is complete
+  - `Phase 16B` is complete
+  - Sidebar IA remains unchanged, but `Compare Status`, `Filter / Scope`, and `Results / Navigator` now use the tightened `Phase 16A + 16A fix-1 + 16B` presentation contract
 - Why `Phase 16` still remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
-  - `Phase 16A` closed the Sidebar expression pass without reopening old closeouts;
+  - `Phase 16A`, `16A fix-1`, and `16B` closed the Sidebar expression and row-scanability pass without reopening old closeouts;
   - the next thread should therefore continue the remaining `Phase 16` work instead of reopening `15.3A` to `15.8 fix-1` or edition-2024 tasks.
 
 ## Phase 15 summary
@@ -102,6 +106,12 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - segmented visual state stays in lockstep with filter state
   - the user-facing summary no longer repeats status scope as a second `scope` label
 - `Results / Navigator` keeps the same row model and selection behavior, but the top summary now expresses the visible collection state (`Showing visible / total ...`) instead of raw filter field labels.
+- `Results / Navigator` row items now follow a tighter flat-list scan contract:
+  - primary information: status pill + filename / leaf path segment
+  - secondary information: concise reason summary for `diff / equal / left / right`
+  - weak information: parent-path context for disambiguation only
+  - path/name filter hits use subtle row-local highlight on the matched filename or parent-path context
+  - the list remains flat; no tree, grouping, or alternate navigation mode was introduced
 
 ### Diff and Analysis shell
 

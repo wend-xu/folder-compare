@@ -259,6 +259,39 @@ slint::slint! {
         }
     }
 
+    component HighlightTextLabel inherits Rectangle {
+        in property <string> text;
+        in property <bool> highlight: false;
+        in property <brush> text_color: #2f3f50;
+        in property <brush> highlight_fill: rgba(231, 221, 176, 0.45);
+        in property <length> font_size: 12px;
+        in property <int> font_weight: 400;
+
+        clip: true;
+        height: max(16px, label_text.preferred-height + 2px);
+
+        Rectangle {
+            visible: root.highlight && root.text != "";
+            x: 0px;
+            y: 1px;
+            width: min(parent.width, label_text.preferred-width);
+            height: max(0px, parent.height - 2px);
+            border-radius: 4px;
+            background: root.highlight_fill;
+        }
+
+        label_text := Text {
+            width: parent.width;
+            height: parent.height;
+            text: root.text;
+            color: root.text_color;
+            font-size: root.font_size;
+            font-weight: root.font_weight;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
     component LoadingMask inherits Rectangle {
         in property <string> message;
         in property <length> corner_radius: 6px;
@@ -923,8 +956,13 @@ slint::slint! {
         in property <[string]> row_statuses;
         in property <[string]> row_paths;
         in property <[string]> row_details;
+        in property <[string]> row_display_names;
+        in property <[string]> row_parent_paths;
+        in property <[string]> row_secondary_texts;
         in property <[int]> row_source_indices;
         in property <[bool]> row_can_load_diff;
+        in property <[bool]> row_display_name_matches;
+        in property <[bool]> row_parent_path_matches;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
         in property <string> selected_relative_path_raw;
@@ -1591,6 +1629,9 @@ slint::slint! {
                                         property <string> row_status: root.row_statuses[index];
                                         property <bool> row_unavailable: !root.row_can_load_diff[index];
                                         property <bool> row_selected: source_index == root.selected_row;
+                                        property <string> display_name: root.row_display_names[index];
+                                        property <string> parent_path: root.row_parent_paths[index];
+                                        property <string> secondary_text: root.row_secondary_texts[index];
                                         property <string> row_status_label: row_status == "different"
                                             ? "diff"
                                             : (row_status == "equal"
@@ -1641,15 +1682,24 @@ slint::slint! {
                                         property <brush> detail_text_color: row_selected
                                             ? UiPalette.results_row_selected_detail_text
                                             : (row_unavailable ? UiPalette.results_row_unavailable_detail_text : UiPalette.results_row_tone_neutral_detail_text);
+                                        property <brush> context_text_color: row_selected
+                                            ? UiPalette.results_row_selected_context_text
+                                            : (row_unavailable ? UiPalette.results_row_unavailable_context_text : UiPalette.results_row_tone_neutral_context_text);
+                                        property <brush> match_fill: row_selected
+                                            ? UiPalette.results_row_selected_match_background
+                                            : UiPalette.results_row_match_background;
 
-                                        height: 44px;
+                                        height: 50px;
                                         border-width: 1px;
                                         border-color: row_item.item_border_color;
                                         border-radius: 3px;
                                         background: row_item.item_background_color;
 
                                         VerticalLayout {
-                                            padding: 4px;
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            padding-top: 5px;
+                                            padding-bottom: 5px;
                                             spacing: 2px;
                                             HorizontalLayout {
                                                 spacing: 7px;
@@ -1657,20 +1707,43 @@ slint::slint! {
                                                     label: row_item.row_status_label;
                                                     tone: row_item.row_unavailable ? "neutral" : row_item.row_status_tone;
                                                 }
+                                                HighlightTextLabel {
+                                                    text: row_item.display_name;
+                                                    text_color: row_item.path_text_color;
+                                                    highlight: root.row_display_name_matches[index];
+                                                    highlight_fill: row_item.match_fill;
+                                                    font_size: 13px;
+                                                    font_weight: 600;
+                                                    horizontal-stretch: 1;
+                                                }
+                                            }
+                                            HorizontalLayout {
+                                                spacing: 5px;
                                                 Text {
-                                                    text: row_path;
-                                                    color: row_item.path_text_color;
+                                                    text: row_item.secondary_text;
+                                                    color: row_item.detail_text_color;
                                                     vertical-alignment: center;
+                                                    font-size: 11px;
                                                     horizontal-stretch: 1;
                                                     overflow: elide;
                                                 }
-                                            }
-                                            Text {
-                                                text: row_item.row_unavailable ? "detailed diff unavailable" : root.row_details[index];
-                                                color: row_item.detail_text_color;
-                                                vertical-alignment: center;
-                                                horizontal-stretch: 1;
-                                                overflow: elide;
+                                                Text {
+                                                    visible: row_item.parent_path != "";
+                                                    text: "·";
+                                                    color: row_item.context_text_color;
+                                                    vertical-alignment: center;
+                                                    font-size: 11px;
+                                                }
+                                                HighlightTextLabel {
+                                                    visible: row_item.parent_path != "";
+                                                    text: row_item.parent_path;
+                                                    text_color: row_item.context_text_color;
+                                                    highlight: root.row_parent_path_matches[index];
+                                                    highlight_fill: row_item.match_fill;
+                                                    font_size: 11px;
+                                                    font_weight: 400;
+                                                    max-width: 180px;
+                                                }
                                             }
                                         }
 
@@ -1686,7 +1759,7 @@ slint::slint! {
                                                     root.results_context_menu_requested(
                                                         row_path,
                                                         row_item.row_status,
-                                                        row_item.row_unavailable ? "detailed diff unavailable" : root.row_details[index],
+                                                        root.row_details[index],
                                                         row_item.row_unavailable,
                                                     );
                                                 }
@@ -3336,8 +3409,13 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_row_statuses(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_paths(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_details(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_display_names(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_parent_paths(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_secondary_texts(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_source_indices(Rc::new(VecModel::<i32>::default()).into());
     window.set_row_can_load_diff(Rc::new(VecModel::<bool>::default()).into());
+    window.set_row_display_name_matches(Rc::new(VecModel::<bool>::default()).into());
+    window.set_row_parent_path_matches(Rc::new(VecModel::<bool>::default()).into());
     window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_old_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_new_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
@@ -3472,39 +3550,84 @@ fn sync_window_state(
     window.set_diff_shell_note_text(state.diff_shell_note_text().into());
     window.set_diff_content_char_capacity(state.diff_content_char_capacity());
     if should_refresh_result_models(last_state, state) {
-        let filtered_rows = state.filtered_entry_rows_with_index();
-        let row_statuses = filtered_rows
+        let projected_rows = state.navigator_row_projections();
+        let row_statuses = projected_rows
             .iter()
-            .map(|(_, row)| SharedString::from(row.status.clone()))
+            .map(|projection| SharedString::from(projection.row.status.clone()))
             .collect::<Vec<_>>();
         replace_model_contents(window.get_row_statuses(), row_statuses, "row_statuses");
-        let row_paths = filtered_rows
+        let row_paths = projected_rows
             .iter()
-            .map(|(_, row)| SharedString::from(row.relative_path.clone()))
+            .map(|projection| SharedString::from(projection.row.relative_path.clone()))
             .collect::<Vec<_>>();
         replace_model_contents(window.get_row_paths(), row_paths, "row_paths");
-        let row_details = filtered_rows
+        let row_details = projected_rows
             .iter()
-            .map(|(_, row)| SharedString::from(row.detail.clone()))
+            .map(|projection| SharedString::from(projection.row.detail.clone()))
             .collect::<Vec<_>>();
         replace_model_contents(window.get_row_details(), row_details, "row_details");
-        let row_source_indices = filtered_rows
+        let row_display_names = projected_rows
             .iter()
-            .map(|(index, _)| *index as i32)
+            .map(|projection| SharedString::from(projection.display_name.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_display_names(),
+            row_display_names,
+            "row_display_names",
+        );
+        let row_parent_paths = projected_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.parent_path.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_parent_paths(),
+            row_parent_paths,
+            "row_parent_paths",
+        );
+        let row_secondary_texts = projected_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.secondary_text.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_secondary_texts(),
+            row_secondary_texts,
+            "row_secondary_texts",
+        );
+        let row_source_indices = projected_rows
+            .iter()
+            .map(|projection| projection.source_index as i32)
             .collect::<Vec<_>>();
         replace_model_contents(
             window.get_row_source_indices(),
             row_source_indices,
             "row_source_indices",
         );
-        let row_can_load_diff = filtered_rows
+        let row_can_load_diff = projected_rows
             .iter()
-            .map(|(_, row)| row.can_load_diff)
+            .map(|projection| projection.row.can_load_diff)
             .collect::<Vec<_>>();
         replace_model_contents(
             window.get_row_can_load_diff(),
             row_can_load_diff,
             "row_can_load_diff",
+        );
+        let row_display_name_matches = projected_rows
+            .iter()
+            .map(|projection| projection.display_name_matches_filter)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_display_name_matches(),
+            row_display_name_matches,
+            "row_display_name_matches",
+        );
+        let row_parent_path_matches = projected_rows
+            .iter()
+            .map(|projection| projection.parent_path_matches_filter)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_parent_path_matches(),
+            row_parent_path_matches,
+            "row_parent_path_matches",
         );
     }
 

@@ -8,6 +8,10 @@ const WARNING_WRAP_COLUMNS: usize = 96;
 const PATH_DISPLAY_MAX_CHARS: usize = 140;
 const PATH_DISPLAY_HEAD_CHARS: usize = 90;
 const PATH_DISPLAY_TAIL_CHARS: usize = 45;
+const NAVIGATOR_PARENT_PATH_MAX_CHARS: usize = 52;
+const NAVIGATOR_PARENT_PATH_HEAD_CHARS: usize = 18;
+const NAVIGATOR_PARENT_PATH_TAIL_CHARS: usize = 28;
+const NAVIGATOR_SECONDARY_MAX_CHARS: usize = 96;
 
 /// Diff tab shell state for unified status rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +43,25 @@ pub enum AnalysisPanelState {
     Error,
     /// Structured analysis result is ready.
     Success,
+}
+
+/// One filtered Results / Navigator row with presentation-friendly fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NavigatorRowProjection {
+    /// Source index in the unfiltered compare row vector.
+    pub source_index: usize,
+    /// Original compare row view model.
+    pub row: CompareEntryRowViewModel,
+    /// Primary label shown in the row (usually file name / leaf path segment).
+    pub display_name: String,
+    /// Weak path context used to disambiguate rows with the same display name.
+    pub parent_path: String,
+    /// Secondary summary explaining why this row is diff/equal/left/right.
+    pub secondary_text: String,
+    /// Whether current filter matched the display name.
+    pub display_name_matches_filter: bool,
+    /// Whether current filter matched the weak parent-path context.
+    pub parent_path_matches_filter: bool,
 }
 
 /// In-memory UI state for compare workflow.
@@ -558,6 +581,43 @@ impl AppState {
                     && status_filter_matches(&row.status, status_filter.as_str())
             })
             .map(|(index, row)| (index, row.clone()))
+            .collect()
+    }
+
+    /// Returns filtered navigator rows with UI-focused presentation fields.
+    pub fn navigator_row_projections(&self) -> Vec<NavigatorRowProjection> {
+        let needle = normalize_filter_needle(&self.entry_filter);
+        self.filtered_entry_rows_with_index()
+            .into_iter()
+            .map(|(source_index, row)| {
+                let (parent_path_raw, display_name) = split_relative_path_leaf(&row.relative_path);
+                let parent_path = format_navigator_parent_path(&parent_path_raw);
+                let relative_path_lower = row.relative_path.to_lowercase();
+                let display_name_lower = display_name.to_lowercase();
+                let parent_path_lower = parent_path_raw.to_lowercase();
+                let has_match = !needle.is_empty() && relative_path_lower.contains(needle.as_str());
+                let mut display_name_matches_filter =
+                    !needle.is_empty() && display_name_lower.contains(needle.as_str());
+                let mut parent_path_matches_filter =
+                    !needle.is_empty() && parent_path_lower.contains(needle.as_str());
+                if has_match && !display_name_matches_filter && !parent_path_matches_filter {
+                    if parent_path.is_empty() {
+                        display_name_matches_filter = true;
+                    } else {
+                        parent_path_matches_filter = true;
+                    }
+                }
+
+                NavigatorRowProjection {
+                    source_index,
+                    secondary_text: navigator_secondary_text(&row),
+                    row,
+                    display_name,
+                    parent_path,
+                    display_name_matches_filter,
+                    parent_path_matches_filter,
+                }
+            })
             .collect()
     }
 
@@ -1517,6 +1577,10 @@ fn normalize_status_filter_token(raw: &str) -> String {
     }
 }
 
+fn normalize_filter_needle(raw: &str) -> String {
+    raw.trim().to_lowercase()
+}
+
 fn status_filter_matches(status: &str, filter: &str) -> bool {
     filter == "all" || status.eq_ignore_ascii_case(filter)
 }
@@ -1537,6 +1601,207 @@ fn sanitize_inline_query(query: &str) -> String {
         .replace('\n', " ")
         .replace('\r', " ")
         .replace('"', "'")
+}
+
+fn split_relative_path_leaf(relative_path: &str) -> (String, String) {
+    let trimmed = relative_path
+        .trim_matches(|ch| ch == '/' || ch == '\\')
+        .trim();
+    if trimmed.is_empty() {
+        return (String::new(), "compare root".to_string());
+    }
+
+    match trimmed
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| *ch == '/' || *ch == '\\')
+    {
+        Some((idx, _)) => (trimmed[..idx].to_string(), trimmed[idx + 1..].to_string()),
+        None => (String::new(), trimmed.to_string()),
+    }
+}
+
+fn format_navigator_parent_path(parent_path: &str) -> String {
+    let normalized = parent_path
+        .trim_matches(|ch| ch == '/' || ch == '\\')
+        .replace('\\', "/");
+    if normalized.is_empty() {
+        String::new()
+    } else {
+        abbreviate_middle(
+            &normalized,
+            NAVIGATOR_PARENT_PATH_MAX_CHARS,
+            NAVIGATOR_PARENT_PATH_HEAD_CHARS,
+            NAVIGATOR_PARENT_PATH_TAIL_CHARS,
+        )
+    }
+}
+
+fn navigator_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    let secondary = match row.status.as_str() {
+        "left-only" => match row.entry_kind.as_str() {
+            "directory" => "Only on left directory".to_string(),
+            "symlink" => "Only on left symlink".to_string(),
+            "other" => "Only on left special entry".to_string(),
+            _ => "Only on left".to_string(),
+        },
+        "right-only" => match row.entry_kind.as_str() {
+            "directory" => "Only on right directory".to_string(),
+            "symlink" => "Only on right symlink".to_string(),
+            "other" => "Only on right special entry".to_string(),
+            _ => "Only on right".to_string(),
+        },
+        "equal" => navigator_equal_secondary_text(row),
+        "different" => navigator_different_secondary_text(row),
+        "pending" => navigator_pending_secondary_text(row),
+        "skipped" => sentence_excerpt(
+            row.diff_blocked_reason
+                .as_deref()
+                .unwrap_or(row.detail.as_str()),
+            NAVIGATOR_SECONDARY_MAX_CHARS,
+        ),
+        _ => sentence_excerpt(
+            row.diff_blocked_reason
+                .as_deref()
+                .unwrap_or(row.detail.as_str()),
+            NAVIGATOR_SECONDARY_MAX_CHARS,
+        ),
+    };
+
+    if secondary.trim().is_empty() {
+        "Compare detail unavailable".to_string()
+    } else {
+        secondary
+    }
+}
+
+fn navigator_equal_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    match (row.entry_kind.as_str(), row.detail_kind.as_str()) {
+        ("directory", _) => "Directory present on both sides".to_string(),
+        ("symlink", _) => "Symlink content compare deferred".to_string(),
+        ("file", "text-diff") => "Text content matched".to_string(),
+        ("file", "file-comparison") => format!(
+            "File compare matched{}",
+            navigator_file_compare_sizes_suffix(&row.detail)
+        ),
+        ("file", "text-detail-deferred") => format!(
+            "Text detail deferred{}",
+            navigator_text_detail_reason_suffix(&row.detail)
+        ),
+        ("file", "message") => "File content matched".to_string(),
+        _ => format!("{} matched", navigator_entry_kind_label(&row.entry_kind)),
+    }
+}
+
+fn navigator_different_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    match row.detail_kind.as_str() {
+        "text-diff" => {
+            if let Some(summary) = navigator_text_diff_summary(&row.detail) {
+                format!("Text diff · {summary}")
+            } else {
+                "Text diff".to_string()
+            }
+        }
+        "type-mismatch" => format!(
+            "Type mismatch{}",
+            navigator_type_mismatch_suffix(&row.detail)
+        ),
+        "file-comparison" => format!(
+            "File compare differs{}",
+            navigator_file_compare_sizes_suffix(&row.detail)
+        ),
+        "text-detail-deferred" => format!(
+            "Changed file · text detail deferred{}",
+            navigator_text_detail_reason_suffix(&row.detail)
+        ),
+        "message" => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
+        _ => sentence_excerpt(
+            row.diff_blocked_reason
+                .as_deref()
+                .unwrap_or(row.detail.as_str()),
+            NAVIGATOR_SECONDARY_MAX_CHARS,
+        ),
+    }
+}
+
+fn navigator_pending_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    match row.entry_kind.as_str() {
+        "symlink" => "Symlink content compare deferred".to_string(),
+        "directory" => "Directory compare deferred".to_string(),
+        _ => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
+    }
+}
+
+fn navigator_entry_kind_label(kind: &str) -> &'static str {
+    match kind {
+        "directory" => "Directory",
+        "symlink" => "Symlink",
+        "other" => "Special entry",
+        _ => "File",
+    }
+}
+
+fn navigator_text_diff_summary(detail: &str) -> Option<String> {
+    let body = detail.strip_prefix("text summary:")?.trim();
+    let hunks = extract_prefixed_token(body, "hunks=").map(|value| format!("{value} hunks"));
+    let added = extract_prefixed_token(body, "+")
+        .filter(|value| value != "0")
+        .map(|value| format!("+{value}"));
+    let removed = extract_prefixed_token(body, "-")
+        .filter(|value| value != "0")
+        .map(|value| format!("-{value}"));
+    let context = extract_prefixed_token(body, "ctx=")
+        .filter(|value| value != "0")
+        .map(|value| format!("{value} ctx"));
+    let parts = [hunks, added, removed, context]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
+}
+
+fn navigator_file_compare_sizes_suffix(detail: &str) -> String {
+    let left = extract_prefixed_token(detail, "left=");
+    let right = extract_prefixed_token(detail, "right=");
+    match (left, right) {
+        (Some(left), Some(right)) => format!(" · {left} / {right}"),
+        _ => String::new(),
+    }
+}
+
+fn navigator_text_detail_reason_suffix(detail: &str) -> String {
+    let detail = detail.trim();
+    let Some(open_idx) = detail.find('(') else {
+        return String::new();
+    };
+    let Some(close_idx) = detail[open_idx + 1..].find(')') else {
+        return String::new();
+    };
+    let reason = detail[open_idx + 1..open_idx + 1 + close_idx].trim();
+    if reason.is_empty() {
+        String::new()
+    } else {
+        format!(" · {reason}")
+    }
+}
+
+fn navigator_type_mismatch_suffix(detail: &str) -> String {
+    let left = extract_prefixed_token(detail, "left=");
+    let right = extract_prefixed_token(detail, "right=");
+    match (left, right) {
+        (Some(left), Some(right)) => format!(" · {left} vs {right}"),
+        _ => String::new(),
+    }
+}
+
+fn extract_prefixed_token(text: &str, prefix: &str) -> Option<String> {
+    text.split_whitespace()
+        .find_map(|part| part.trim_matches('|').strip_prefix(prefix))
+        .map(|value| value.trim_matches(|ch| ch == ',' || ch == ';').to_string())
 }
 
 fn format_warning_count(count: usize) -> String {
@@ -1712,6 +1977,97 @@ mod tests {
         state.set_entry_status_filter("different");
         let text = state.results_collection_text();
         assert_eq!(text, "Showing 1 / 2 · Search: \"logo\" · Diff");
+    }
+
+    #[test]
+    fn navigator_row_projection_promotes_leaf_name_and_parent_context() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/js/runtime/fernetBrowser.js".to_string(),
+                status: "right-only".to_string(),
+                detail: "only on right: /tmp/right/assets/js/runtime/fernetBrowser.js".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "message".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(projected.len(), 1);
+        assert_eq!(projected[0].display_name, "fernetBrowser.js");
+        assert_eq!(projected[0].parent_path, "assets/js/runtime");
+        assert_eq!(projected[0].secondary_text, "Only on right");
+    }
+
+    #[test]
+    fn navigator_row_projection_tracks_name_and_path_hits() {
+        let row = CompareEntryRowViewModel {
+            relative_path: "assets/js/runtime/fernetBrowser.js".to_string(),
+            status: "different".to_string(),
+            detail: "text summary: hunks=2 +4 -1 ctx=8".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "text-diff".to_string(),
+            can_load_diff: true,
+            diff_blocked_reason: None,
+            can_load_analysis: true,
+            analysis_blocked_reason: None,
+        };
+
+        let state = AppState {
+            entry_rows: vec![row.clone()],
+            entry_filter: "fernet".to_string(),
+            ..AppState::default()
+        };
+        let projected = state.navigator_row_projections();
+        assert!(projected[0].display_name_matches_filter);
+        assert!(!projected[0].parent_path_matches_filter);
+
+        let state = AppState {
+            entry_rows: vec![row.clone()],
+            entry_filter: "js/runtime".to_string(),
+            ..AppState::default()
+        };
+        let projected = state.navigator_row_projections();
+        assert!(!projected[0].display_name_matches_filter);
+        assert!(projected[0].parent_path_matches_filter);
+
+        let state = AppState {
+            entry_rows: vec![row],
+            entry_filter: "runtime/fernet".to_string(),
+            ..AppState::default()
+        };
+        let projected = state.navigator_row_projections();
+        assert!(
+            projected[0].display_name_matches_filter || projected[0].parent_path_matches_filter
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_summarizes_text_diff_for_scanability() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "src/main.rs".to_string(),
+                status: "different".to_string(),
+                detail: "text summary: hunks=2 +4 -1 ctx=8".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "text-diff".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: true,
+                analysis_blocked_reason: None,
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(
+            projected[0].secondary_text,
+            "Text diff · 2 hunks · +4 · -1 · 8 ctx"
+        );
     }
 
     #[test]

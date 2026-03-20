@@ -133,15 +133,29 @@ pub fn build_results_row_payload(
 ) -> ContextMenuTextPayload {
     let path = normalize_text(relative_path).unwrap_or_else(|| "Unknown file".to_string());
     let status = display_status_label(status_token);
-    let detail_text = if unavailable {
-        "Detailed diff unavailable".to_string()
+    let detail_text = normalize_text(detail).unwrap_or_else(|| {
+        if unavailable {
+            "Detailed diff unavailable".to_string()
+        } else {
+            "No detail".to_string()
+        }
+    });
+    let summary_detail = if unavailable {
+        if detail_text.eq_ignore_ascii_case("Detailed diff unavailable") {
+            detail_text.clone()
+        } else {
+            format!(
+                "Detailed diff unavailable · {}",
+                sentence_excerpt(&detail_text, 120)
+            )
+        }
     } else {
-        normalize_text(detail).unwrap_or_else(|| "No detail".to_string())
+        sentence_excerpt(&detail_text, 120)
     };
     let summary = join_summary_parts(&[
         Some(status.clone()),
         Some(path.clone()),
-        Some(sentence_excerpt(&detail_text, 120)),
+        Some(summary_detail),
     ]);
 
     ContextMenuTextPayload {
@@ -367,6 +381,20 @@ mod tests {
         assert!(payload.copy_text.contains("Status\nChanged"));
         assert!(payload.summary_text.contains("Result Summary"));
         assert!(payload.summary_text.contains("src/main.rs"));
+    }
+
+    #[test]
+    fn results_row_payload_keeps_unavailable_reason_in_copy_text() {
+        let payload = build_results_row_payload(
+            "assets/logo.png",
+            "different",
+            "entry was compared as non-text/binary candidate, detailed text diff unavailable",
+            true,
+        );
+
+        assert!(payload.copy_text.contains("assets/logo.png"));
+        assert!(payload.copy_text.contains("non-text/binary candidate"));
+        assert!(payload.summary_text.contains("Detailed diff unavailable"));
     }
 
     #[test]
