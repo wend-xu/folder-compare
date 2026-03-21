@@ -6,7 +6,7 @@
 
 ## 本轮更新说明（2026-03-21）
 
-- 本轮执行 `Phase 17D`，在 `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + 17A + 17A fix-1 + 17B + 17B fix-1 + 17C + 17C-A` 的稳定基线上，为 `macOS` 引入第一阶段沉浸式标题栏：新增 `fc-ui-slint::window_chrome` 平台门面、仅在 `macOS` 启用显式 `winit` title bar attributes，并把顶部 `App Bar` 分成 immersive / legacy 双路径；不引入 `no-frame`、`objc2`、raw AppKit 操作或非 mac 平台窗口系统改造。
+- 本轮在已完成的 `Phase 17D` 基线上继续做一轮小范围 geometry 微调，依据 macOS 实机截图把 immersive top strip 收口到更接近原生标题栏的比例：降低标题栏视觉高度、把 `Settings` 按钮拉回安全可见区，并让顶部 strip 在视觉上真正 full-bleed 到窗口左右边缘；不改变 `Phase 17D` 的平台窗口 contract，也不把范围扩张到新的窗口系统方案。
 - 已完成并关闭：
   - `Phase 17D`
   - `Phase 17C-A`
@@ -81,6 +81,8 @@
   - `macOS` 启动路径现已在 `MainWindow::new()` 前显式安装 `winit` backend selector，并通过 Slint 的 winit hook 打开 transparent title bar / full-size content view / hidden title / movable-by-window-background
   - `macOS` 顶部 `App Bar` 现已切为 immersive strip；`Windows / Linux` 继续保留原有 legacy `SectionCard` App Bar，不进入新的窗口初始化路径
   - 沉浸式顶部 strip 当前使用固定 `86px` 左侧安全区给 traffic lights 留位；第一阶段不做 traffic lights reposition
+  - immersive strip 的几何现已进一步收口：视觉高度从首版更高的实现降到更克制的 title-sized 高度，`Settings` 按钮垂直位置回到标题栏安全区内
+  - immersive strip 当前通过在保留内容区 `10px` 内边距的同时，让顶栏自身向左右做 full-bleed 扩展，避免顶部出现额外左右留白
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
   - connected tabs + attached workbench surface 不变
@@ -103,7 +105,7 @@
 
 - 日期：`2026-03-21`（Asia/Shanghai）
 - 分支：当前已完成 `Phase 17D`
-- 工作区：`fc-ui-slint` macOS immersive title bar phase 1、platform window chrome 门面、主文档同步改动
+- 工作区：`fc-ui-slint` macOS immersive title bar phase 1 + geometry 微调、platform window chrome 门面、主文档同步改动
 - 最近提交：
   - `0a8769d` Phase 16A fix-1
   - `1311f96` edition-2024 milestone
@@ -142,6 +144,8 @@
    - 仅 `macOS` 会进入 `window_chrome::install_platform_windowing()` 并显式切到 `winit` + macOS title bar attributes
    - `Windows / Linux` 不会进入该路径，也不会被 forced backend selection 影响
    - 沉浸式标题栏当前只把标题与 `Settings` 入口并入顶部 strip，不搬运更多控制条
+   - 顶部 strip 当前已收口到更低、更接近原生 title bar 的视觉高度；不要再回到首版偏高的 top band
+   - 内容区继续保留原有 `10px` 外边距节奏，但 immersive strip 自身应保持 full-bleed，不在左右边缘留下额外空白
    - 第一阶段继续依赖 `with_movable_by_window_background(true)`；若未来 blank-area drag 仍不足，再单独补 `drag_window()`，不要在当前基线里提前升级
 7. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`、`Phase 17B fix-1`、`Phase 17C`、`Phase 17C-A`、`Phase 17D`，也不要重开独立 workspace `edition = "2024"` 里程碑。
 8. 下一线程若继续 UI bug 收口，应把本轮已经完成的 embedded shell low-noise contract 与 macOS immersive title bar contract 视为新基线，不要回退到 standalone-state-card 的重 accent 呈现，也不要把范围重新扩张到 `B/C/D`、Compare Inputs、或窗口系统大重构。
@@ -193,6 +197,7 @@
   - `macOS` 现已拥有第一阶段沉浸式标题栏：应用顶部 strip 会并入原生标题栏区域，系统标题文本隐藏，traffic lights 继续由系统管理
   - `macOS` 窗口初始化现已通过 `window_chrome` 模块集中管理；仅该平台显式启用 `winit` backend selector 与 macOS window attributes hook
   - `Windows / Linux` 继续保留 legacy `SectionCard` App Bar，不进入新的窗口初始化路径
+  - 当前 macOS immersive strip 已做首轮实机几何收口：标题栏高度更低，`Settings` 不再上顶溢出，顶栏视觉上会铺满窗口左右边缘
   - `Diff` 与 `Analysis` 共用已验收的 workbench shell，不改 tabs / header / content 层次
   - `Diff` detail 长行横向滚动维持显式 `ScrollView` 视口，尾行通过 scrollbar-safe spacer 避免被横向滚动条遮挡
   - `SelectableDiffText` 与 `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
@@ -254,11 +259,11 @@
 
 ## 验证（Verification）
 
-- 本轮验证重点是 `Phase 17D` 的 macOS immersive title bar phase 1、platform window chrome 门面，以及主文档同步：
+- 本轮验证重点是 `Phase 17D` 的 macOS immersive title bar phase 1、后续 geometry 微调、platform window chrome 门面，以及主文档同步：
   - `cargo check -p fc-ui-slint`
   - `cargo test -p fc-ui-slint`
 - 本轮未运行 `cargo run -p fc-ui-slint`：
-  - 原因：本轮未在此线程内做桌面 GUI smoke；macOS traffic lights / drag area / immersive top strip 的真实视觉验收仍保留给人工
+  - 原因：本轮未在此线程内做桌面 GUI smoke；macOS traffic lights / drag area / immersive top strip 几何是否已完全达标，仍保留给人工截图验收
 
 ## 新线程提示词模板（Handoff Prompt）
 
