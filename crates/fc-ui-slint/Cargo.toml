@@ -9,7 +9,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 fc-core.workspace = true
 fc-ai.workspace = true
-slint.workspace = true
+slint = { workspace = true, features = ["unstable-winit-030"] }
 smol_str.workspace = true
 tracing.workspace = true
 serde.workspace = true

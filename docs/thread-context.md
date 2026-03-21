@@ -6,8 +6,9 @@
 
 ## 本轮更新说明（2026-03-21）
 
-- 本轮执行 `Phase 17C-A`，在 `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + 17A + 17A fix-1 + 17B + 17B fix-1 + 17C` 的稳定基线上，单独收口剩余的 embedded `DiffStateShell` 视觉问题，并把 `Compare Inputs` 的主动作从“与输入列对齐的独占动作行”进一步收口为“占满整个卡片内容宽度的 full-width primary action”；不引入新的 compare/core 架构、settings framework、tree mode 或 explanation-heavy hover system。
+- 本轮在已完成的 `Phase 17D` 基线上继续做一轮小范围 geometry 微调，依据 macOS 实机截图把 immersive top strip 收口到更接近原生标题栏的比例：降低标题栏视觉高度、把 `Settings` 按钮拉回安全可见区，并让顶部 strip 在视觉上真正 full-bleed 到窗口左右边缘；不改变 `Phase 17D` 的平台窗口 contract，也不把范围扩张到新的窗口系统方案。
 - 已完成并关闭：
+  - `Phase 17D`
   - `Phase 17C-A`
   - `Phase 17C`
   - `Phase 17B fix-1`
@@ -76,6 +77,12 @@
   - embedded `DiffStateShell` 现已区分 standalone 与 embedded 呈现；embedded mode 使用 layout-driven compact badge lane、`neutral` 保持 `neutral`、并把左侧 accent 收缩到不高于 workbench border 的低噪声边缘
   - embedded shell 的 title/body 起始线现已更贴近 ready content 的 workbench 内边距节奏，不再像独立大卡片下沉在内容区里
   - `Compare Inputs` 的 `Compare` 现已占满整个卡片内容宽度，不再受 `Left / Right` label gutter 约束
+  - `fc-ui-slint` 现已新增 `window_chrome` 平台门面；窗口 backend/titlebar 定制逻辑不再继续膨胀进 `app.rs`
+  - `macOS` 启动路径现已在 `MainWindow::new()` 前显式安装 `winit` backend selector，并通过 Slint 的 winit hook 打开 transparent title bar / full-size content view / hidden title / movable-by-window-background
+  - `macOS` 顶部 `App Bar` 现已切为 immersive strip；`Windows / Linux` 继续保留原有 legacy `SectionCard` App Bar，不进入新的窗口初始化路径
+  - 沉浸式顶部 strip 当前使用固定 `86px` 左侧安全区给 traffic lights 留位；第一阶段不做 traffic lights reposition
+  - immersive strip 的几何现已进一步收口：视觉高度从首版更高的实现降到更克制的 title-sized 高度，`Settings` 按钮垂直位置回到标题栏安全区内
+  - immersive strip 当前通过在保留内容区 `10px` 内边距的同时，让顶栏自身向左右做 full-bleed 扩展，避免顶部出现额外左右留白
 - 保持不变：
   - `15.2D` 的 IA 与 shell contract 不变
   - connected tabs + attached workbench surface 不变
@@ -91,13 +98,14 @@
   - `Phase 17B` 则把设置入口升级到最小可扩展骨架，并以 UI 偏好方式收口 hidden-files 默认可见性，而没有重开完整 settings framework、tree mode 或 compare/core contract；
   - `Phase 17C` 又进一步收口了 Compare 主动作交互与 workbench 的结构性 UI bug `B/C/D`，并把这些变化同步写回主文档；
   - `Phase 17C-A` 则继续用同一条 UI-side 低风险路径，单独收口 embedded state shell 的剩余视觉问题，而没有把范围扩张到 core、tree mode、search、或 settings framework；
+  - `Phase 17D` 则继续把范围限制在 `fc-ui-slint`，只为 `macOS` 落地第一阶段沉浸式标题栏，同时用平台隔离保证 `Windows / Linux` 零行为变化；
   - 因此后续线程若继续推进，应建立在当前基线上，而不是继续重开 `15.3A` 到 `15.8 fix-1`、`16A` 到 `16C fix-1`、或 edition 兼容修复。
 
 ## 快照（Snapshot）
 
 - 日期：`2026-03-21`（Asia/Shanghai）
-- 分支：当前已完成 `Phase 17C-A`
-- 工作区：`fc-ui-slint` embedded `DiffStateShell` 视觉收口、Compare Inputs full-width action lane 收口、主文档同步改动
+- 分支：当前已完成 `Phase 17D`
+- 工作区：`fc-ui-slint` macOS immersive title bar phase 1 + geometry 微调、platform window chrome 门面、主文档同步改动
 - 最近提交：
   - `0a8769d` Phase 16A fix-1
   - `1311f96` edition-2024 milestone
@@ -109,7 +117,7 @@
 
 ## 当前目标（Execution Focus）
 
-1. `Phase 17C-A` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
+1. `Phase 17D` 已完成；Sidebar 仍然保持 `Compare Inputs -> Compare Status -> Filter / Scope -> Results / Navigator`。
 2. `Results / Navigator` 当前稳定 contract 是 flat list：filename-first 主信息、reason summary 次信息、parent-path 弱信息，以及仅基于现有 `path / name` 搜索 contract 的轻量命中高亮。
 3. selection / file-view 当前稳定 contract：
    - Search / Status 改变后，当前项仍可见则保留；否则清掉左侧可见选中态，右侧进入 stale selection
@@ -132,9 +140,16 @@
    - tooltip 当前是 window-local shared overlay；Results row 继续收口为 row-level tooltip，只补全完整 filename + 完整 parent path；Compare/Search 输入继续只补全输入完整值
    - shared tooltip overlay 默认优先上方定位；空间不足时降级到下方
    - `TooltipLineEdit` 包装层会继续保留 native editable behavior，同时把可见输入宽度收紧在控件矩形内
-6. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`、`Phase 17B fix-1`、`Phase 17C`、`Phase 17C-A`，也不要重开独立 workspace `edition = "2024"` 里程碑。
-7. 下一线程若继续 UI bug 收口，应把本轮已经完成的 embedded shell low-noise contract 视为新基线，不要回退到 standalone-state-card 的重 accent 呈现，也不要把范围重新扩张到 `B/C/D` 或 Compare Inputs。
-8. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
+6. platform window chrome 当前补充 contract：
+   - 仅 `macOS` 会进入 `window_chrome::install_platform_windowing()` 并显式切到 `winit` + macOS title bar attributes
+   - `Windows / Linux` 不会进入该路径，也不会被 forced backend selection 影响
+   - 沉浸式标题栏当前只把标题与 `Settings` 入口并入顶部 strip，不搬运更多控制条
+   - 顶部 strip 当前已收口到更低、更接近原生 title bar 的视觉高度；不要再回到首版偏高的 top band
+   - 内容区继续保留原有 `10px` 外边距节奏，但 immersive strip 自身应保持 full-bleed，不在左右边缘留下额外空白
+   - blank-area drag 当前已收口为 immersive top strip 内显式触发 `winit::window::Window::drag_window()`；不再打开整窗 `with_movable_by_window_background(true)`，以避免正文命中区被错误视为可拖拽背景
+7. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`、`Phase 17B fix-1`、`Phase 17C`、`Phase 17C-A`、`Phase 17D`，也不要重开独立 workspace `edition = "2024"` 里程碑。
+8. 下一线程若继续 UI bug 收口，应把本轮已经完成的 embedded shell low-noise contract 与 macOS immersive title bar contract 视为新基线，不要回退到 standalone-state-card 的重 accent 呈现，也不要把范围重新扩张到 `B/C/D`、Compare Inputs、或窗口系统大重构。
+9. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。
 
 ## 本阶段范围（In Scope / Out of Scope）
 
@@ -168,6 +183,7 @@
 10. 不把 editable input 字体策略散落到多个局部组件，继续通过共享 typography token 统一控制。
 11. 不把完整 settings framework、compare-level hidden policy、剩余 `Phase 17` 之外的新产品行为变更混入当前文档 closeout。
 12. 不回退 `Phase 17C` 已建立的 `Compare` full-width 主动作、restrained Compare-action tooltip、workspace single-surface shell、shared diff column geometry、以及 `Diff/Analysis` 一致 top-stack。
+13. 不把 `Phase 17D` 升级成 `no-frame`、raw AppKit、traffic lights reposition 或跨平台标题栏统一方案；`Windows / Linux` 继续保持当前默认窗口路径。
 
 ## 当前稳定事实（Stable Facts）
 
@@ -178,6 +194,10 @@
 - UI / shell：
   - `15.2E` 已在当前基线上发货
   - `App Bar -> Settings` 现已替代 `Provider Settings`，并提供第一轮 `Provider / Behavior` 分区骨架
+  - `macOS` 现已拥有第一阶段沉浸式标题栏：应用顶部 strip 会并入原生标题栏区域，系统标题文本隐藏，traffic lights 继续由系统管理
+  - `macOS` 窗口初始化现已通过 `window_chrome` 模块集中管理；仅该平台显式启用 `winit` backend selector 与 macOS window attributes hook
+  - `Windows / Linux` 继续保留 legacy `SectionCard` App Bar，不进入新的窗口初始化路径
+  - 当前 macOS immersive strip 已做首轮实机几何收口：标题栏高度更低，`Settings` 不再上顶溢出，顶栏视觉上会铺满窗口左右边缘
   - `Diff` 与 `Analysis` 共用已验收的 workbench shell，不改 tabs / header / content 层次
   - `Diff` detail 长行横向滚动维持显式 `ScrollView` 视口，尾行通过 scrollbar-safe spacer 避免被横向滚动条遮挡
   - `SelectableDiffText` 与 `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
@@ -221,7 +241,7 @@
 ## 下一步（Next）
 
 - 唯一建议的下一步是继续任何剩余的 `Phase 17` 工作，但以当前 embedded shell / workbench / Compare Inputs 基线为起点。
-- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1 + Phase 17B + Phase 17B fix-1 + Phase 17C + Phase 17C-A` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
+- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1 + Phase 17B + Phase 17B fix-1 + Phase 17C + Phase 17C-A + Phase 17D` 基线上，不重开升级、edition 迁移或 `Phase 15` closeout。
 - 继续保持当前 shell / menu / loading / toast / event-driven sync contract 不变。
 
 ## 开始前优先阅读文件（Key Files）
@@ -239,11 +259,11 @@
 
 ## 验证（Verification）
 
-- 本轮验证重点是 `Phase 17C-A` 的 embedded `DiffStateShell` 收口、Compare Inputs full-width action lane 收口，以及主文档同步：
+- 本轮验证重点是 `Phase 17D` 的 macOS immersive title bar phase 1、后续 geometry 微调、platform window chrome 门面，以及主文档同步：
   - `cargo check -p fc-ui-slint`
   - `cargo test -p fc-ui-slint`
 - 本轮未运行 `cargo run -p fc-ui-slint`：
-  - 原因：本轮未在此线程内做桌面 GUI smoke；Compare Inputs、workspace shell 与 embedded Diff shell 的真实视觉验收仍保留给人工
+  - 原因：本轮未在此线程内做桌面 GUI smoke；macOS traffic lights / drag area / immersive top strip 几何是否已完全达标，仍保留给人工截图验收
 
 ## 新线程提示词模板（Handoff Prompt）
 
@@ -251,7 +271,7 @@
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > `docs/upgrade-plan-rust-1.94-slint-1.15.md` 只在需要升级与独立 edition 里程碑归档背景时再阅读。  
-> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`、`Phase 17B fix-1`、`Phase 17C`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
+> 把 `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`、`Phase 17B fix-1`、`Phase 17C`、`Phase 17C-A`、`Phase 17D`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
 > 把当前稳定基线视为：workspace `version = "0.2.18"`、workspace `edition = "2024"`、`rust-toolchain = 1.94.0`、workspace `rust-version = 1.94`、`slint = 1.15.1`、`slint-build = 1.15.1`，且 `15.2E`、event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`、non-input context-menu visual polish、`Analysis success` native text-surface right-click、section header 左对齐修复均已稳定。  
 > 当前默认进入剩余 `Phase 17`，优先单独处理 `docs/ui-bug-root-cause-and-fix-plan-2026-03.md` 中仍未关闭的 `A. Diff shell state card still feels oversized, accent-heavy, and visually misaligned`；不要重开 phase15 summary、依赖升级 closeout、`Phase 16A` / `16A fix-1` / `16B` / `16C` / `16C fix-1` / `Phase 17A` / `Phase 17A fix-1` / `Phase 17B` / `Phase 17B fix-1` / `Phase 17C`、或 edition `2024` 兼容修复。  
 > 保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变。
