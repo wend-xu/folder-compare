@@ -3013,6 +3013,7 @@ slint::slint! {
                                     y: 0px;
                                     width: parent.width;
                                     height: workbench_host.tab_row_height;
+                                    padding-right: 7px;
                                     spacing: 0px;
 
                                     WorkspaceTabButton {
