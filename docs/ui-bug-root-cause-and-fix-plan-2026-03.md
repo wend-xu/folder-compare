@@ -64,7 +64,7 @@ Relevant code:
 
 Screenshots:
 
-- Figure 2
+- Figure 1
 
 Current implementation:
 
@@ -105,7 +105,7 @@ Acceptance criteria:
 
 Screenshots:
 
-- Figure 3
+- Figure 2
 
 Current implementation:
 
@@ -141,7 +141,7 @@ Acceptance criteria:
 
 Screenshots:
 
-- Figure 4
+- Figure 3
 
 Current implementation:
 
@@ -179,7 +179,7 @@ Acceptance criteria:
 
 Screenshots:
 
-- Figure 5
+- Figure 4
 
 Current implementation:
 
