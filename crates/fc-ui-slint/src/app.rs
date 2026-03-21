@@ -107,6 +107,7 @@ slint::slint! {
         callback settings_tapped();
 
         background: #f7f9fc;
+        clip: true;
 
         Rectangle {
             x: 0px;
@@ -119,6 +120,8 @@ slint::slint! {
         HorizontalLayout {
             padding-left: 12px;
             padding-right: 12px;
+            padding-top: 8px;
+            padding-bottom: 6px;
             spacing: 8px;
 
             Rectangle {
@@ -140,7 +143,7 @@ slint::slint! {
             ToolButton {
                 label: "Settings";
                 button_min_width: 96px;
-                control_height: 26px;
+                control_height: 24px;
                 tapped => {
                     root.settings_tapped();
                 }
@@ -1498,12 +1501,21 @@ slint::slint! {
             padding-left: 10px;
             spacing: 8px;
 
-            if root.immersive_titlebar_enabled : TitleBarSurface {
+            if root.immersive_titlebar_enabled : Rectangle {
                 height: root.titlebar_visual_height;
-                leading_inset: root.titlebar_leading_inset;
-                title_text: "Folder Compare";
-                settings_tapped => {
-                    root.open_settings();
+                background: transparent;
+                clip: false;
+
+                TitleBarSurface {
+                    x: -10px;
+                    y: 0px;
+                    width: parent.width + 20px;
+                    height: parent.height;
+                    leading_inset: root.titlebar_leading_inset;
+                    title_text: "Folder Compare";
+                    settings_tapped => {
+                        root.open_settings();
+                    }
                 }
             }
 
@@ -1539,132 +1551,132 @@ slint::slint! {
                 vertical-stretch: 1;
                 spacing: 10px;
 
-                // Contract: sidebar shell.
-                // Hosts compare setup/status/filter/navigation controls; detailed file view stays in workspace.
-                Rectangle {
-                    horizontal-stretch: 0;
-                    min-width: 360px;
-                    max-width: 360px;
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        // Contract: Compare Inputs.
-                        // Collects left/right roots and compare trigger; does not render compare results.
-                        SectionCard {
-                            height: 146px;
-                            VerticalLayout {
-                                padding: 10px;
-                                spacing: 6px;
-                                Text {
-                                    text: "Compare Inputs";
-                                    color: #3b4a5b;
-                                    font-size: 15px;
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Left";
-                                        width: root.sidebar_form_label_width;
-                                        color: #5d6d7e;
-                                        vertical-alignment: center;
-                                    }
-                                    TooltipLineEdit {
-                                        text <=> root.left_root;
-                                        enabled: !root.running;
-                                        horizontal-stretch: 1;
-                                        placeholder_text: "Choose left folder";
-                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
-                                            root.show_tooltip(
-                                                value,
-                                                anchor_x - root.absolute-position.x,
-                                                anchor_y - root.absolute-position.y,
-                                                anchor_bottom - root.absolute-position.y,
-                                            );
-                                        }
-                                        tooltip_closed => {
-                                            root.hide_tooltip();
-                                        }
-                                    }
-                                    ToolButton {
-                                        label: "Browse";
-                                        button_min_width: root.sidebar_action_button_width;
-                                        control_height: 28px;
-                                        enabled: !root.running;
-                                        tapped => {
-                                            root.left_browse_clicked();
-                                        }
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Right";
-                                        width: root.sidebar_form_label_width;
-                                        color: #5d6d7e;
-                                        vertical-alignment: center;
-                                    }
-                                    TooltipLineEdit {
-                                        text <=> root.right_root;
-                                        enabled: !root.running;
-                                        horizontal-stretch: 1;
-                                        placeholder_text: "Choose right folder";
-                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
-                                            root.show_tooltip(
-                                                value,
-                                                anchor_x - root.absolute-position.x,
-                                                anchor_y - root.absolute-position.y,
-                                                anchor_bottom - root.absolute-position.y,
-                                            );
-                                        }
-                                        tooltip_closed => {
-                                            root.hide_tooltip();
-                                        }
-                                    }
-                                    ToolButton {
-                                        label: "Browse";
-                                        button_min_width: root.sidebar_action_button_width;
-                                        control_height: 28px;
-                                        enabled: !root.running;
-                                        tapped => {
-                                            root.right_browse_clicked();
-                                        }
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 0px;
-                                    compare_button := ToolButton {
-                                        label: root.running ? "Comparing..." : "Compare";
-                                        primary: true;
-                                        button_min_width: 0px;
-                                        control_height: 32px;
-                                        horizontal-stretch: 1;
-                                        enabled: root.compare_ready;
-                                        tooltip_text: root.compare_button_tooltip_text;
-                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
-                                            root.show_tooltip(
-                                                value,
-                                                anchor_x - root.absolute-position.x,
-                                                anchor_y - root.absolute-position.y,
-                                                anchor_bottom - root.absolute-position.y,
-                                            );
-                                        }
-                                        tooltip_closed => {
-                                            root.hide_tooltip();
-                                        }
-                                        tapped => {
-                                            root.compare_clicked();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        sidebar_busy_scope := Rectangle {
-                            vertical-stretch: 1;
-                            background: transparent;
-                            clip: true;
+                        // Contract: sidebar shell.
+                        // Hosts compare setup/status/filter/navigation controls; detailed file view stays in workspace.
+                        Rectangle {
+                            horizontal-stretch: 0;
+                            min-width: 360px;
+                            max-width: 360px;
                             VerticalLayout {
                                 spacing: 8px;
+
+                                // Contract: Compare Inputs.
+                                // Collects left/right roots and compare trigger; does not render compare results.
+                                SectionCard {
+                                    height: 146px;
+                                    VerticalLayout {
+                                        padding: 10px;
+                                        spacing: 6px;
+                                        Text {
+                                            text: "Compare Inputs";
+                                            color: #3b4a5b;
+                                            font-size: 15px;
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: "Left";
+                                                width: root.sidebar_form_label_width;
+                                                color: #5d6d7e;
+                                                vertical-alignment: center;
+                                            }
+                                            TooltipLineEdit {
+                                                text <=> root.left_root;
+                                                enabled: !root.running;
+                                                horizontal-stretch: 1;
+                                                placeholder_text: "Choose left folder";
+                                                tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                    root.show_tooltip(
+                                                        value,
+                                                        anchor_x - root.absolute-position.x,
+                                                        anchor_y - root.absolute-position.y,
+                                                        anchor_bottom - root.absolute-position.y,
+                                                    );
+                                                }
+                                                tooltip_closed => {
+                                                    root.hide_tooltip();
+                                                }
+                                            }
+                                            ToolButton {
+                                                label: "Browse";
+                                                button_min_width: root.sidebar_action_button_width;
+                                                control_height: 28px;
+                                                enabled: !root.running;
+                                                tapped => {
+                                                    root.left_browse_clicked();
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: "Right";
+                                                width: root.sidebar_form_label_width;
+                                                color: #5d6d7e;
+                                                vertical-alignment: center;
+                                            }
+                                            TooltipLineEdit {
+                                                text <=> root.right_root;
+                                                enabled: !root.running;
+                                                horizontal-stretch: 1;
+                                                placeholder_text: "Choose right folder";
+                                                tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                    root.show_tooltip(
+                                                        value,
+                                                        anchor_x - root.absolute-position.x,
+                                                        anchor_y - root.absolute-position.y,
+                                                        anchor_bottom - root.absolute-position.y,
+                                                    );
+                                                }
+                                                tooltip_closed => {
+                                                    root.hide_tooltip();
+                                                }
+                                            }
+                                            ToolButton {
+                                                label: "Browse";
+                                                button_min_width: root.sidebar_action_button_width;
+                                                control_height: 28px;
+                                                enabled: !root.running;
+                                                tapped => {
+                                                    root.right_browse_clicked();
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            compare_button := ToolButton {
+                                                label: root.running ? "Comparing..." : "Compare";
+                                                primary: true;
+                                                button_min_width: 0px;
+                                                control_height: 32px;
+                                                horizontal-stretch: 1;
+                                                enabled: root.compare_ready;
+                                                tooltip_text: root.compare_button_tooltip_text;
+                                                tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                    root.show_tooltip(
+                                                        value,
+                                                        anchor_x - root.absolute-position.x,
+                                                        anchor_y - root.absolute-position.y,
+                                                        anchor_bottom - root.absolute-position.y,
+                                                    );
+                                                }
+                                                tooltip_closed => {
+                                                    root.hide_tooltip();
+                                                }
+                                                tapped => {
+                                                    root.compare_clicked();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                sidebar_busy_scope := Rectangle {
+                                    vertical-stretch: 1;
+                                    background: transparent;
+                                    clip: true;
+                                    VerticalLayout {
+                                        spacing: 8px;
 
                                 // Contract: Compare Status.
                                 // Summarizes compare run status/metrics/warnings; no row selection or file-level content here.
