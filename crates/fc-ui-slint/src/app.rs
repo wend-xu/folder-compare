@@ -14,6 +14,7 @@ use crate::state::AppState;
 use crate::toast_controller::{
     ToastPlacement, ToastQueueState, ToastRequest, ToastStrategy, ToastTone,
 };
+use crate::window_chrome;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use fc_ai::AiProviderKind;
 use slint::{Model, ModelRc, SharedString, Timer, VecModel};
@@ -95,6 +96,53 @@ slint::slint! {
             pointer-event(event) => {
                 if event.kind == PointerEventKind.cancel {
                     root.tooltip_closed();
+                }
+            }
+        }
+    }
+
+    component TitleBarSurface inherits Rectangle {
+        in property <length> leading_inset: 0px;
+        in property <string> title_text: "Folder Compare";
+        callback settings_tapped();
+
+        background: #f7f9fc;
+
+        Rectangle {
+            x: 0px;
+            y: parent.height - 1px;
+            width: parent.width;
+            height: 1px;
+            background: #e2e8f0;
+        }
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 8px;
+
+            Rectangle {
+                width: root.leading_inset;
+                background: transparent;
+            }
+
+            Text {
+                text: root.title_text;
+                font-size: 15px;
+                color: #334252;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            ToolButton {
+                label: "Settings";
+                button_min_width: 96px;
+                control_height: 26px;
+                tapped => {
+                    root.settings_tapped();
                 }
             }
         }
@@ -1213,6 +1261,9 @@ slint::slint! {
         min-width: 900px;
         min-height: 620px;
         background: #f2f4f7;
+        in property <bool> immersive_titlebar_enabled: false;
+        in property <length> titlebar_visual_height: 36px;
+        in property <length> titlebar_leading_inset: 0px;
         in property <length> sidebar_form_label_width: 52px;
         in property <length> sidebar_action_button_width: 72px;
 
@@ -1406,6 +1457,17 @@ slint::slint! {
             root.tooltip_visible = false;
             root.tooltip_text = "";
         }
+        function open_settings() {
+            root.settings_provider_mode = root.analysis_remote_mode ? 1 : 0;
+            root.settings_provider_endpoint = root.analysis_endpoint;
+            root.settings_provider_api_key = root.analysis_api_key;
+            root.settings_provider_model = root.analysis_model;
+            root.settings_provider_timeout = root.analysis_timeout_text;
+            root.settings_show_hidden_files = root.show_hidden_files;
+            root.settings_provider_show_api_key = false;
+            root.settings_open = true;
+            root.settings_clicked();
+        }
         callback compare_clicked();
         callback left_browse_clicked();
         callback right_browse_clicked();
@@ -1430,11 +1492,23 @@ slint::slint! {
         callback context_menu_action_triggered(string);
 
         VerticalLayout {
-            padding: 10px;
+            padding-top: root.immersive_titlebar_enabled ? 0px : 10px;
+            padding-right: 10px;
+            padding-bottom: 10px;
+            padding-left: 10px;
             spacing: 8px;
 
+            if root.immersive_titlebar_enabled : TitleBarSurface {
+                height: root.titlebar_visual_height;
+                leading_inset: root.titlebar_leading_inset;
+                title_text: "Folder Compare";
+                settings_tapped => {
+                    root.open_settings();
+                }
+            }
+
             // Contract: app bar shell (title + global settings entry).
-            SectionCard {
+            if !root.immersive_titlebar_enabled : SectionCard {
                 height: 36px;
                 border-color: #e5e9ef;
                 background: #f7f9fc;
@@ -1455,15 +1529,7 @@ slint::slint! {
                         button_min_width: 96px;
                         control_height: 26px;
                         tapped => {
-                            root.settings_provider_mode = root.analysis_remote_mode ? 1 : 0;
-                            root.settings_provider_endpoint = root.analysis_endpoint;
-                            root.settings_provider_api_key = root.analysis_api_key;
-                            root.settings_provider_model = root.analysis_model;
-                            root.settings_provider_timeout = root.analysis_timeout_text;
-                            root.settings_show_hidden_files = root.show_hidden_files;
-                            root.settings_provider_show_api_key = false;
-                            root.settings_open = true;
-                            root.settings_clicked();
+                            root.open_settings();
                         }
                     }
                 }
@@ -4555,7 +4621,11 @@ fn copy_text_with_feedback(toast_controller: &ToastController, text: &str, feedb
 
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
+    window_chrome::install_platform_windowing()?;
     let app = MainWindow::new().map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    app.set_immersive_titlebar_enabled(window_chrome::immersive_titlebar_enabled());
+    app.set_titlebar_visual_height(window_chrome::titlebar_visual_height().into());
+    app.set_titlebar_leading_inset(window_chrome::titlebar_leading_inset().into());
     initialize_window_models(&app);
 
     let state = Arc::new(Mutex::new(AppState::default()));

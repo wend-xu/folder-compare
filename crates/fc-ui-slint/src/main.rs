@@ -10,6 +10,7 @@ mod settings;
 mod state;
 mod toast_controller;
 mod view_models;
+mod window_chrome;
 
 fn main() -> anyhow::Result<()> {
     app::run()

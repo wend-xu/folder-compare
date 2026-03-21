@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 17C-A)
+# Folder Compare Architecture (Current Baseline after Phase 17D)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 17D`
   - `Phase 17C-A`
   - `Phase 17C`
   - `Phase 17B fix-1`
@@ -37,6 +38,7 @@
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
+  - `Phase 17D` is complete
   - `Phase 17C-A` is complete
   - `Phase 17C` is complete
   - `Phase 17B fix-1` is complete
@@ -52,6 +54,7 @@
   - `Phase 17B fix-1` stabilizes the Settings modal container against section/provider-mode content changes, and narrows settings persistence to one authoritative `settings.toml` contract with one-time legacy migration
   - `Phase 17C` closes one low-risk workbench bug pass (`B/C/D` from `docs/ui-bug-root-cause-and-fix-plan-2026-03.md`) and finishes the Compare Inputs primary-action cleanup without reopening compare/core contracts
   - `Phase 17C-A` closes the remaining embedded `DiffStateShell` visual issue from the same bug plan and finishes the Compare Inputs action lane so the primary action now spans the full card content width instead of staying constrained to the input column
+  - `Phase 17D` adds a macOS-only immersive title bar phase 1 in `fc-ui-slint`: startup now routes macOS through one explicit `window_chrome` facade, applies winit/macOS title bar attributes before window creation, and splits the top app bar into a platform-gated immersive strip vs. the existing legacy card so Windows/Linux stay on the old path byte-for-byte in behavior
 - Why `Phase 17` now remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
   - `Phase 16A`, `16A fix-1`, `16B`, `16C`, and `16C fix-1` closed the Sidebar expression, row-scanability, file-view state-consistency, and follow-up readability / typography regression pass without reopening old closeouts;
@@ -60,6 +63,7 @@
   - `Phase 17B fix-1` then tightened the Settings container and persistence contract without widening the scope into a full settings framework or compare/core policy change;
   - `Phase 17C` then used the same UI-side baseline to tighten the Compare action affordance and remove a few remaining workbench geometry inconsistencies without widening settings, search, or core behavior;
   - `Phase 17C-A` then finished the remaining embedded workbench-state-shell visual cleanup with a presentation-only pass, without widening `fc-core`, search, or settings scope;
+  - `Phase 17D` then added the first macOS immersive title bar pass without adopting `no-frame`, without widening presenter/state contracts, and without forcing Windows/Linux into the new backend path;
   - future threads should therefore build on this baseline instead of reopening `15.3A` to `15.8 fix-1`, `16A` to `16C fix-1`, or edition-2024 tasks.
 
 ## Phase 15 summary
@@ -110,6 +114,24 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - `Workspace` (`Diff / Analysis` tabs + header + content)
 - Workspace remains one continuous shell, and only one major mode participates in layout at a time.
 - Connected workspace tabs and the attached workbench surface remain part of the accepted visual contract.
+
+### Platform window chrome
+
+- `fc-ui-slint` now owns one small platform windowing facade in `src/window_chrome.rs`; `app.rs` no longer owns backend-selection details directly.
+- macOS startup now performs one one-time `BackendSelector` installation before `MainWindow::new()` and uses Slint's `with_winit_window_attributes_hook()` to apply:
+  - transparent title bar
+  - full-size content view
+  - hidden native title text
+  - movable-by-window-background behavior
+- Windows and Linux deliberately do not enter that path:
+  - no forced `winit` backend selection
+  - no platform title bar API customization
+  - no top-level window-behavior fallback logic
+- The root Slint window now receives read-only platform chrome properties (`immersive_titlebar_enabled`, `titlebar_visual_height`, `titlebar_leading_inset`) so presentation stays declarative while platform branching stays in Rust.
+- The top app bar now has two intentionally separate render paths:
+  - non-mac keeps the existing 36px `SectionCard` app bar unchanged
+  - macOS renders one immersive title bar strip that visually merges into the top edge and reserves a fixed `86px` leading safety inset for traffic lights
+- This phase intentionally keeps the fixed inset conservative and does not read or reposition traffic lights through AppKit.
 
 ### Compare workflow
 
@@ -281,6 +303,8 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - No character-level substring highlight was introduced; current results highlighting remains the low-cost label-level pass described above.
 - No overlay interception, private pointer plumbing, or custom caret/selection/editing logic was added for editable inputs or selectable text.
 - The large inline `slint::slint!` surface was not externalized because the cleanup benefit is still below the migration cost on the current baseline.
+- No `no-frame` window mode, custom resize hit-testing, `objc2`, or raw AppKit `NSWindow` manipulation was introduced for the immersive title bar phase.
+- Windows and Linux were not forced into the new backend-selection path; zero-behavior-change is preserved by keeping those platforms out of the new code path entirely.
 
 ## Deferred architecture decisions
 
@@ -310,14 +334,17 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - trigger: only when broader save/export/report flows require a notification-center model.
 - `P2` Sticky left-side line numbers:
   - trigger: only if the current `ScrollView` diff viewer stops being sufficient for review ergonomics.
+- `P2` macOS title bar runtime fine-tuning:
+  - trigger: only if manual smoke proves that the fixed leading inset or `with_movable_by_window_background(true)` is insufficient on supported macOS versions.
+  - boundary: keep the follow-up inside `fc-ui-slint` first; do not jump to `objc2`, raw `NSWindow`, or traffic-light repositioning without a separate design pass.
 - `P3` Tree explorer / dual-mode workspace:
   - trigger: only if file-view-only navigation becomes a demonstrated bottleneck.
 
 ## Next implementation priority
 
-1. Continue the remaining `Phase 17` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1 + Phase 17B` baseline.
-   - acceptance: visibility and navigation ergonomics keep improving without introducing tree mode or breaking the accepted workspace shell.
-2. Keep the shipped `15.5` to `15.8 fix-1` contracts plus the `Phase 17A + Phase 17A fix-1 + Phase 17B` settings/results boundary unchanged while later `Phase 17` work lands.
+1. Continue the remaining `Phase 17` work on top of the current `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + Phase 17A + Phase 17A fix-1 + Phase 17B + Phase 17B fix-1 + Phase 17C + Phase 17C-A + Phase 17D` baseline.
+   - acceptance: later UI work does not regress the accepted macOS immersive title bar contract or the non-mac legacy app bar baseline.
+2. Keep the shipped `15.5` to `15.8 fix-1` contracts plus the `Phase 17A` through `Phase 17D` settings/results/window-chrome boundary unchanged while later `Phase 17` work lands.
    - acceptance: editable-input context menus, the `API Key` secret contract, `Compare Status` summary-first boundary, non-input context-menu scope, `Analysis success` native text-surface right-click, section-header left alignment, event-driven sync, persistent `VecModel`, tooltip-as-completion-only, and the first-round `Settings -> Provider / Behavior` skeleton all remain intact.
 
 ## Documentation update contract
