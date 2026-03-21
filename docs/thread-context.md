@@ -146,7 +146,7 @@
    - 沉浸式标题栏当前只把标题与 `Settings` 入口并入顶部 strip，不搬运更多控制条
    - 顶部 strip 当前已收口到更低、更接近原生 title bar 的视觉高度；不要再回到首版偏高的 top band
    - 内容区继续保留原有 `10px` 外边距节奏，但 immersive strip 自身应保持 full-bleed，不在左右边缘留下额外空白
-   - 第一阶段继续依赖 `with_movable_by_window_background(true)`；若未来 blank-area drag 仍不足，再单独补 `drag_window()`，不要在当前基线里提前升级
+   - blank-area drag 当前已收口为 immersive top strip 内显式触发 `winit::window::Window::drag_window()`；不再打开整窗 `with_movable_by_window_background(true)`，以避免正文命中区被错误视为可拖拽背景
 7. 后续线程继续 `Phase 17` 剩余子项时，不要重开 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`16A fix-1`、`16B`、`16C`、`16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`、`Phase 17B fix-1`、`Phase 17C`、`Phase 17C-A`、`Phase 17D`，也不要重开独立 workspace `edition = "2024"` 里程碑。
 8. 下一线程若继续 UI bug 收口，应把本轮已经完成的 embedded shell low-noise contract 与 macOS immersive title bar contract 视为新基线，不要回退到 standalone-state-card 的重 accent 呈现，也不要把范围重新扩张到 `B/C/D`、Compare Inputs、或窗口系统大重构。
 9. 继续保持主文档与当前代码事实一致，不创建额外 phase checklist / summary 文档。

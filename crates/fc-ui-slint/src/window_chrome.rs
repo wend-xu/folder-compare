@@ -21,6 +21,18 @@ pub fn titlebar_leading_inset() -> f32 {
 }
 
 #[cfg(target_os = "macos")]
+pub fn request_titlebar_drag(window: &slint::Window) {
+    use slint::winit_030::WinitWindowAccessor;
+
+    let _ = window.with_winit_window(|winit_window| {
+        let _ = winit_window.drag_window();
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn request_titlebar_drag(_window: &slint::Window) {}
+
+#[cfg(target_os = "macos")]
 pub fn install_platform_windowing() -> anyhow::Result<()> {
     use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
     use std::sync::OnceLock;
@@ -35,7 +47,6 @@ pub fn install_platform_windowing() -> anyhow::Result<()> {
                     .with_titlebar_transparent(true)
                     .with_fullsize_content_view(true)
                     .with_title_hidden(true)
-                    .with_movable_by_window_background(true)
             })
             .select()
             .map_err(|err| err.to_string())

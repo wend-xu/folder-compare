@@ -105,9 +105,21 @@ slint::slint! {
         in property <length> leading_inset: 0px;
         in property <string> title_text: "Folder Compare";
         callback settings_tapped();
+        callback drag_requested();
 
         background: #f7f9fc;
         clip: true;
+
+        TouchArea {
+            width: parent.width;
+            height: parent.height;
+
+            pointer-event(event) => {
+                if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                    root.drag_requested();
+                }
+            }
+        }
 
         Rectangle {
             x: 0px;
@@ -1022,8 +1034,7 @@ slint::slint! {
                 }
             }
 
-            SelectableSectionText {
-                visible: root.title != "";
+            if root.title != "" : SelectableSectionText {
                 value: root.title;
                 foreground: #2f4a63;
                 font-size: 18px;
@@ -1031,8 +1042,7 @@ slint::slint! {
                 horizontal-stretch: 1;
             }
 
-            SelectableSectionText {
-                visible: root.body != "";
+            if root.body != "" : SelectableSectionText {
                 value: root.body;
                 foreground: #4d6176;
                 font-size: 13px;
@@ -1493,6 +1503,7 @@ slint::slint! {
         callback analysis_section_context_menu_requested(string, string, string, string);
         callback context_menu_close_requested();
         callback context_menu_action_triggered(string);
+        callback titlebar_drag_requested();
 
         VerticalLayout {
             padding-top: root.immersive_titlebar_enabled ? 0px : 10px;
@@ -1513,6 +1524,9 @@ slint::slint! {
                     height: parent.height;
                     leading_inset: root.titlebar_leading_inset;
                     title_text: "Folder Compare";
+                    drag_requested => {
+                        root.titlebar_drag_requested();
+                    }
                     settings_tapped => {
                         root.open_settings();
                     }
@@ -4671,6 +4685,14 @@ pub fn run() -> anyhow::Result<()> {
     let close_context_menu_controller = context_menu_controller.clone();
     app.on_context_menu_close_requested(move || {
         close_context_menu_controller.close();
+    });
+
+    let app_weak = app.as_weak();
+    app.on_titlebar_drag_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        window_chrome::request_titlebar_drag(&window.window());
     });
 
     let app_weak = app.as_weak();

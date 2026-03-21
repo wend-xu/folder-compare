@@ -122,7 +122,9 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - transparent title bar
   - full-size content view
   - hidden native title text
-  - movable-by-window-background behavior
+- macOS immersive dragging no longer relies on whole-window background dragging:
+  - only the immersive title bar strip requests `winit::window::Window::drag_window()`
+  - content surfaces below the strip keep their normal hit-testing and text-selection behavior
 - Windows and Linux deliberately do not enter that path:
   - no forced `winit` backend selection
   - no platform title bar API customization
@@ -335,7 +337,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - `P2` Sticky left-side line numbers:
   - trigger: only if the current `ScrollView` diff viewer stops being sufficient for review ergonomics.
 - `P2` macOS title bar runtime fine-tuning:
-  - trigger: only if manual smoke proves that the fixed leading inset or `with_movable_by_window_background(true)` is insufficient on supported macOS versions.
+  - trigger: only if manual smoke proves that the fixed leading inset or the current immersive-strip drag zone is insufficient on supported macOS versions.
   - boundary: keep the follow-up inside `fc-ui-slint` first; do not jump to `objc2`, raw `NSWindow`, or traffic-light repositioning without a separate design pass.
 - `P3` Tree explorer / dual-mode workspace:
   - trigger: only if file-view-only navigation becomes a demonstrated bottleneck.
