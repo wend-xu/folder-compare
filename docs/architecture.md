@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 17B fix-1)
+# Folder Compare Architecture (Current Baseline after Phase 17C)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 17C`
   - `Phase 17B fix-1`
   - `Phase 17B`
   - `Phase 17A fix-1`
@@ -35,6 +36,7 @@
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
+  - `Phase 17C` is complete
   - `Phase 17B fix-1` is complete
   - `Phase 17B` is complete
   - `Phase 17A fix-1` is complete
@@ -46,12 +48,14 @@
   - `Phase 16B` is complete
   - Sidebar IA remains unchanged, and `Phase 17B` keeps the accepted `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + 17A + 17A fix-1` presentation contract while upgrading `App Bar -> Settings`, adding one first-round `Provider / Behavior` split, and introducing one persisted hidden-files visibility preference without reopening compare/core contracts
   - `Phase 17B fix-1` stabilizes the Settings modal container against section/provider-mode content changes, and narrows settings persistence to one authoritative `settings.toml` contract with one-time legacy migration
+  - `Phase 17C` closes one low-risk workbench bug pass (`B/C/D` from `docs/ui-bug-root-cause-and-fix-plan-2026-03.md`) and finishes the Compare Inputs primary-action cleanup without reopening compare/core contracts
 - Why `Phase 17` now remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
   - `Phase 16A`, `16A fix-1`, `16B`, `16C`, and `16C fix-1` closed the Sidebar expression, row-scanability, file-view state-consistency, and follow-up readability / typography regression pass without reopening old closeouts;
   - `Phase 17A` added a restrained tooltip-completion baseline for truncated text, and `Phase 17A fix-1` then stabilized that baseline without changing IA, row semantics, or input/menu contracts;
   - `Phase 17B` then generalized `Provider Settings` into `Settings`, added a minimal expandable preferences skeleton, and kept hidden-files visibility as a UI-side results preference instead of widening `fc-core`;
   - `Phase 17B fix-1` then tightened the Settings container and persistence contract without widening the scope into a full settings framework or compare/core policy change;
+  - `Phase 17C` then used the same UI-side baseline to tighten the Compare action affordance and remove a few remaining workbench geometry inconsistencies without widening settings, search, or core behavior;
   - the next thread should therefore continue the remaining `Phase 17` work instead of reopening `15.3A` to `15.8 fix-1`, `16A` to `16C fix-1`, or edition-2024 tasks.
 
 ## Phase 15 summary
@@ -111,6 +115,8 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - compare trigger
   - summary-first status update
 - `Compare Inputs` keeps the same interaction model, with only a light presentation pass around input/browse/compare grouping.
+- The `Compare` action now sits in one dedicated full-width action lane aligned with the input field column, instead of sharing space with an inline explanatory text label.
+- The inline `Ready to compare / Running compare / Select left and right folders` text pattern is intentionally gone from `Compare Inputs`; that explanatory burden now lives in the existing summary-first compare status block and in one lightweight button tooltip only when the action is disabled or already running.
 - `Compare Inputs` now add tooltip-only full-path completion on the existing left/right path inputs when the value is truncated and the field is not actively being edited, while the wrapped native `LineEdit` still clips long values inside the field instead of spilling into the rest of the Sidebar.
 - `Compare Status` remains one static sidebar result block:
   - summary-first by default
@@ -145,6 +151,12 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 - `Diff` keeps the compact File Context Header and the explicit shell-driven state machine:
   - `no-selection|stale-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`
+- `Diff` and `Analysis` now reserve the same visible top-stack rhythm in non-ready states:
+  - title row
+  - metadata/badge row
+  - helper strip
+  - shell/content body
+- `Diff` now keeps the helper strip mounted in every state; ready rows keep the existing copy affordance, and non-ready rows reuse restrained contextual guidance instead of collapsing the strip.
 - Single-side preview remains first-class:
   - `left-only`, `right-only`, and `equal` all use the preview path when appropriate
   - preview columns stay side-aware (`left/right`)
@@ -154,6 +166,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - explicit `ScrollView` viewport for horizontal scrolling
   - mirrored header `viewport-x`
   - content-end scrollbar-safe spacer
+  - one shared column geometry contract between header and body separators, so horizontal scrolling no longer exposes header/body divider drift
 - `Analysis` keeps its explicit state machine:
   - `no-selection|stale-selection -> waiting|ready|unavailable -> loading -> error|success`
 - `Analysis success` remains a structured review-conclusion panel:
@@ -205,7 +218,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 
 - `SelectableDiffText` and `SelectableSectionText` share `UiTypography.selectable_content_font_family`.
 - That shared token remains the accepted fix for the Slint `1.15.1` mixed Latin/CJK glyph fallback regression.
-- The tooltip completion layer also uses the shared readable-content typography path, so long filename/path completion does not introduce a second glyph-fallback policy.
+- The tooltip overlay also uses the shared readable-content typography path, so long filename/path completion and the restrained Compare-action state hint do not introduce a second glyph-fallback policy.
 - The shared tooltip overlay now prefers showing above its anchor surface and falls back below when top space is insufficient; no separate tooltip controller or native tooltip binding was introduced.
 - Copy feedback remains lightweight and UI-local:
   - top-center overlay `toast`
@@ -222,6 +235,12 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - Broad repeated `50ms` polling is no longer the main UI sync path.
 - `Results / Navigator` and `Diff` row models stay initialized as persistent `VecModel` instances and update through `set_vec()` only when relevant source payload changes.
 - Cache-aware projection and menu close-on-selection / busy-start behavior remain intact.
+
+### Workspace shell simplification
+
+- The outer workspace wrapper is now visually transparent, and the inner workbench host/panel remains the one primary visible surface on the right side.
+- Non-essential host insets were reduced so the workbench uses more of the available column width without changing IA.
+- The workspace loading mask is now mounted against the same workbench host surface users perceive as the actual file-view shell, so loading boundaries no longer expose the old outer-card box.
 
 ### Settings and persistence
 
@@ -245,7 +264,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 - No new IA, tree mode, or Compare View mode was introduced.
 - No compare-level hidden-entry policy was pushed into `fc-core`; hidden-files visibility remains a first-round UI preference only.
 - No new theme system, global loading controller, or global notification controller was introduced.
-- No global tooltip controller, native-backend tooltip binding, or explanation-heavy hover system was introduced.
+- No global tooltip controller, native-backend tooltip binding, or explanation-heavy hover system was introduced beyond the restrained Compare-action state hint.
 - No character-level substring highlight was introduced; current results highlighting remains the low-cost label-level pass described above.
 - No overlay interception, private pointer plumbing, or custom caret/selection/editing logic was added for editable inputs or selectable text.
 - The large inline `slint::slint!` surface was not externalized because the cleanup benefit is still below the migration cost on the current baseline.
