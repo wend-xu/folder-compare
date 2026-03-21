@@ -1,9 +1,10 @@
-# Folder Compare Architecture (Current Baseline after Phase 17C)
+# Folder Compare Architecture (Current Baseline after Phase 17C-A)
 
 ## Current status
 
 - `phase15 summary` is complete as a documentation closeout.
 - The following work is completed and closed:
+  - `Phase 17C-A`
   - `Phase 17C`
   - `Phase 17B fix-1`
   - `Phase 17B`
@@ -36,6 +37,7 @@
   - release version ownership lives in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source
   - `15.2E` is shipped on this baseline
 - Current working baseline on top of that shipped base:
+  - `Phase 17C-A` is complete
   - `Phase 17C` is complete
   - `Phase 17B fix-1` is complete
   - `Phase 17B` is complete
@@ -49,6 +51,7 @@
   - Sidebar IA remains unchanged, and `Phase 17B` keeps the accepted `Phase 16A + 16A fix-1 + 16B + 16C + 16C fix-1 + 17A + 17A fix-1` presentation contract while upgrading `App Bar -> Settings`, adding one first-round `Provider / Behavior` split, and introducing one persisted hidden-files visibility preference without reopening compare/core contracts
   - `Phase 17B fix-1` stabilizes the Settings modal container against section/provider-mode content changes, and narrows settings persistence to one authoritative `settings.toml` contract with one-time legacy migration
   - `Phase 17C` closes one low-risk workbench bug pass (`B/C/D` from `docs/ui-bug-root-cause-and-fix-plan-2026-03.md`) and finishes the Compare Inputs primary-action cleanup without reopening compare/core contracts
+  - `Phase 17C-A` closes the remaining embedded `DiffStateShell` visual issue from the same bug plan and finishes the Compare Inputs action lane so the primary action now spans the full card content width instead of staying constrained to the input column
 - Why `Phase 17` now remains the active train:
   - the dependency-upgrade train and the edition milestone are already finished;
   - `Phase 16A`, `16A fix-1`, `16B`, `16C`, and `16C fix-1` closed the Sidebar expression, row-scanability, file-view state-consistency, and follow-up readability / typography regression pass without reopening old closeouts;
@@ -56,7 +59,8 @@
   - `Phase 17B` then generalized `Provider Settings` into `Settings`, added a minimal expandable preferences skeleton, and kept hidden-files visibility as a UI-side results preference instead of widening `fc-core`;
   - `Phase 17B fix-1` then tightened the Settings container and persistence contract without widening the scope into a full settings framework or compare/core policy change;
   - `Phase 17C` then used the same UI-side baseline to tighten the Compare action affordance and remove a few remaining workbench geometry inconsistencies without widening settings, search, or core behavior;
-  - the next thread should therefore continue the remaining `Phase 17` work instead of reopening `15.3A` to `15.8 fix-1`, `16A` to `16C fix-1`, or edition-2024 tasks.
+  - `Phase 17C-A` then finished the remaining embedded workbench-state-shell visual cleanup with a presentation-only pass, without widening `fc-core`, search, or settings scope;
+  - future threads should therefore build on this baseline instead of reopening `15.3A` to `15.8 fix-1`, `16A` to `16C fix-1`, or edition-2024 tasks.
 
 ## Phase 15 summary
 
@@ -115,7 +119,7 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - compare trigger
   - summary-first status update
 - `Compare Inputs` keeps the same interaction model, with only a light presentation pass around input/browse/compare grouping.
-- The `Compare` action now sits in one dedicated full-width action lane aligned with the input field column, instead of sharing space with an inline explanatory text label.
+- The `Compare` action now sits in one dedicated full-width action lane that spans the full `Compare Inputs` card content width, intentionally breaking out of the `Left / Right` label gutter instead of sharing space with an inline explanatory text label.
 - The inline `Ready to compare / Running compare / Select left and right folders` text pattern is intentionally gone from `Compare Inputs`; that explanatory burden now lives in the existing summary-first compare status block and in one lightweight button tooltip only when the action is disabled or already running.
 - `Compare Inputs` now add tooltip-only full-path completion on the existing left/right path inputs when the value is truncated and the field is not actively being edited, while the wrapped native `LineEdit` still clips long values inside the field instead of spilling into the rest of the Sidebar.
 - `Compare Status` remains one static sidebar result block:
@@ -157,6 +161,14 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
   - helper strip
   - shell/content body
 - `Diff` now keeps the helper strip mounted in every state; ready rows keep the existing copy affordance, and non-ready rows reuse restrained contextual guidance instead of collapsing the strip.
+- `DiffStateShell` now keeps two presentation modes:
+  - standalone state card
+  - embedded workbench shell
+- The embedded shell mode now behaves as an internal workbench state layer rather than a second card:
+  - a layout-driven compact badge lane replaces the old absolute badge placement
+  - `neutral` stays `neutral` instead of being remapped to `info`
+  - the left accent is reduced to a subdued `0-1px` edge that stays visually subordinate to the workbench border
+  - the title/body block starts on the same restrained left padding rhythm as the rest of the workbench content
 - Single-side preview remains first-class:
   - `left-only`, `right-only`, and `equal` all use the preview path when appropriate
   - preview columns stay side-aware (`left/right`)
@@ -239,8 +251,9 @@ The dependency direction stays `api -> services -> domain/infra`. `domain` does 
 ### Workspace shell simplification
 
 - The outer workspace wrapper is now visually transparent, and the inner workbench host/panel remains the one primary visible surface on the right side.
-- Non-essential host insets were reduced so the workbench uses more of the available column width without changing IA.
+- The workbench host now expands to the full transparent workspace wrapper instead of keeping an extra inner inset, so the right-side workbench and its loading mask use the same available height/width rhythm as the sidebar column without changing IA.
 - The workspace loading mask is now mounted against the same workbench host surface users perceive as the actual file-view shell, so loading boundaries no longer expose the old outer-card box.
+- The top border bridge under the workspace tabs now respects the workbench panel corner radius instead of drawing straight through the rounded outer corners, which removes the visible left/right seam at the tab-to-panel connection.
 
 ### Settings and persistence
 

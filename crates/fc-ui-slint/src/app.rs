@@ -405,10 +405,10 @@ slint::slint! {
         in property <string> tone: "neutral";
         in property <bool> embedded: false;
 
-        border-width: root.embedded ? 0px : 1px;
-        border-radius: root.embedded ? 0px : 6px;
-        border-color: root.panel_border;
-        background: root.panel_background;
+        border-width: 0px;
+        border-radius: 0px;
+        border-color: transparent;
+        background: transparent;
         clip: true;
 
         property <brush> panel_border: root.tone == "error"
@@ -448,84 +448,203 @@ slint::slint! {
                     : (root.tone == "success"
                         ? UiPalette.state_shell_tone_success_title_text
                         : UiPalette.state_shell_tone_neutral_title_text)));
+        property <length> embedded_accent_width: root.tone == "neutral" ? 0px : 1px;
+        property <brush> embedded_accent_color: root.panel_border;
+        property <brush> embedded_title_color: root.tone == "error"
+            ? UiPalette.state_shell_tone_error_title_text
+            : UiPalette.state_shell_tone_neutral_title_text;
+        property <brush> embedded_background: root.tone == "neutral"
+            ? #fcfdff
+            : root.panel_background;
+        property <length> embedded_horizontal_padding: 12px;
+        property <length> embedded_top_padding: 12px;
+        property <length> embedded_bottom_padding: 14px;
+        property <length> embedded_content_max_width: 720px;
 
-        Rectangle {
-            x: 0px;
-            y: 0px;
-            width: 6px;
+        if root.embedded : Rectangle {
+            width: parent.width;
             height: parent.height;
-            background: root.accent_color;
+            background: root.embedded_background;
+            clip: true;
+
+            Rectangle {
+                visible: root.embedded_accent_width != 0px;
+                x: 0px;
+                y: 0px;
+                width: root.embedded_accent_width;
+                height: parent.height;
+                background: root.embedded_accent_color;
+            }
+
+            HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding-left: root.embedded_horizontal_padding;
+                padding-right: root.embedded_horizontal_padding;
+                padding-top: root.embedded_top_padding;
+                padding-bottom: root.embedded_bottom_padding;
+                spacing: 0px;
+
+                Rectangle {
+                    width: min(max(0px, parent.width), root.embedded_content_max_width);
+                    height: parent.height;
+                    background: transparent;
+
+                    VerticalLayout {
+                        width: parent.width;
+                        height: parent.height;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            height: 18px;
+                            spacing: 0px;
+
+                            StatusPill {
+                                label: root.state_label;
+                                tone: root.tone;
+                            }
+
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                background: transparent;
+                            }
+                        }
+
+                        Text {
+                            text: root.title;
+                            color: root.embedded_title_color;
+                            font-size: 16px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            visible: root.body != "";
+                            text: root.body;
+                            color: UiPalette.state_shell_body_text;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            visible: root.note != "";
+                            height: 1px;
+                            background: UiPalette.state_shell_note_separator;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            visible: root.note != "";
+                            text: root.note;
+                            color: UiPalette.state_shell_note_text;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: transparent;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                }
+            }
         }
 
-        Rectangle {
-            x: 0px;
-            y: 0px;
+        if !root.embedded : Rectangle {
             width: parent.width;
-            height: 42px;
-            background: root.tone == "error"
-                ? UiPalette.state_shell_tone_error_header_background
-                : (root.tone == "warn"
-                    ? UiPalette.state_shell_tone_warn_header_background
-                    : (root.tone == "info"
-                        ? UiPalette.state_shell_tone_info_header_background
-                        : (root.tone == "success"
-                            ? UiPalette.state_shell_tone_success_header_background
-                            : UiPalette.state_shell_tone_neutral_header_background)));
+            height: parent.height;
+            border-width: 1px;
+            border-radius: 6px;
+            border-color: root.panel_border;
+            background: root.panel_background;
+            clip: true;
 
             Rectangle {
                 x: 0px;
-                y: parent.height - 1px;
-                width: parent.width;
-                height: 1px;
-                background: UiPalette.state_shell_header_separator;
-            }
-
-            StatusPill {
-                x: 18px;
-                y: 12px;
-                label: root.state_label;
-                tone: root.tone == "neutral" ? "info" : root.tone;
-            }
-        }
-
-        VerticalLayout {
-            x: 22px;
-            y: 58px;
-            width: max(0px, min(root.width - 44px, 700px));
-            spacing: 10px;
-
-            Text {
-                text: root.title;
-                color: root.title_color;
-                font-size: 18px;
-                font-weight: 600;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-            }
-
-            Text {
-                visible: root.body != "";
-                text: root.body;
-                color: UiPalette.state_shell_body_text;
-                font-size: 14px;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
+                y: 0px;
+                width: 6px;
+                height: parent.height;
+                background: root.accent_color;
             }
 
             Rectangle {
-                visible: root.note != "";
-                height: 1px;
-                background: UiPalette.state_shell_note_separator;
-                horizontal-stretch: 1;
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 42px;
+                background: root.tone == "error"
+                    ? UiPalette.state_shell_tone_error_header_background
+                    : (root.tone == "warn"
+                        ? UiPalette.state_shell_tone_warn_header_background
+                        : (root.tone == "info"
+                            ? UiPalette.state_shell_tone_info_header_background
+                            : (root.tone == "success"
+                                ? UiPalette.state_shell_tone_success_header_background
+                                : UiPalette.state_shell_tone_neutral_header_background)));
+
+                Rectangle {
+                    x: 0px;
+                    y: parent.height - 1px;
+                    width: parent.width;
+                    height: 1px;
+                    background: UiPalette.state_shell_header_separator;
+                }
+
+                StatusPill {
+                    x: 18px;
+                    y: 12px;
+                    label: root.state_label;
+                    tone: root.tone == "neutral" ? "info" : root.tone;
+                }
             }
 
-            Text {
-                visible: root.note != "";
-                text: root.note;
-                color: UiPalette.state_shell_note_text;
-                font-size: 13px;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
+            VerticalLayout {
+                x: 22px;
+                y: 58px;
+                width: max(0px, min(root.width - 44px, 700px));
+                spacing: 10px;
+
+                Text {
+                    text: root.title;
+                    color: root.title_color;
+                    font-size: 18px;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    visible: root.body != "";
+                    text: root.body;
+                    color: UiPalette.state_shell_body_text;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Rectangle {
+                    visible: root.note != "";
+                    height: 1px;
+                    background: UiPalette.state_shell_note_separator;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    visible: root.note != "";
+                    text: root.note;
+                    color: UiPalette.state_shell_note_text;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
             }
         }
     }
@@ -1446,11 +1565,7 @@ slint::slint! {
                                     }
                                 }
                                 HorizontalLayout {
-                                    spacing: 8px;
-                                    Rectangle {
-                                        width: root.sidebar_form_label_width;
-                                        background: transparent;
-                                    }
+                                    spacing: 0px;
                                     compare_button := ToolButton {
                                         label: root.running ? "Comparing..." : "Compare";
                                         primary: true;
@@ -2105,12 +2220,14 @@ slint::slint! {
                             vertical-stretch: 1;
                             background: transparent;
                             workbench_host := Rectangle {
-                                x: 4px;
-                                y: 4px;
-                                width: max(0px, parent.width - 8px);
-                                height: max(0px, parent.height - 8px);
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                height: parent.height;
                                 background: transparent;
 
+                                property <brush> panel_border: #d7e0ec;
+                                property <length> panel_corner_radius: 8px;
                                 property <length> tab_row_height: 36px;
                                 property <length> panel_overlap: 4px;
                                 property <length> panel_top: self.tab_row_height - self.panel_overlap;
@@ -2121,8 +2238,8 @@ slint::slint! {
                                     width: parent.width;
                                     height: max(0px, parent.height - workbench_host.panel_top);
                                     border-width: 1px;
-                                    border-color: #d7e0ec;
-                                    border-radius: 8px;
+                                    border-color: workbench_host.panel_border;
+                                    border-radius: workbench_host.panel_corner_radius;
                                     background: #fcfdff;
                                     clip: true;
 
@@ -2884,11 +3001,11 @@ slint::slint! {
                                 }
 
                                 Rectangle {
-                                    x: 0px;
+                                    x: workbench_host.panel_corner_radius;
                                     y: workbench_host.panel_top;
-                                    width: parent.width;
+                                    width: max(0px, parent.width - workbench_host.panel_corner_radius * 2);
                                     height: 1px;
-                                    background: #d7e0ec;
+                                    background: workbench_host.panel_border;
                                 }
 
                                 HorizontalLayout {
@@ -2902,7 +3019,7 @@ slint::slint! {
                                         label: "Diff";
                                         selected: root.workspace_tab == 0;
                                         selected_fill: #f9fbfe;
-                                        selected_border: #d7e0ec;
+                                        selected_border: workbench_host.panel_border;
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
@@ -2914,7 +3031,7 @@ slint::slint! {
                                         label: "Analysis";
                                         selected: root.workspace_tab == 1;
                                         selected_fill: #f9fbfe;
-                                        selected_border: #d7e0ec;
+                                        selected_border: workbench_host.panel_border;
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
@@ -2942,7 +3059,7 @@ slint::slint! {
                                     width: parent.width;
                                     height: parent.height;
                                     message: root.loading_mask_text;
-                                    corner_radius: 8px;
+                                    corner_radius: workbench_host.panel_corner_radius;
                                 }
                             }
                         }
