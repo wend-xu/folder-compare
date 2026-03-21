@@ -1,55 +1,66 @@
-# UI Bug Root Cause And Fix Plan (2026-03-18)
+# UI Bug Root Cause And Fix Plan (2026-03-20, Phase 17 Refresh)
 
 ## Scope
 
-- This document records root-cause analysis and recommended fixes for the current unplanned UI bugs and polish items raised from screenshots 1-5.
-- This pass does not change product code. It only turns the findings into an implementation-ready document for later execution.
+- This document records the remaining unplanned UI bugs and polish items that still need one unified repair pass on the current `Phase 17` baseline.
+- This pass does not change product code. It only updates the implementation-ready plan.
 - Current code baseline referenced in this document:
   - `crates/fc-ui-slint/src/app.rs`
   - `crates/fc-ui-slint/src/state.rs`
   - `crates/fc-ui-slint/src/ui_palette.slint`
+  - `docs/architecture.md`
+- The legacy issue `Provider Settings modal header height changes when switching Mock / OpenAI-compatible` is intentionally removed from this plan.
+  - `Phase 17B` replaced `Provider Settings` with the broader `Settings` center.
+  - `Phase 17B fix-1` already stabilized that modal container contract.
+  - This document now covers only the remaining unresolved workspace/diff-shell issues from the original report.
 
 ## Cross-cutting observations
 
-### 1. Workspace top area does not use one stable contract
+### 1. The workbench top stack is still asymmetric between `Diff` and `Analysis`
 
-- `Diff` and `Analysis` both live under the same workbench shell, but their top stacks are not structurally aligned.
-- `Diff` header metadata is partly conditional, and its helper strip only appears when diff rows are already rendered.
-- `Analysis` always keeps a header metadata row plus a helper strip.
-- Result: when users switch tabs or land on no-selection states, the visual start line of the shell body moves.
+- `Diff` and `Analysis` still share one workbench shell, but they do not reserve the same top-layer structure.
+- `Diff` only renders the helper strip when line rows are already available.
+- `Analysis` always reserves a helper strip.
+- `Phase 17` added `stale-selection`, which widened the number of non-ready states that now fall into the `DiffStateShell` path without closing the original structural gap.
 
 Relevant code:
 
-- `crates/fc-ui-slint/src/app.rs:1603-1718`
-- `crates/fc-ui-slint/src/app.rs:1926-2048`
-- `crates/fc-ui-slint/src/app.rs:1018-1030`
+- `crates/fc-ui-slint/src/app.rs:1208-1221`
+- `crates/fc-ui-slint/src/app.rs:2078-2160`
+- `crates/fc-ui-slint/src/app.rs:2402-2524`
+- `crates/fc-ui-slint/src/state.rs:347-478`
+- `crates/fc-ui-slint/src/state.rs:1088-1292`
 
-### 2. Several visual primitives are reused outside their original layout assumptions
+### 2. Embedded shell states still reuse a standalone visual primitive
 
-- `StatusPill` works correctly inside `HorizontalLayout`, but it is also used as an absolutely-positioned standalone element inside `DiffStateShell`.
-- `DiffStateShell` was designed as a self-contained state card, but it is now embedded inside an already-bordered workbench panel.
-- Result: pill width, accent bar thickness, and shell emphasis are visually over-amplified in embedded states.
+- `DiffStateShell` is still rendered as a full state card even when embedded inside the bordered workbench panel.
+- `StatusPill` still behaves best inside layout-driven lanes, but `DiffStateShell` places it by absolute coordinates.
+- This keeps the shell visually heavier than the rest of the workbench chrome in no-selection, stale-selection, loading, and unavailable states.
 
 Relevant code:
 
 - `crates/fc-ui-slint/src/app.rs:194-260`
-- `crates/fc-ui-slint/src/app.rs:302-424`
+- `crates/fc-ui-slint/src/app.rs:375-505`
 
-### 3. Some header/body geometries are duplicated instead of shared
+### 3. Geometry is still duplicated in two places that should share one contract
 
-- The diff table header and diff table rows define their own separators and padding independently.
-- The workspace surface is also composed from an outer `SectionCard` plus an inner workbench panel instead of one shared surface definition.
-- Result: alignment drift and "double card" visuals appear in normal and loading states.
+- The workbench surface still uses an outer card plus an inner bordered panel.
+- The diff table header and diff table body still define their own column geometry separately.
+- The visible result is still the same class of drift as the original report:
+  - extra shell chrome
+  - loading-mask boundary mismatch
+  - header/body separator misalignment
 
 Relevant code:
 
-- `crates/fc-ui-slint/src/app.rs:1558-1590`
-- `crates/fc-ui-slint/src/app.rs:1748-1800`
-- `crates/fc-ui-slint/src/app.rs:1841-1900`
+- `crates/fc-ui-slint/src/app.rs:2033-2065`
+- `crates/fc-ui-slint/src/app.rs:2208-2277`
+- `crates/fc-ui-slint/src/app.rs:2292-2378`
+- `crates/fc-ui-slint/src/app.rs:2850-2858`
 
 ## Itemized analysis
 
-### A. Provider Settings modal header height becomes abnormal when switching `Mock` and `OpenAI-compatible`
+### A. Diff shell state card still feels oversized, accent-heavy, and visually misaligned
 
 Screenshots:
 
@@ -57,40 +68,40 @@ Screenshots:
 
 Current implementation:
 
-- Modal outer shell: `crates/fc-ui-slint/src/app.rs:2540-2557`
-- Modal content layout: `crates/fc-ui-slint/src/app.rs:2558-2695`
-- Mode switch: `crates/fc-ui-slint/src/app.rs:2577-2606`
-- Remote-only fields block: `crates/fc-ui-slint/src/app.rs:2632-2678`
+- `StatusPill`: `crates/fc-ui-slint/src/app.rs:194-260`
+- `DiffStateShell`: `crates/fc-ui-slint/src/app.rs:375-505`
+- Embedded `Diff` usage: `crates/fc-ui-slint/src/app.rs:2150-2158`
+- Embedded `Analysis` usage: `crates/fc-ui-slint/src/app.rs:2524-2532`
+- Diff shell state mapping: `crates/fc-ui-slint/src/state.rs:347-478`
 
 Root cause:
 
-- The modal height is hard-switched between two fixed values: `430px` and `338px`.
-- The whole modal body sits in one `VerticalLayout`, but the remote-only block is toggled by `visible` instead of being structurally inserted/removed with `if`.
-- In practice this means the layout must re-resolve the same vertical stack under two different container heights while one branch is only visibility-switched. That makes title/subtitle/form spacing sensitive to the current mode and to Slint's layout distribution behavior.
-- The footer is not anchored independently from the content body, so any vertical redistribution shows up as "header height changed" instead of as a controlled body resize.
+- `DiffStateShell` still renders a full-height `6px` accent bar even when `embedded: true`, but the shell already sits inside the bordered workbench panel. This doubles the perceived left edge.
+- The header pill is still positioned by `x/y` only (`StatusPill` inside `DiffStateShell`), not by a wrapping layout lane. Its width behavior is therefore not tuned for this placement pattern.
+- `neutral` state is still remapped to `info` inside the shell header badge (`tone: root.tone == "neutral" ? "info" : root.tone`), so `No Selection` is more visually active than the actual state semantics justify.
+- `Phase 17` added `stale-selection`, which now routes another quiet state through the same heavy shell treatment.
 
 Recommended fix:
 
-- Split modal into three stable regions:
-  - fixed header
-  - content body
-  - fixed footer
-- Replace the remote-only `VerticalLayout { visible: ... }` with structural branching:
-  - `if provider_settings_mode == 1` render remote fields
-  - otherwise render nothing
-- Stop using two magic container heights as the primary layout tool. Prefer one of these two approaches:
-  - derive modal height from content preferred height plus fixed header/footer paddings
-  - or keep one fixed modal height and let only the body scroll or stretch
-- Keep the title, subtitle, top separator, and footer buttons at stable y positions across both provider modes.
+- Split `DiffStateShell` into two explicit presentation modes:
+  - standalone state card
+  - embedded workbench shell
+- For the embedded mode:
+  - reduce or remove the full-height accent bar for `neutral` and possibly `warn` states
+  - keep the shell left edge visually subordinate to the workbench border
+- Replace absolute pill placement with a layout-driven header lane and keep the pill width content-driven.
+- Stop remapping `neutral` to `info` for embedded shell badges.
+- Re-check `stale-selection` after the tone reduction. It should stay noticeable, but it should not read like a blocking warning banner.
 
 Acceptance criteria:
 
-- Switching between `Mock` and `OpenAI-compatible` does not move the title/subtitle baseline.
-- The first form row always starts at the same y position.
-- The footer buttons stay visually anchored to the modal bottom.
-- Error text appearance does not reflow the header region.
+- `No Selection` and `Stale` badges read as compact badges, not as stretched header chips.
+- The shell left edge no longer looks thicker than the workbench border.
+- `No Selection` reads as neutral.
+- `Stale` reads as cautionary but not over-emphasized.
+- Embedded shell and ready-state content keep the same horizontal alignment.
 
-### B. Diff shell state card feels oversized, left accent looks misaligned, top state pill overflows
+### B. Diff detail header separators are still not aligned with row separators
 
 Screenshots:
 
@@ -98,41 +109,35 @@ Screenshots:
 
 Current implementation:
 
-- `StatusPill`: `crates/fc-ui-slint/src/app.rs:194-260`
-- `DiffStateShell`: `crates/fc-ui-slint/src/app.rs:302-424`
-- Embedded usage in `Diff`: `crates/fc-ui-slint/src/app.rs:1674-1682`
-- Diff shell state mapping: `crates/fc-ui-slint/src/state.rs:270-497`
+- Diff table shell and header: `crates/fc-ui-slint/src/app.rs:2196-2277`
+- Diff body rows: `crates/fc-ui-slint/src/app.rs:2279-2384`
 
 Root cause:
 
-- `DiffStateShell` still renders a full-height `6px` accent bar even when `embedded: true`, but the shell is already placed inside the bordered workbench panel. This creates a doubled left edge and makes the accent look thicker than intended.
-- `StatusPill` has `min-width` but no explicit intrinsic width contract for absolute placement. Inside `DiffStateShell` it is positioned by `x/y` only, not by a wrapping layout. That makes the pill stretch much wider than the compact badge style used elsewhere.
-- `DiffStateShell` also remaps `neutral` to `info` for the header pill (`tone: root.tone == "neutral" ? "info" : root.tone`), which makes the no-selection state visually louder than the actual state severity.
-- The result is a shell that reads like an emphasized alert card instead of a calm empty/default state.
+- The header still uses `HorizontalLayout { padding: 5px; }`, but the body rows still start from a different geometry.
+- Header separators still use shortened heights (`parent.height - 6px`), while the body separators use full row height.
+- The header and body still compute their separator positions in separate layout trees instead of sharing one column geometry source.
+- Because the diff header is mirrored with `viewport-x`, any fixed x drift becomes consistently visible during horizontal scroll instead of being hidden.
 
 Recommended fix:
 
-- Introduce two shell variants or one explicit embedded style branch:
-  - standalone state card
-  - embedded workspace shell
-- For embedded shell mode:
-  - reduce or remove the full-height accent bar in neutral/no-selection states
-  - keep the accent aligned with the workbench border instead of stacking on top of it
-- Change the shell header pill from absolute placement to a `HorizontalLayout`, and give the pill a width that is content-driven.
-- Do not remap neutral state to info in the badge. Keep no-selection visually neutral.
-- If the current shell still feels too heavy after geometry fixes, reduce one more layer of chrome:
-  - either the accent bar
-  - or the header fill
-  - but not both at full emphasis in the no-selection state
+- Define one shared diff-column contract and reuse it in both header and body:
+  - old-line column width
+  - new-line column width
+  - marker column width
+  - separator x positions
+  - content-start x position
+- Remove header-only padding unless the body rows adopt the exact same inset.
+- If a shortened separator height is visually preferred in the header, keep the same x positions and only vary height, not column math.
+- Prefer one reusable component or explicit shared geometry properties over duplicated layout fragments.
 
 Acceptance criteria:
 
-- `No Selection` badge width hugs content instead of spanning most of the row.
-- The shell left edge no longer looks thicker than the surrounding panel border.
-- No-selection state reads as neutral, not as an active info banner.
-- Embedded shell and selected-content shell keep the same horizontal alignment.
+- The vertical dividers under `old`, `new`, and `content` line up exactly with the body rows.
+- Hunk rows and regular rows start from the same content baseline.
+- Horizontal scrolling preserves perfect header/body column sync.
 
-### C. Diff detail header separators are not aligned with row separators
+### C. Workspace panel is still visually double-carded and smaller than necessary
 
 Screenshots:
 
@@ -140,37 +145,37 @@ Screenshots:
 
 Current implementation:
 
-- Header geometry: `crates/fc-ui-slint/src/app.rs:1748-1800`
-- Body row geometry: `crates/fc-ui-slint/src/app.rs:1816-1900`
+- Outer workspace card: `crates/fc-ui-slint/src/app.rs:2033-2037`
+- Inner host inset: `crates/fc-ui-slint/src/app.rs:2042-2054`
+- Inner workbench panel: `crates/fc-ui-slint/src/app.rs:2056-2065`
+- Workspace loading mask mount: `crates/fc-ui-slint/src/app.rs:2850-2858`
+- Loading-mask visibility projection: `crates/fc-ui-slint/src/app.rs:3507-3534`
 
 Root cause:
 
-- The header uses `HorizontalLayout { padding: 5px; }`, but the body rows do not use the same left/right inset.
-- Header separators use `height: parent.height - 6px`, while row separators use full row height.
-- The columns are conceptually shared, but the x positions are recomputed by two different layout trees.
-- This creates visible drift between:
-  - header vertical lines
-  - row vertical lines
-  - hunk/content start edge
+- The workspace still uses an outer `SectionCard` plus an inner rounded/bordered `workbench_panel`.
+- `workbench_host` still adds fixed insets (`x: 10px`, `y: 8px`, reduced width/height), which makes the usable file-view surface smaller than the available right-column space.
+- The loading mask is still mounted on the outer workspace card, so during long operations the overlay exposes the outer shell bounds rather than the inner surface users perceive as the actual workbench.
+- This is why the workspace still reads as more padded and more chrome-heavy than the sidebar, especially in loading state.
 
 Recommended fix:
 
-- Extract one shared diff-column geometry contract and reuse it in both header and body:
-  - number column width
-  - marker column width
-  - separator x positions
-  - content start inset
-- Remove header-only padding unless the exact same inset is also applied to every body row.
-- Use the same separator height strategy in header and body. If reduced header separator height is required, its x position must still match the body separators exactly.
-- Prefer one reusable component or at least one explicit set of geometry properties instead of duplicating layout math in two places.
+- Collapse the workspace to one primary visible surface.
+- Preferred direction:
+  - make the outer workspace wrapper transparent or borderless
+  - keep the inner workbench panel as the primary shell
+- Reduce non-essential host insets so the content area expands closer to the sidebar rhythm.
+- Mount the loading mask against the same surface users perceive as the actual workbench panel.
+- Keep tabs, panel border, and content surface reading as one connected shell rather than nested cards.
 
 Acceptance criteria:
 
-- The three vertical dividers under `old/new/content` line up exactly with the body rows.
-- Horizontal scrolling keeps header and body in sync without any extra x offset.
-- Hunk rows and regular rows start on the same content column baseline.
+- The workspace uses more of the available right-column area without changing IA.
+- The border/background weight feels consistent with the sidebar.
+- During loading, the mask boundary matches the perceived workbench surface.
+- The tab row and content panel still read as one connected surface after the simplification.
 
-### D. Workspace panel is visually smaller than necessary, double-carded, and loading state exposes that mismatch
+### D. `Diff` and `Analysis` top regions are still structurally inconsistent in non-ready states
 
 Screenshots:
 
@@ -178,60 +183,21 @@ Screenshots:
 
 Current implementation:
 
-- Outer workspace container: `crates/fc-ui-slint/src/app.rs:1558-1563`
-- Inner host inset: `crates/fc-ui-slint/src/app.rs:1567-1579`
-- Inner workbench panel: `crates/fc-ui-slint/src/app.rs:1581-1590`
-- Loading mask component: `crates/fc-ui-slint/src/app.rs:262-300`
-- Workspace loading-mask mount: `crates/fc-ui-slint/src/app.rs:2375-2382`
-- Loading-mask visibility projection: `crates/fc-ui-slint/src/app.rs:2851-2883`
+- Diff header metadata row: `crates/fc-ui-slint/src/app.rs:2089-2130`
+- Diff shell branch: `crates/fc-ui-slint/src/app.rs:2150-2158`
+- Diff helper strip branch: `crates/fc-ui-slint/src/app.rs:2160-2194`
+- Analysis header metadata row: `crates/fc-ui-slint/src/app.rs:2413-2455`
+- Analysis helper strip: `crates/fc-ui-slint/src/app.rs:2493-2522`
+- Diff header/state text derivation: `crates/fc-ui-slint/src/state.rs:379-478`
+- Analysis header/state text derivation: `crates/fc-ui-slint/src/state.rs:1101-1292`
 
 Root cause:
 
-- The workspace is wrapped by an outer `SectionCard`, but inside it there is another bordered and rounded `workbench_panel`.
-- `workbench_host` also adds fixed insets (`x: 10px`, `y: 8px`, width/height reduced accordingly), which further shrinks the usable workspace area.
-- In normal view this reads as extra chrome; in loading view the mask makes the true surface bounds easier to notice, so the workspace feels smaller and less aligned with the sidebar rhythm.
-- The sidebar cards are direct content surfaces, while the workspace is a card-inside-card composition. That is why the visual weight differs.
-
-Recommended fix:
-
-- Simplify workspace shell to one primary visual surface.
-- Preferred direction:
-  - make the outer workspace wrapper transparent or borderless
-  - keep the inner workbench panel as the actual surface
-- Reduce non-essential host insets so the workbench uses more of the available width and height.
-- Mount the loading mask against the same surface that users perceive as the actual workspace panel.
-- Keep sidebar and workspace using the same card logic at the same visual hierarchy level.
-
-Acceptance criteria:
-
-- Workspace visible area increases without changing IA.
-- The workspace border/background no longer feels heavier than the sidebar cards.
-- During loading, the mask boundary matches the perceived workbench surface instead of exposing an extra outer card.
-- Tab row, panel edge, and content area feel like one coherent surface.
-
-### E. Diff header helper strip is missing in no-selection states, making Diff/Analysis top regions inconsistent
-
-Screenshots:
-
-- Figure 5
-
-Current implementation:
-
-- Diff header metadata row: `crates/fc-ui-slint/src/app.rs:1614-1654`
-- Diff shell branch: `crates/fc-ui-slint/src/app.rs:1674-1684`
-- Diff helper strip branch: `crates/fc-ui-slint/src/app.rs:1684-1718`
-- Analysis header metadata row: `crates/fc-ui-slint/src/app.rs:1945-1979`
-- Analysis helper strip: `crates/fc-ui-slint/src/app.rs:2017-2045`
-- Diff header text/state derivation: `crates/fc-ui-slint/src/state.rs:298-497`
-- Analysis header text/state derivation: `crates/fc-ui-slint/src/state.rs:775-972`
-
-Root cause:
-
-- `Diff` and `Analysis` use the same `workbench_header_height`, but they do not reserve the same structural layers.
-- In `Diff`, the metadata row conditionally hides pills when there is no selected result.
-- In `Diff`, the helper strip only exists when `root.diff_shell_ready && root.diff_has_rows`.
-- In `Analysis`, the header badges are always present and the helper strip is always rendered.
-- Because the helper strip is structurally absent in one tab/state and present in the other, the shell body starts at different y positions. This is why switching tabs makes the shell state look like it moved down or up.
+- `Diff` and `Analysis` still share the same `workbench_header_height`, but they still do not reserve the same top-stack layers.
+- In `Diff`, the badge row remains conditional because `has_selected_result` gates the mode/status pills.
+- In `Diff`, the helper strip still appears only when `root.diff_shell_ready && root.diff_has_rows`.
+- In `Analysis`, the badge row is always populated and the helper strip is always present, including no-selection and stale-selection states.
+- `Phase 17` made this more visible because stale-selection is now a first-class non-ready state in both tabs, but only `Analysis` preserves the full top-stack structure during that state.
 
 Recommended fix:
 
@@ -239,53 +205,58 @@ Recommended fix:
   - title row
   - metadata/badge row
   - helper strip
-  - content/shell body
-- For `Diff`, always reserve the helper strip height, even in no-selection/unavailable/loading states.
-- When no file is selected, show neutral helper-strip copy instead of removing the strip.
-- Standardize badge lanes:
-  - either always render a fixed mode badge + state badge + optional provider/status badge
-  - or reserve placeholder space so the text baseline stays stable
-- Keep `Diff` and `Analysis` shell body start positions identical when both are in no-selection state.
+  - shell/content body
+- In `Diff`, always reserve the helper-strip height, even when the tab is in:
+  - `no-selection`
+  - `stale-selection`
+  - `loading`
+  - `unavailable`
+  - `error`
+- For non-ready `Diff` states, render neutral helper-strip copy instead of removing the strip.
+- Standardize badge lanes so `Diff` and `Analysis` keep the same text baseline even when some badges are absent:
+  - either always render a fixed mode badge lane
+  - or reserve placeholder geometry for missing badges
+- Keep the shell body start position identical between `Diff` and `Analysis` for matching non-ready states.
 
 Acceptance criteria:
 
-- Switching between `Diff` and `Analysis` does not change the shell body's top baseline in no-selection state.
-- Diff helper strip stays present with neutral copy even before a file is selected.
-- Header badge/text baselines remain stable whether a result is selected or not.
+- Switching between `Diff` and `Analysis` does not shift the shell body vertically in `no-selection` or `stale-selection`.
+- `Diff` keeps a helper strip in all states, with neutral copy when detailed rows are not present.
+- Header badge/text baselines remain stable regardless of selection state.
 
 ## Recommended implementation order
 
-1. Fix structural geometry first:
-   - item C
-   - item E
-   - item D
-2. Then fix component-level visual noise:
+1. Fix shared geometry first:
    - item B
-3. Finish with modal stabilization:
+   - item D
+2. Simplify the workbench shell:
+   - item C
+3. Tune embedded shell visuals on top of the simplified shell:
    - item A
 
 Reason:
 
-- C and E are direct alignment and baseline issues.
-- D removes the extra shell layer that currently amplifies several visual inconsistencies.
-- B becomes easier to tune after the surrounding shell geometry is simplified.
-- A is isolated and low-risk once the workbench fixes are no longer changing shared primitives.
+- `B` and `D` are structural alignment bugs and will affect every visual review.
+- `C` removes the extra shell layer that currently amplifies several misalignments.
+- `A` is easier to tune after the workbench geometry is stable.
 
 ## Suggested regression checklist
 
-- Open app with no compare result and switch `Diff` / `Analysis` repeatedly.
-- Run compare and inspect workspace loading mask boundaries.
-- Select `different`, `left-only`, `right-only`, and `equal` entries and confirm:
-  - header baseline stability
-  - shell alignment
-  - diff column alignment
-- Open `Provider Settings`, switch `Mock` and `OpenAI-compatible` multiple times, then trigger validation error text.
-- Re-check both narrow and wide window widths because several current issues are layout-distribution problems.
+- Open the app with no selection and switch `Diff` / `Analysis` repeatedly.
+- Trigger stale-selection by changing `Search`, `Status`, or `Settings -> Behavior` visibility so the currently opened row drops out of the visible set.
+- Confirm top baseline stability in both:
+  - `no-selection`
+  - `stale-selection`
+  - `loading`
+- Run compare and inspect the workspace loading-mask boundary.
+- Open one `different` text file and verify header/body divider alignment while horizontally scrolling.
+- Open `left-only`, `right-only`, and `equal` rows and confirm preview-mode shell alignment remains consistent.
+- Re-check narrow and wide window widths because several current issues are layout-distribution problems, not only static geometry problems.
 
 ## Out of scope for the later fix pass
 
 - No IA change.
-- No new theme system.
 - No redesign of compare workflow.
-- No provider profile management.
+- No new theme system.
 - No change to AI business logic or settings persistence format.
+- No reopening of the superseded legacy `Provider Settings` modal bug.

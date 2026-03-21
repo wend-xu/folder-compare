@@ -45,7 +45,11 @@ slint::slint! {
         in property <bool> enabled: true;
         in property <length> button_min_width: 72px;
         in property <length> control_height: 30px;
+        in property <string> tooltip_text: "";
+        out property <bool> hovered: button_touch_area.has_hover;
         callback tapped();
+        callback tooltip_requested(string, length, length, length);
+        callback tooltip_closed();
 
         min-width: self.button_min_width;
         height: self.control_height;
@@ -67,10 +71,31 @@ slint::slint! {
             font-size: 14px;
         }
 
-        TouchArea {
-            enabled: root.enabled;
+        button_touch_area := TouchArea {
+            enabled: root.enabled || root.tooltip_text != "";
             clicked => {
-                root.tapped();
+                if root.enabled {
+                    root.tapped();
+                }
+            }
+
+            changed has-hover => {
+                if self.has-hover && root.tooltip_text != "" {
+                    root.tooltip_requested(
+                        root.tooltip_text,
+                        self.absolute-position.x + 10px,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
+                    );
+                } else {
+                    root.tooltip_closed();
+                }
+            }
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.cancel {
+                    root.tooltip_closed();
+                }
             }
         }
     }
@@ -380,10 +405,10 @@ slint::slint! {
         in property <string> tone: "neutral";
         in property <bool> embedded: false;
 
-        border-width: root.embedded ? 0px : 1px;
-        border-radius: root.embedded ? 0px : 6px;
-        border-color: root.panel_border;
-        background: root.panel_background;
+        border-width: 0px;
+        border-radius: 0px;
+        border-color: transparent;
+        background: transparent;
         clip: true;
 
         property <brush> panel_border: root.tone == "error"
@@ -423,84 +448,203 @@ slint::slint! {
                     : (root.tone == "success"
                         ? UiPalette.state_shell_tone_success_title_text
                         : UiPalette.state_shell_tone_neutral_title_text)));
+        property <length> embedded_accent_width: root.tone == "neutral" ? 0px : 1px;
+        property <brush> embedded_accent_color: root.panel_border;
+        property <brush> embedded_title_color: root.tone == "error"
+            ? UiPalette.state_shell_tone_error_title_text
+            : UiPalette.state_shell_tone_neutral_title_text;
+        property <brush> embedded_background: root.tone == "neutral"
+            ? #fcfdff
+            : root.panel_background;
+        property <length> embedded_horizontal_padding: 12px;
+        property <length> embedded_top_padding: 12px;
+        property <length> embedded_bottom_padding: 14px;
+        property <length> embedded_content_max_width: 720px;
 
-        Rectangle {
-            x: 0px;
-            y: 0px;
-            width: 6px;
+        if root.embedded : Rectangle {
+            width: parent.width;
             height: parent.height;
-            background: root.accent_color;
+            background: root.embedded_background;
+            clip: true;
+
+            Rectangle {
+                visible: root.embedded_accent_width != 0px;
+                x: 0px;
+                y: 0px;
+                width: root.embedded_accent_width;
+                height: parent.height;
+                background: root.embedded_accent_color;
+            }
+
+            HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding-left: root.embedded_horizontal_padding;
+                padding-right: root.embedded_horizontal_padding;
+                padding-top: root.embedded_top_padding;
+                padding-bottom: root.embedded_bottom_padding;
+                spacing: 0px;
+
+                Rectangle {
+                    width: min(max(0px, parent.width), root.embedded_content_max_width);
+                    height: parent.height;
+                    background: transparent;
+
+                    VerticalLayout {
+                        width: parent.width;
+                        height: parent.height;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            height: 18px;
+                            spacing: 0px;
+
+                            StatusPill {
+                                label: root.state_label;
+                                tone: root.tone;
+                            }
+
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                background: transparent;
+                            }
+                        }
+
+                        Text {
+                            text: root.title;
+                            color: root.embedded_title_color;
+                            font-size: 16px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            visible: root.body != "";
+                            text: root.body;
+                            color: UiPalette.state_shell_body_text;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            visible: root.note != "";
+                            height: 1px;
+                            background: UiPalette.state_shell_note_separator;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            visible: root.note != "";
+                            text: root.note;
+                            color: UiPalette.state_shell_note_text;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: transparent;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                }
+            }
         }
 
-        Rectangle {
-            x: 0px;
-            y: 0px;
+        if !root.embedded : Rectangle {
             width: parent.width;
-            height: 42px;
-            background: root.tone == "error"
-                ? UiPalette.state_shell_tone_error_header_background
-                : (root.tone == "warn"
-                    ? UiPalette.state_shell_tone_warn_header_background
-                    : (root.tone == "info"
-                        ? UiPalette.state_shell_tone_info_header_background
-                        : (root.tone == "success"
-                            ? UiPalette.state_shell_tone_success_header_background
-                            : UiPalette.state_shell_tone_neutral_header_background)));
+            height: parent.height;
+            border-width: 1px;
+            border-radius: 6px;
+            border-color: root.panel_border;
+            background: root.panel_background;
+            clip: true;
 
             Rectangle {
                 x: 0px;
-                y: parent.height - 1px;
-                width: parent.width;
-                height: 1px;
-                background: UiPalette.state_shell_header_separator;
-            }
-
-            StatusPill {
-                x: 18px;
-                y: 12px;
-                label: root.state_label;
-                tone: root.tone == "neutral" ? "info" : root.tone;
-            }
-        }
-
-        VerticalLayout {
-            x: 22px;
-            y: 58px;
-            width: max(0px, min(root.width - 44px, 700px));
-            spacing: 10px;
-
-            Text {
-                text: root.title;
-                color: root.title_color;
-                font-size: 18px;
-                font-weight: 600;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-            }
-
-            Text {
-                visible: root.body != "";
-                text: root.body;
-                color: UiPalette.state_shell_body_text;
-                font-size: 14px;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
+                y: 0px;
+                width: 6px;
+                height: parent.height;
+                background: root.accent_color;
             }
 
             Rectangle {
-                visible: root.note != "";
-                height: 1px;
-                background: UiPalette.state_shell_note_separator;
-                horizontal-stretch: 1;
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 42px;
+                background: root.tone == "error"
+                    ? UiPalette.state_shell_tone_error_header_background
+                    : (root.tone == "warn"
+                        ? UiPalette.state_shell_tone_warn_header_background
+                        : (root.tone == "info"
+                            ? UiPalette.state_shell_tone_info_header_background
+                            : (root.tone == "success"
+                                ? UiPalette.state_shell_tone_success_header_background
+                                : UiPalette.state_shell_tone_neutral_header_background)));
+
+                Rectangle {
+                    x: 0px;
+                    y: parent.height - 1px;
+                    width: parent.width;
+                    height: 1px;
+                    background: UiPalette.state_shell_header_separator;
+                }
+
+                StatusPill {
+                    x: 18px;
+                    y: 12px;
+                    label: root.state_label;
+                    tone: root.tone == "neutral" ? "info" : root.tone;
+                }
             }
 
-            Text {
-                visible: root.note != "";
-                text: root.note;
-                color: UiPalette.state_shell_note_text;
-                font-size: 13px;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
+            VerticalLayout {
+                x: 22px;
+                y: 58px;
+                width: max(0px, min(root.width - 44px, 700px));
+                spacing: 10px;
+
+                Text {
+                    text: root.title;
+                    color: root.title_color;
+                    font-size: 18px;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    visible: root.body != "";
+                    text: root.body;
+                    color: UiPalette.state_shell_body_text;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Rectangle {
+                    visible: root.note != "";
+                    height: 1px;
+                    background: UiPalette.state_shell_note_separator;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    visible: root.note != "";
+                    text: root.note;
+                    color: UiPalette.state_shell_note_text;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
             }
         }
     }
@@ -1204,6 +1348,16 @@ slint::slint! {
         in-out property <length> tooltip_anchor_top: 0px;
         in-out property <length> tooltip_anchor_bottom: 0px;
         property <length> tooltip_gap: 6px;
+        property <bool> compare_ready: !root.running && root.left_root != "" && root.right_root != "";
+        property <string> compare_button_tooltip_text: root.running
+            ? "Comparing folders..."
+            : (root.left_root == "" && root.right_root == ""
+                ? "Choose left and right folders to enable Compare."
+                : (root.left_root == ""
+                    ? "Choose a left folder to enable Compare."
+                    : (root.right_root == ""
+                        ? "Choose a right folder to enable Compare."
+                        : "")));
         property <bool> has_selected_result: root.selected_row >= 0;
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
@@ -1215,10 +1369,27 @@ slint::slint! {
             || (root.diff_shell_ready && !root.diff_has_rows);
         property <length> diff_number_column_width: 52px;
         property <length> diff_marker_column_width: 20px;
+        property <length> diff_separator_width: 1px;
+        property <length> diff_old_column_x: 0px;
+        property <length> diff_first_separator_x: root.diff_old_column_x + root.diff_number_column_width;
+        property <length> diff_new_column_x: root.diff_first_separator_x + root.diff_separator_width;
+        property <length> diff_second_separator_x: root.diff_new_column_x + root.diff_number_column_width;
+        property <length> diff_marker_column_x: root.diff_second_separator_x + root.diff_separator_width;
+        property <length> diff_third_separator_x: root.diff_marker_column_x + root.diff_marker_column_width;
+        property <length> diff_content_column_x: root.diff_third_separator_x + root.diff_separator_width;
+        property <length> diff_header_separator_inset: 4px;
         property <length> diff_scrollbar_safe_inset: 18px;
         property <length> workbench_header_height: 66px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
+        property <string> diff_helper_strip_text: root.diff_shell_ready && root.diff_has_rows
+            ? ("Select text or double-click a line number to copy the full row."
+                + (root.diff_content_char_capacity > 112
+                    ? " Long lines scroll horizontally."
+                    : ""))
+            : (root.diff_shell_note_text != ""
+                ? root.diff_shell_note_text
+                : root.diff_context_summary_text);
         function show_tooltip(
             text: string,
             anchor_x: length,
@@ -1394,23 +1565,29 @@ slint::slint! {
                                     }
                                 }
                                 HorizontalLayout {
-                                    spacing: 8px;
-                                    ToolButton {
+                                    spacing: 0px;
+                                    compare_button := ToolButton {
                                         label: root.running ? "Comparing..." : "Compare";
                                         primary: true;
-                                        button_min_width: 120px;
-                                        control_height: 31px;
-                                        enabled: !root.running && root.left_root != "" && root.right_root != "";
+                                        button_min_width: 0px;
+                                        control_height: 32px;
+                                        horizontal-stretch: 1;
+                                        enabled: root.compare_ready;
+                                        tooltip_text: root.compare_button_tooltip_text;
+                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                            root.show_tooltip(
+                                                value,
+                                                anchor_x - root.absolute-position.x,
+                                                anchor_y - root.absolute-position.y,
+                                                anchor_bottom - root.absolute-position.y,
+                                            );
+                                        }
+                                        tooltip_closed => {
+                                            root.hide_tooltip();
+                                        }
                                         tapped => {
                                             root.compare_clicked();
                                         }
-                                    }
-                                    Text {
-                                        visible: !root.running && (root.left_root == "" || root.right_root == "");
-                                        text: "Select left and right folders.";
-                                        color: #6c7a89;
-                                        overflow: elide;
-                                        vertical-alignment: center;
                                     }
                                 }
                             }
@@ -2033,22 +2210,24 @@ slint::slint! {
                 SectionCard {
                     horizontal-stretch: 1;
                     min-width: 500px;
-                    border-color: #d2dbe7;
-                    background: #f8fbfe;
+                    border-color: transparent;
+                    background: transparent;
                     VerticalLayout {
                         padding: 0px;
                         spacing: 0px;
 
                         Rectangle {
                             vertical-stretch: 1;
-                            background: #fbfcfe;
+                            background: transparent;
                             workbench_host := Rectangle {
-                                x: 10px;
-                                y: 8px;
-                                width: max(0px, parent.width - 20px);
-                                height: max(0px, parent.height - 18px);
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                height: parent.height;
                                 background: transparent;
 
+                                property <brush> panel_border: #d7e0ec;
+                                property <length> panel_corner_radius: 8px;
                                 property <length> tab_row_height: 36px;
                                 property <length> panel_overlap: 4px;
                                 property <length> panel_top: self.tab_row_height - self.panel_overlap;
@@ -2059,8 +2238,8 @@ slint::slint! {
                                     width: parent.width;
                                     height: max(0px, parent.height - workbench_host.panel_top);
                                     border-width: 1px;
-                                    border-color: #d7e0ec;
-                                    border-radius: 8px;
+                                    border-color: workbench_host.panel_border;
+                                    border-radius: workbench_host.panel_corner_radius;
                                     background: #fcfdff;
                                     clip: true;
 
@@ -2101,6 +2280,10 @@ slint::slint! {
 
                                                     HorizontalLayout {
                                                         spacing: 6px;
+                                                        StatusPill {
+                                                            label: "Diff";
+                                                            tone: "neutral";
+                                                        }
                                                         if root.has_selected_result : StatusPill {
                                                             label: root.diff_mode_label;
                                                             tone: root.diff_mode_tone;
@@ -2109,7 +2292,8 @@ slint::slint! {
                                                             label: root.diff_result_status_label;
                                                             tone: root.diff_result_status_tone;
                                                         }
-                                                        if root.diff_shell_state_token == "stale-selection"
+                                                        if !root.has_selected_result
+                                                            || root.diff_shell_state_token == "stale-selection"
                                                             || root.diff_shell_state_token == "loading"
                                                             || root.diff_shell_state_token == "unavailable"
                                                             || root.diff_shell_state_token == "error" : StatusPill {
@@ -2147,6 +2331,31 @@ slint::slint! {
                                                 }
                                             }
 
+                                            Rectangle {
+                                                height: root.workbench_helper_strip_height;
+                                                background: #f5f8fc;
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #dbe4ef;
+                                                }
+
+                                                HorizontalLayout {
+                                                    padding: 7px;
+                                                    spacing: 8px;
+                                                    Text {
+                                                        text: root.diff_helper_strip_text;
+                                                        color: #617285;
+                                                        font-size: 12px;
+                                                        vertical-alignment: center;
+                                                        horizontal-stretch: 1;
+                                                        overflow: elide;
+                                                    }
+                                                }
+                                            }
+
                                             if root.diff_show_shell : DiffStateShell {
                                                 vertical-stretch: 1;
                                                 embedded: true;
@@ -2164,34 +2373,6 @@ slint::slint! {
                                                 VerticalLayout {
                                                     padding: 0px;
                                                     spacing: 0px;
-
-                                                    Rectangle {
-                                                        height: root.workbench_helper_strip_height;
-                                                        background: #f5f8fc;
-                                                        Rectangle {
-                                                            x: 0px;
-                                                            y: parent.height - 1px;
-                                                            width: parent.width;
-                                                            height: 1px;
-                                                            background: #dbe4ef;
-                                                        }
-
-                                                        HorizontalLayout {
-                                                            padding: 7px;
-                                                            spacing: 8px;
-                                                            Text {
-                                                                text: "Select text or double-click a line number to copy the full row."
-                                                                    + (root.diff_content_char_capacity > 112
-                                                                        ? " Long lines scroll horizontally."
-                                                                        : "");
-                                                                color: #617285;
-                                                                font-size: 12px;
-                                                                vertical-alignment: center;
-                                                                horizontal-stretch: 1;
-                                                                overflow: elide;
-                                                            }
-                                                        }
-                                                    }
 
                                                     diff_ready_surface := Rectangle {
                                                         vertical-stretch: 1;
@@ -2227,51 +2408,65 @@ slint::slint! {
                                                                 width: diff_ready_surface.table_width;
                                                                 height: parent.height;
 
-                                                                HorizontalLayout {
-                                                                    padding: 5px;
-                                                                    spacing: 0px;
-                                                                    Text {
-                                                                        text: root.diff_left_column_label;
-                                                                        width: root.diff_number_column_width;
-                                                                        horizontal-alignment: right;
-                                                                        vertical-alignment: center;
-                                                                        font-size: 12px;
-                                                                        color: #667789;
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height - 6px;
-                                                                        background: #dce5f0;
-                                                                    }
-                                                                    Text {
-                                                                        text: root.diff_right_column_label;
-                                                                        width: root.diff_number_column_width;
-                                                                        horizontal-alignment: right;
-                                                                        vertical-alignment: center;
-                                                                        font-size: 12px;
-                                                                        color: #667789;
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height - 6px;
-                                                                        background: #dce5f0;
-                                                                    }
-                                                                    Text {
-                                                                        text: " ";
-                                                                        width: root.diff_marker_column_width;
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height - 6px;
-                                                                        background: #dce5f0;
-                                                                    }
-                                                                    Text {
-                                                                        text: "content";
-                                                                        color: #667789;
-                                                                        font-size: 12px;
-                                                                        vertical-alignment: center;
-                                                                        horizontal-stretch: 1;
-                                                                    }
+                                                                Text {
+                                                                    x: 0px;
+                                                                    y: 0px;
+                                                                    width: max(0px, root.diff_number_column_width - 8px);
+                                                                    height: parent.height;
+                                                                    text: root.diff_left_column_label;
+                                                                    horizontal-alignment: right;
+                                                                    vertical-alignment: center;
+                                                                    font-size: 12px;
+                                                                    color: #667789;
+                                                                }
+                                                                Rectangle {
+                                                                    x: root.diff_first_separator_x;
+                                                                    y: root.diff_header_separator_inset;
+                                                                    width: root.diff_separator_width;
+                                                                    height: max(0px, parent.height - root.diff_header_separator_inset * 2);
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    x: root.diff_new_column_x;
+                                                                    y: 0px;
+                                                                    width: max(0px, root.diff_number_column_width - 8px);
+                                                                    height: parent.height;
+                                                                    text: root.diff_right_column_label;
+                                                                    horizontal-alignment: right;
+                                                                    vertical-alignment: center;
+                                                                    font-size: 12px;
+                                                                    color: #667789;
+                                                                }
+                                                                Rectangle {
+                                                                    x: root.diff_second_separator_x;
+                                                                    y: root.diff_header_separator_inset;
+                                                                    width: root.diff_separator_width;
+                                                                    height: max(0px, parent.height - root.diff_header_separator_inset * 2);
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    x: root.diff_marker_column_x;
+                                                                    y: 0px;
+                                                                    width: root.diff_marker_column_width;
+                                                                    height: parent.height;
+                                                                    text: " ";
+                                                                }
+                                                                Rectangle {
+                                                                    x: root.diff_third_separator_x;
+                                                                    y: root.diff_header_separator_inset;
+                                                                    width: root.diff_separator_width;
+                                                                    height: max(0px, parent.height - root.diff_header_separator_inset * 2);
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    x: root.diff_content_column_x + 8px;
+                                                                    y: 0px;
+                                                                    width: max(0px, parent.width - root.diff_content_column_x - 8px);
+                                                                    height: parent.height;
+                                                                    text: "content";
+                                                                    color: #667789;
+                                                                    font-size: 12px;
+                                                                    vertical-alignment: center;
                                                                 }
                                                             }
                                                         }
@@ -2314,66 +2509,78 @@ slint::slint! {
                                                                                 ? #fbf1f1
                                                                                 : (Math.mod(index, 2) == 0 ? #fbfdff : #f8fbfe)));
 
-                                                                    HorizontalLayout {
-                                                                        spacing: 0px;
-                                                                        DiffCopyHotspot {
-                                                                            width: root.diff_number_column_width;
-                                                                            height: parent.height;
-                                                                            label: row_line.is_hunk ? "" : root.diff_old_line_nos[index];
-                                                                            feedback_label: row_line.old_feedback_label;
-                                                                            copy_value: row_line.copy_text;
-                                                                            activated => {
-                                                                                root.copy_requested(self.copy_value, self.feedback_label);
-                                                                            }
+                                                                    DiffCopyHotspot {
+                                                                        x: root.diff_old_column_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_number_column_width;
+                                                                        height: parent.height;
+                                                                        label: row_line.is_hunk ? "" : root.diff_old_line_nos[index];
+                                                                        feedback_label: row_line.old_feedback_label;
+                                                                        copy_value: row_line.copy_text;
+                                                                        activated => {
+                                                                            root.copy_requested(self.copy_value, self.feedback_label);
                                                                         }
-                                                                        Rectangle {
-                                                                            width: 1px;
-                                                                            height: parent.height;
-                                                                            background: #e4ebf4;
+                                                                    }
+                                                                    Rectangle {
+                                                                        x: root.diff_first_separator_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_separator_width;
+                                                                        height: parent.height;
+                                                                        background: #e4ebf4;
+                                                                    }
+                                                                    DiffCopyHotspot {
+                                                                        x: root.diff_new_column_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_number_column_width;
+                                                                        height: parent.height;
+                                                                        label: row_line.is_hunk ? "" : root.diff_new_line_nos[index];
+                                                                        feedback_label: row_line.new_feedback_label;
+                                                                        copy_value: row_line.copy_text;
+                                                                        activated => {
+                                                                            root.copy_requested(self.copy_value, self.feedback_label);
                                                                         }
-                                                                        DiffCopyHotspot {
-                                                                            width: root.diff_number_column_width;
-                                                                            height: parent.height;
-                                                                            label: row_line.is_hunk ? "" : root.diff_new_line_nos[index];
-                                                                            feedback_label: row_line.new_feedback_label;
-                                                                            copy_value: row_line.copy_text;
-                                                                            activated => {
-                                                                                root.copy_requested(self.copy_value, self.feedback_label);
-                                                                            }
+                                                                    }
+                                                                    Rectangle {
+                                                                        x: root.diff_second_separator_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_separator_width;
+                                                                        height: parent.height;
+                                                                        background: #e4ebf4;
+                                                                    }
+                                                                    DiffCopyHotspot {
+                                                                        x: root.diff_marker_column_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_marker_column_width;
+                                                                        height: parent.height;
+                                                                        label: row_line.marker_text;
+                                                                        enabled: row_line.is_hunk;
+                                                                        align_center: true;
+                                                                        feedback_label: "Hunk header";
+                                                                        copy_value: row_line.copy_text;
+                                                                        text_color: row_line.is_hunk ? #58789c : (row_line.is_added ? #346a4a
+                                                                            : (row_line.is_removed ? #8a4242 : #5d6d7e));
+                                                                        activated => {
+                                                                            root.copy_requested(self.copy_value, self.feedback_label);
                                                                         }
-                                                                        Rectangle {
-                                                                            width: 1px;
-                                                                            height: parent.height;
-                                                                            background: #e4ebf4;
-                                                                        }
-                                                                        DiffCopyHotspot {
-                                                                            width: root.diff_marker_column_width;
-                                                                            height: parent.height;
-                                                                            label: row_line.marker_text;
-                                                                            enabled: row_line.is_hunk;
-                                                                            align_center: true;
-                                                                            feedback_label: "Hunk header";
-                                                                            copy_value: row_line.copy_text;
-                                                                            text_color: row_line.is_hunk ? #58789c : (row_line.is_added ? #346a4a
-                                                                                : (row_line.is_removed ? #8a4242 : #5d6d7e));
-                                                                            activated => {
-                                                                                root.copy_requested(self.copy_value, self.feedback_label);
-                                                                            }
-                                                                        }
-                                                                        Rectangle {
-                                                                            width: 1px;
-                                                                            height: parent.height;
-                                                                            background: #e4ebf4;
-                                                                        }
-                                                                        SelectableDiffText {
-                                                                            value: row_content;
-                                                                            foreground: row_line.is_hunk
-                                                                                ? #2f5376
-                                                                                : #2f4357;
-                                                                            font_weight: row_line.is_hunk ? 600 : 400;
-                                                                            content_padding: 8px;
-                                                                            horizontal-stretch: 1;
-                                                                        }
+                                                                    }
+                                                                    Rectangle {
+                                                                        x: root.diff_third_separator_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_separator_width;
+                                                                        height: parent.height;
+                                                                        background: #e4ebf4;
+                                                                    }
+                                                                    SelectableDiffText {
+                                                                        x: root.diff_content_column_x;
+                                                                        y: 0px;
+                                                                        width: max(0px, parent.width - root.diff_content_column_x);
+                                                                        height: parent.height;
+                                                                        value: row_content;
+                                                                        foreground: row_line.is_hunk
+                                                                            ? #2f5376
+                                                                            : #2f4357;
+                                                                        font_weight: row_line.is_hunk ? 600 : 400;
+                                                                        content_padding: 8px;
                                                                     }
                                                                 }
 
@@ -2794,11 +3001,11 @@ slint::slint! {
                                 }
 
                                 Rectangle {
-                                    x: 0px;
+                                    x: workbench_host.panel_corner_radius;
                                     y: workbench_host.panel_top;
-                                    width: parent.width;
+                                    width: max(0px, parent.width - workbench_host.panel_corner_radius * 2);
                                     height: 1px;
-                                    background: #d7e0ec;
+                                    background: workbench_host.panel_border;
                                 }
 
                                 HorizontalLayout {
@@ -2806,13 +3013,14 @@ slint::slint! {
                                     y: 0px;
                                     width: parent.width;
                                     height: workbench_host.tab_row_height;
+                                    padding-right: 7px;
                                     spacing: 0px;
 
                                     WorkspaceTabButton {
                                         label: "Diff";
                                         selected: root.workspace_tab == 0;
                                         selected_fill: #f9fbfe;
-                                        selected_border: #d7e0ec;
+                                        selected_border: workbench_host.panel_border;
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
@@ -2824,7 +3032,7 @@ slint::slint! {
                                         label: "Analysis";
                                         selected: root.workspace_tab == 1;
                                         selected_fill: #f9fbfe;
-                                        selected_border: #d7e0ec;
+                                        selected_border: workbench_host.panel_border;
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
@@ -2844,17 +3052,18 @@ slint::slint! {
                                         overflow: elide;
                                     }
                                 }
+
+                                LoadingMask {
+                                    visible: root.workspace_loading_mask_visible;
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    height: parent.height;
+                                    message: root.loading_mask_text;
+                                    corner_radius: workbench_host.panel_corner_radius;
+                                }
                             }
                         }
-                    }
-                    LoadingMask {
-                        visible: root.workspace_loading_mask_visible;
-                        x: 0px;
-                        y: 0px;
-                        width: parent.width;
-                        height: parent.height;
-                        message: root.loading_mask_text;
-                        corner_radius: 6px;
                     }
                 }
             }
