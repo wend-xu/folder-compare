@@ -1,31 +1,31 @@
-# Folder Compare Thread Context (Phase 18A Start)
+# Folder Compare Thread Context (Post-Phase 18A Round 1)
 
 ## 目的
 
 - 本文件用于“开新线程”的短周期交接。
-- 只记录当前稳定事实、当前执行焦点、硬边界、下一线程入口。
-- 当前主参考是 `docs/architecture.md` 的 stable baseline + `Phase 18` activation summary；本文件负责把它压缩成可直接开工的线程上下文。
+- 只记录当前真实事实、当前边界、下一线程入口。
+- 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
 ## 本轮更新说明（2026-03-22）
 
-- 本轮完成了 `Phase 18A` 启动前的文档对齐：
-  - `docs/architecture.md` 已从单纯的 pre-`Phase 18` baseline summary 更新为 stable baseline + `Phase 18` activation 文档
-  - 本文件已同步为 `Phase 18A` 启动入口
-  - `README.md` 已做最小必要同步，避免继续把 flat-only 旧口径写成当前前进方向
-- 本轮没有进行任何 Rust / Slint 代码实现。
-- 已确认：早期关于“tree / grouping 不在范围内”的表述，只能作为 pre-`18A` 稳定基线说明，不能再作为当前实现边界。
+- `Phase 18A` 第一轮实现已落地到代码，不再是纯文档启动状态。
+- `Results / Navigator` 已从 flat-only 稳定基线进入 `tree + flat` 双视图运行时基线。
+- `docs/architecture.md` 已同步到“stable baseline + implemented `Phase 18A` baseline”口径。
+- `README.md` 已做最小必要同步，避免继续写成“Phase 18A 启动前”状态。
 
 ## 快照（Snapshot）
 
 - 日期：`2026-03-22`（Asia/Shanghai）
 - 分支：`dev`
-- 当前工作区：`Phase 18A` 启动前文档对齐
-  - `docs/architecture.md`
-  - `docs/thread-context.md`
-  - `README.md`
-- 当前真实稳定基线：`Phase 17D` 已收口完成，后续工作从该基线进入 `Phase 18A`
+- 当前真实代码基线：
+  - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
+  - `Phase 18A` 第一轮 correctness baseline 已实现
+- 本轮已运行验证：
+  - `cargo fmt --all`
+  - `cargo check --workspace`
+  - `cargo test --workspace`
 
-## 当前真实稳定基线（Through Phase 17D）
+## 当前真实稳定基线（Through Phase 17D + Phase 18A Round 1）
 
 ### 工具链与版本
 
@@ -37,155 +37,110 @@
 - `slint = 1.15.1`
 - `slint-build = 1.15.1`
 
-### 稳定产品结构
+### 稳定 shell / IA / 平台 contract
 
-- Sidebar 四块 IA 已固定：
+- Sidebar 四块 IA 继续固定：
   - `Compare Inputs`
   - `Compare Status`
   - `Filter / Scope`
   - `Results / Navigator`
-- Workspace 当前稳定结构：
+- Workspace 继续固定：
   - `Tabs`
   - `Header`
   - `Content`
-- `Diff / Analysis` 共用稳定 file-view shell。
+- `Diff / Analysis` 继续共用稳定 file-view shell。
+- macOS immersive title bar / non-mac legacy App Bar / `window_chrome` contract 继续稳定。
 
-### 稳定 contract
+### 现已落地的 `Phase 18A` 事实
 
-- Results row：
-  - `filename-first`
-  - `capability-first` 次信息
-  - weak `parent-path`
-- Search contract：`path / name only`
-- tooltip：文本补全层，不是说明系统
-- Settings：全局设置骨架，不是完整 settings framework
-- `Hidden files`：UI / presentation preference，不改 compare core 语义
-- `stale-selection / unavailable / no-selection / waiting / success` 基础状态语义已收口
-
-### 平台窗口层基线
-
-- macOS：immersive title bar
-- non-mac：legacy App Bar
-- 当前窗口层 contract 已稳定：
-  - 不使用 `no-frame`
-  - 平台分支收口在 `window_chrome`
-  - 顶部拖拽只在 macOS immersive strip 空白区显式触发
+- `Results / Navigator` 现已支持双视图：
+  - 非搜索状态默认 `tree mode`
+  - `flat mode` 继续存在
+- 搜索 contract 仍是 `path / name only`，搜索非空时强制 flat results mode。
+- Tree 相关逻辑在 Rust presenter/state：
+  - canonical merged tree
+  - filtered visible tree rows flatten
+  - expansion state
+  - selection/stale-selection 决策
+- Slint 侧只有独立 tree renderer，不持有递归 tree state。
+- 目录节点点击只负责展开/收起，不进入 file-view selection。
+- 文件 leaf 节点点击复用既有 `selected_row / load diff / load analysis` 链路。
+- status filter 对 tree 做剪枝，并保留必要祖先。
+- 目录 `display_status` 基于过滤后可见子树重算。
+- `Hidden files` 继续是 UI / presentation preference，不下沉到 `fc-core`，并已与 tree mode 正确兼容。
+- tree / flat 切换遵循保守 selection contract。
+- 折叠包含当前打开文件的目录不会触发 false stale-selection；只有 membership 真变化时才 stale。
 
 ## 当前执行焦点（Execution Focus）
 
-- 当前准备启动的是 `Phase 18A`，不是继续回头清扫 `Phase 16` / `Phase 17`。
-- `Phase 18` 的一句话定义：
-  - 在当前稳定的平铺结果列表基础上，引入基于 Left / Right 路径并集构建的层级结果视图，使用独立 tree component 承载目录层级、节点展开与状态表达；同时保留平铺结果视图承载搜索结果与集中扫描，并为后续 Compare View 提供可复用的数据表达基础。
-- 当前最重要的实现约束：
-  - 不要把 tree 逻辑塞进 Slint 内部
-  - Rust 侧构建 merged tree + flattened visible rows
-  - 搜索仍走 flat mode
-  - `fc-core` 语义不因 tree 而改写
-  - Sidebar / Workspace / window-layer 不重做 IA
+- 当前不再是“启动 `Phase 18A`”。
+- 当前真实焦点是：
+  - 以已落地的 `Phase 18A` round 1 baseline 为前提继续工作
+  - 优先做 smoke、边界收口、必要的小修正
+  - 或在确认边界后再进入 `18B`
+- 不要回退到“flat-only baseline”叙事，也不要把本轮已实现内容继续当 proposal。
 
-## 当前已确认的 `Phase 18A` 边界
+## 仍然明确未做（Out of Scope / Deferred）
 
-### In Scope
-
-- 双视图并存：
-  - tree view
-  - flat view
-- 非搜索状态默认 tree mode
-- 搜索非空时强制 flat results mode
-- `Results / Navigator` 标题区提供 runtime tree/flat toggle
-- merged tree 由 Left / Right 路径并集构建
-- 状态过滤直接作用于树剪枝，并保留必要祖先
-- 目录节点第一轮保持极简表达
-- file leaf 继续复用既有 selected/open/load diff 链路
-
-### Out of Scope
-
-- `Settings` 中默认结果视图持久化
+- `Settings` 持久化默认结果视图
 - `Locate and Open`
-- auto reveal / auto scroll / locate highlight polish
-- 目录节点进入右侧 file view
-- 目录统计摘要、descendant counts、复杂 secondary text
-- 内容搜索、tree 内高亮、match-span 语义
-- Compare View / File View workspace redesign
-- compare core contract widening
-
-## `Phase 18A` 五个已确认决策
-
-1. 非搜索状态默认 tree mode；搜索状态强制 flat mode。
-2. 目录节点第一轮不进入 file-view selection；点击目录只负责展开/收起。
-3. status filter 下目录 `display_status` 必须基于过滤后可见子树重算。
-4. tree / flat 运行时切换遵循保守 selection contract：
-   - 目标模式可见则保留打开并映射高亮
-   - 不可见则进入既有 `stale-selection`
-5. 目录节点第一轮不做 secondary text / 复杂统计摘要。
-
-## 当前人工验收快照草案（Phase 18A Draft）
-
-- 默认进入非搜索 tree mode 时：
-  - synthetic root 隐式展开
-  - depth-1 目录默认展开
-- 目录节点点击：
-  - 只展开/收起
-  - 不改变右侧 file-view 选中态
-- 文件叶子点击：
-  - 沿用现有 `selected_row / selected_relative_path / load diff` 链路
-- 搜索框非空：
-  - 强制切到 flat results mode
-  - 结果继续沿用当前 flat results 的 scanability / tooltip / highlight contract
-- 清空搜索：
-  - 返回当前非搜索运行时模式
-- status filter：
-  - 只保留命中节点及必要祖先
-  - 目录显示状态基于过滤后可见子树重算
-- tree / flat 运行时切换：
-  - 可见则保留打开
-  - 不可见则进入 `stale-selection`
-  - 第一轮不要求 auto reveal / auto scroll
+- ancestor reveal / auto reveal / auto scroll
+- expanded-path restore / pruning 策略
+- 目录进入右侧 file-view selection
+- tree 内搜索 / 内容搜索 / match-span 高亮
+- 目录 secondary text / descendant counts / summary
+- Compare View / File View workspace 重构
+- `fc-core` compare contract widening
 
 ## 硬契约（Do Not Break）
 
-1. `fc-core` 必须保持确定性，并与 UI / 网络 / provider 关注点隔离。
-2. `fc-ai` 是可选解释层；即使关闭 AI，compare 输出也必须完整可用。
-3. `fc-ui-slint` 负责 orchestration / presentation，不承载 compare core 语义改写。
+1. `fc-core` 必须保持确定性，并与 UI / 网络 / provider concerns 隔离。
+2. `fc-ai` 是可选解释层；compare 输出在无 AI 情况下也必须完整可用。
+3. `fc-ui-slint` 负责 orchestration / presentation，不改写 compare core 语义。
 4. Sidebar 继续保持四块 IA；Workspace 继续保持 attached `Diff / Analysis` shell。
-5. `Compare Status` 保持 summary-first，不演化成第二个重型详情面板。
-6. Results row 的 `filename-first + capability-first + weak parent-path` contract 继续有效。
-7. 搜索 contract 继续是 `path / name only`；tree 第一轮不承接搜索表达。
-8. tooltip 保持 completion-first / restrained-hint-first，不演化成说明系统。
+5. `Compare Status` 继续 summary-first。
+6. Flat results row 的 `filename-first + capability-first + weak parent-path` contract 继续有效。
+7. 搜索 contract 继续是 `path / name only`；tree 不承接搜索表达。
+8. tooltip 继续是 completion-first / restrained-hint-first，不演化成说明系统。
 9. `Hidden files` 继续是 UI preference，不推进到 compare/core policy。
-10. 不回退 macOS immersive title bar / non-mac legacy top bar / `window_chrome` platform split 的当前 contract。
+10. 不回退 macOS immersive title bar / non-mac legacy top bar / `window_chrome` split。
 11. 不回退 event-driven sync、persistent `VecModel`、shared typography tokens 等 supporting baseline。
 
-## 开始前优先阅读文件（Key Files）
+## 当前关键文件（Key Files）
 
 1. `docs/thread-context.md`
 2. `docs/architecture.md`
 3. `docs/phase-18-tree-component-design-analysis-2026-03.md`
 4. `README.md`
-5. `crates/fc-ui-slint/src/app.rs`
-6. `crates/fc-ui-slint/src/presenter.rs`
-7. `crates/fc-ui-slint/src/settings.rs`
-8. `crates/fc-ui-slint/src/window_chrome.rs`
-9. `Cargo.toml`
-10. `rust-toolchain.toml`
+5. `crates/fc-ui-slint/src/navigator_tree.rs`
+6. `crates/fc-ui-slint/src/navigator_tree.slint`
+7. `crates/fc-ui-slint/src/state.rs`
+8. `crates/fc-ui-slint/src/presenter.rs`
+9. `crates/fc-ui-slint/src/app.rs`
+10. `crates/fc-ui-slint/src/commands.rs`
 
 ## 验证（Verification）
 
-- 本轮是文档同步任务。
-- 本轮未运行：
+- 本轮代码与文档同步完成后已运行：
+  - `cargo fmt --all`
   - `cargo check --workspace`
   - `cargo test --workspace`
-  - `cargo run -p fc-ui-slint`
+- 自动验证已覆盖 presenter/state/tree 的核心 contract。
+- UI 侧仍建议人工 smoke：
+  - tree / flat toggle
+  - 搜索强制 flat fallback
+  - tree 中目录 toggle 与文件 leaf open
+  - status filter / hidden-files 在多层目录上的显示
 
 ## 新线程提示词模板（Handoff Prompt）
 
 建议新线程首条消息直接使用：
 
-> 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`，必要时再看 `docs/phase-18-tree-component-design-analysis-2026-03.md` 与 `README.md`。  
-> 把 `Phase 16` 到 `Phase 17D`、以及 workspace `edition = "2024"` 里程碑，全部视为已完成稳定基线。  
-> 把当前真实产品/UI/平台 contract 视为 `Phase 17D` 后稳定基线：Sidebar 四块 IA、attached `Diff / Analysis` shell、filename-first results rows、explicit stale-selection 语义、tooltip completion boundary、`Settings -> Provider / Behavior`、`Hidden files` UI preference boundary、macOS immersive title bar / non-mac legacy top bar。  
-> 当前准备启动的是 `Phase 18A`：在 `Results / Navigator` 内引入基于左右路径并集的 tree view，并保留 flat view；搜索非空时强制 flat mode；tree logic 放在 Rust presenter/state，不要塞进 Slint 递归状态里。  
-> 不要顺手重开 IA、window-system、full settings framework、compare-level hidden policy、或已接受 baseline。
+> 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
+> 把 `Phase 17D` 之前的 shell / settings / tooltip / file-view contract 视为稳定基线。  
+> 把 `Phase 18A` 第一轮实现视为已落地事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 tree；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view。  
+> 不要顺手重开 `fc-core` contract、window system、Settings persistence、directory selection、tree search、Locate and Open，除非当前线程目标明确要求。  
+> 如果继续 `18A` 收口，优先检查 smoke 与小范围 contract 修正；如果进入 `18B`，保持 locate/persist/reveal 范围独立，不要和现有稳定 shell 混改。
 
 ## 更新契约（Mandatory）
 
