@@ -94,7 +94,7 @@ impl Presenter {
             UiCommand::RunCompare => self.execute_compare(),
             UiCommand::UpdateEntryFilter(filter) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.entry_filter = filter;
+                state.set_entry_filter(filter);
                 Self::reconcile_selected_row_membership(&mut state);
             }
             UiCommand::UpdateEntryStatusFilter(filter) => {
@@ -197,7 +197,7 @@ impl Presenter {
                     state.analysis_openai_api_key = api_key;
                     state.analysis_openai_model = model;
                     state.analysis_request_timeout_secs = timeout_secs;
-                    state.show_hidden_files = show_hidden_files;
+                    state.set_show_hidden_files(show_hidden_files);
                     state.clear_analysis_panel();
                     Self::reconcile_selected_row_membership(&mut state);
                     state.analysis_hint = Some(match provider_kind {
@@ -441,6 +441,7 @@ impl Presenter {
                         state.summary_text = vm.summary_text;
                         state.entry_rows = vm.entry_rows;
                         state.navigator_tree_expansion_overrides.clear();
+                        state.mark_navigator_projection_revisions();
                         state.warning_lines = vm.warnings;
                         state.truncated = vm.truncated;
                         state.error_message = None;
@@ -466,6 +467,7 @@ impl Presenter {
                         state.summary_text.clear();
                         state.entry_rows.clear();
                         state.navigator_tree_expansion_overrides.clear();
+                        state.mark_navigator_projection_revisions();
                         state.warning_lines.clear();
                         state.truncated = false;
                         state.error_message = Some(message);

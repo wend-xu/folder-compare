@@ -1,53 +1,6 @@
 import { ListView } from "std-widgets.slint";
 import { UiPalette } from "ui_palette.slint";
 
-component TreeStatusPill inherits Rectangle {
-    in property <string> label;
-    in property <string> tone: "neutral";
-
-    height: 17px;
-    min-width: 46px;
-    border-radius: 6px;
-    border-width: 1px;
-    border-color: root.tone == "different"
-        ? UiPalette.status_pill_tone_different_border
-        : (root.tone == "equal"
-            ? UiPalette.status_pill_tone_equal_border
-            : (root.tone == "left"
-                ? UiPalette.status_pill_tone_left_border
-                : (root.tone == "right"
-                    ? UiPalette.status_pill_tone_right_border
-                    : UiPalette.status_pill_tone_neutral_border)));
-    background: root.tone == "different"
-        ? UiPalette.status_pill_tone_different_background
-        : (root.tone == "equal"
-            ? UiPalette.status_pill_tone_equal_background
-            : (root.tone == "left"
-                ? UiPalette.status_pill_tone_left_background
-                : (root.tone == "right"
-                    ? UiPalette.status_pill_tone_right_background
-                    : UiPalette.status_pill_tone_neutral_background)));
-
-    Text {
-        x: 4px;
-        width: parent.width - 8px;
-        height: parent.height;
-        text: root.label;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        font-size: 11px;
-        color: root.tone == "different"
-            ? UiPalette.status_pill_tone_different_text
-            : (root.tone == "equal"
-                ? UiPalette.status_pill_tone_equal_text
-                : (root.tone == "left"
-                    ? UiPalette.status_pill_tone_left_text
-                    : (root.tone == "right"
-                        ? UiPalette.status_pill_tone_right_text
-                        : UiPalette.status_pill_tone_neutral_text)));
-    }
-}
-
 component NavigatorTreeRow inherits Rectangle {
     in property <string> row_key;
     in property <string> display_name;
@@ -67,6 +20,7 @@ component NavigatorTreeRow inherits Rectangle {
     callback tooltip_closed();
 
     property <bool> row_selected: root.selectable && root.source_index == root.selected_row;
+    property <bool> row_hovered: row_touch_area.has_hover;
     property <string> row_status_label: root.status == "different"
         ? "diff"
         : (root.status == "equal"
@@ -76,55 +30,46 @@ component NavigatorTreeRow inherits Rectangle {
                 : (root.status == "right-only"
                     ? "right"
                     : root.status)));
-    property <string> row_status_tone: root.status == "different"
-        ? "different"
-        : (root.status == "equal"
-            ? "equal"
-            : (root.status == "left-only"
-                ? "left"
-                : (root.status == "right-only"
-                    ? "right"
-                    : "neutral")));
-    property <brush> item_border_color: root.row_selected
-        ? UiPalette.results_row_selected_border
-        : (root.status == "different"
-            ? UiPalette.results_row_tone_different_border
-            : (root.status == "equal"
-                ? UiPalette.results_row_tone_equal_border
-                : (root.status == "left-only"
-                    ? UiPalette.results_row_tone_left_border
-                    : (root.status == "right-only"
-                        ? UiPalette.results_row_tone_right_border
-                        : UiPalette.results_row_tone_neutral_border))));
-    property <brush> item_background_color: root.row_selected
+    property <brush> row_background_color: root.row_selected
         ? UiPalette.results_row_selected_background
-        : (root.status == "different"
-            ? UiPalette.results_row_tone_different_background
-            : (root.status == "equal"
-                ? UiPalette.results_row_tone_equal_background
-                : (root.status == "left-only"
-                    ? UiPalette.results_row_tone_left_background
-                    : (root.status == "right-only"
-                        ? UiPalette.results_row_tone_right_background
-                        : UiPalette.results_row_tone_neutral_background))));
+        : (root.row_hovered ? #f4f7fb : transparent);
     property <brush> label_color: root.row_selected
         ? UiPalette.results_row_selected_path_text
         : UiPalette.results_row_tone_neutral_path_text;
     property <brush> disclosure_color: root.row_selected
         ? UiPalette.results_row_selected_context_text
         : UiPalette.results_row_tone_neutral_context_text;
-    property <length> indent_width: 14px * root.depth;
+    property <brush> status_text_color: root.status == "different"
+        ? UiPalette.status_pill_tone_different_text
+        : (root.status == "equal"
+            ? UiPalette.status_pill_tone_equal_text
+            : (root.status == "left-only"
+                ? UiPalette.status_pill_tone_left_text
+                : (root.status == "right-only"
+                    ? UiPalette.status_pill_tone_right_text
+                    : UiPalette.status_pill_tone_neutral_text)));
+    property <length> indent_width: 12px * root.depth;
     property <bool> label_truncated: label_text.preferred-width > label_clip.width + 1px;
 
-    height: 34px;
-    border-width: 1px;
-    border-radius: 3px;
-    border-color: root.item_border_color;
-    background: root.item_background_color;
+    height: 28px;
+    border-width: 0px;
+    border-radius: 4px;
+    background: root.row_background_color;
     opacity: root.enabled ? 1 : 0.72;
+    clip: true;
+
+    Rectangle {
+        x: 0px;
+        y: 4px;
+        width: 2px;
+        height: parent.height - 8px;
+        border-radius: 1px;
+        background: UiPalette.results_row_selected_border;
+        visible: root.row_selected;
+    }
 
     HorizontalLayout {
-        padding-left: 6px;
+        padding-left: 8px;
         padding-right: 6px;
         spacing: 6px;
 
@@ -142,9 +87,12 @@ component NavigatorTreeRow inherits Rectangle {
             font-size: 11px;
         }
 
-        TreeStatusPill {
-            label: root.row_status_label;
-            tone: root.row_status_tone;
+        Text {
+            text: root.row_status_label;
+            color: root.status_text_color;
+            vertical-alignment: center;
+            font-size: 11px;
+            font-weight: 600;
         }
 
         label_clip := Rectangle {
@@ -164,7 +112,7 @@ component NavigatorTreeRow inherits Rectangle {
         }
     }
 
-    TouchArea {
+    row_touch_area := TouchArea {
         width: parent.width;
         height: parent.height;
         enabled: root.enabled;

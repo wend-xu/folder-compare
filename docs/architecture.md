@@ -168,8 +168,9 @@
   - weak: parent-path disambiguation only
 - Tree-mode first-pass row expression stays intentionally smaller:
   - node label
-  - status pill / tone
+  - lightweight status text / tone
   - disclosure affordance for directories where applicable
+  - restrained list-style selection instead of flat-card inheritance
 - Search contract remains `path / name only`.
 - Search highlighting remains lightweight and row-local on filename / parent-path labels only.
 - Tooltip for results rows remains truncated-text completion only, not a second explanation system.

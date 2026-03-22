@@ -31,16 +31,10 @@ enum NavigatorTreeNodeKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct FilteredNavigatorNode {
-    key: String,
-    relative_path: String,
-    display_name: String,
-    source_index: Option<usize>,
+struct FilteredNavigatorNode<'a> {
+    node: &'a CanonicalNavigatorNode,
     display_status: String,
-    is_directory: bool,
-    is_selectable: bool,
-    path_depth: u16,
-    children: Vec<FilteredNavigatorNode>,
+    children: Vec<FilteredNavigatorNode<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,26 +58,12 @@ pub struct NavigatorTreeRowProjection {
     pub is_selectable: bool,
 }
 
-impl CanonicalNavigatorTree {
-    pub(crate) fn node(&self, key: &str) -> Option<&CanonicalNavigatorNode> {
-        self.nodes.get(key)
-    }
-}
-
 impl CanonicalNavigatorNode {
     pub(crate) fn is_directory(&self) -> bool {
         matches!(
             self.kind,
             NavigatorTreeNodeKind::Root | NavigatorTreeNodeKind::Directory
         )
-    }
-
-    pub(crate) fn has_children(&self) -> bool {
-        !self.child_keys.is_empty()
-    }
-
-    pub(crate) fn path_depth(&self) -> u16 {
-        self.path_depth
     }
 }
 
@@ -143,9 +123,7 @@ pub fn build_canonical_navigator_tree(
                 let parent = nodes
                     .get_mut(&parent_key)
                     .expect("parent tree node must exist");
-                if !parent.child_keys.iter().any(|child| child == &key) {
-                    parent.child_keys.push(key.clone());
-                }
+                parent.child_keys.push(key.clone());
             }
 
             if is_last {
@@ -161,6 +139,7 @@ pub fn build_canonical_navigator_tree(
 
     for node in nodes.values_mut() {
         node.child_keys.sort();
+        node.child_keys.dedup();
     }
 
     let root_key = String::new();
@@ -187,8 +166,13 @@ pub fn project_navigator_tree_rows(
     let mut selectable_source_indices = BTreeSet::new();
     let mut rows = Vec::new();
     for child in &root.children {
-        collect_selectable_source_indices(child, &mut selectable_source_indices);
-        flatten_filtered_tree(child, expansion_overrides, &mut rows);
+        flatten_filtered_tree(
+            child,
+            expansion_overrides,
+            true,
+            &mut rows,
+            &mut selectable_source_indices,
+        );
     }
 
     NavigatorTreeProjection {
@@ -197,12 +181,12 @@ pub fn project_navigator_tree_rows(
     }
 }
 
-fn filter_tree_node(
-    tree: &CanonicalNavigatorTree,
+fn filter_tree_node<'a>(
+    tree: &'a CanonicalNavigatorTree,
     key: &str,
     show_hidden_files: bool,
     status_filter: &str,
-) -> Option<FilteredNavigatorNode> {
+) -> Option<FilteredNavigatorNode<'a>> {
     let node = tree.nodes.get(key)?;
     if !matches!(node.kind, NavigatorTreeNodeKind::Root)
         && !show_hidden_files
@@ -222,17 +206,11 @@ fn filter_tree_node(
             None
         } else {
             Some(FilteredNavigatorNode {
-                key: node.key.clone(),
-                relative_path: node.relative_path.clone(),
-                display_name: node.display_name.clone(),
-                source_index: node.source_index,
+                node,
                 display_status: aggregate_statuses(
                     children.iter().map(|child| child.display_status.as_str()),
                     node.base_status.as_str(),
                 ),
-                is_directory: true,
-                is_selectable: false,
-                path_depth: node.path_depth,
                 children,
             })
         };
@@ -254,14 +232,8 @@ fn filter_tree_node(
             )
         };
         return Some(FilteredNavigatorNode {
-            key: node.key.clone(),
-            relative_path: node.relative_path.clone(),
-            display_name: node.display_name.clone(),
-            source_index: node.source_index,
+            node,
             display_status,
-            is_directory: node.is_directory(),
-            is_selectable: node.kind == NavigatorTreeNodeKind::File && node.source_index.is_some(),
-            path_depth: node.path_depth,
             children,
         });
     }
@@ -270,47 +242,55 @@ fn filter_tree_node(
 }
 
 fn flatten_filtered_tree(
-    node: &FilteredNavigatorNode,
+    node: &FilteredNavigatorNode<'_>,
     expansion_overrides: &BTreeMap<String, bool>,
+    push_visible_row: bool,
     out: &mut Vec<NavigatorTreeRowProjection>,
+    selectable_source_indices: &mut BTreeSet<usize>,
 ) {
+    if matches!(node.node.kind, NavigatorTreeNodeKind::File) {
+        if let Some(source_index) = node.node.source_index {
+            selectable_source_indices.insert(source_index);
+        }
+    }
+
     let is_expandable = !node.children.is_empty();
-    let is_expanded =
-        is_expandable && expansion_state(node.key.as_str(), node.path_depth, expansion_overrides);
-    out.push(NavigatorTreeRowProjection {
-        key: node.key.clone(),
-        relative_path: node.relative_path.clone(),
-        source_index: node.source_index,
-        depth: node.path_depth.saturating_sub(1),
-        is_directory: node.is_directory,
-        is_expandable,
-        is_expanded,
-        display_status: node.display_status.clone(),
-        display_name: node.display_name.clone(),
-        tooltip_text: if node.relative_path.is_empty() {
-            node.display_name.clone()
-        } else {
-            node.relative_path.clone()
-        },
-        is_selectable: node.is_selectable,
-    });
-
-    if is_expanded {
-        for child in &node.children {
-            flatten_filtered_tree(child, expansion_overrides, out);
-        }
-    }
-}
-
-fn collect_selectable_source_indices(node: &FilteredNavigatorNode, out: &mut BTreeSet<usize>) {
-    if node.is_selectable {
-        if let Some(source_index) = node.source_index {
-            out.insert(source_index);
-        }
+    let is_expanded = is_expandable
+        && expansion_state(
+            node.node.key.as_str(),
+            node.node.path_depth,
+            expansion_overrides,
+        );
+    if push_visible_row {
+        out.push(NavigatorTreeRowProjection {
+            key: node.node.key.clone(),
+            relative_path: node.node.relative_path.clone(),
+            source_index: node.node.source_index,
+            depth: node.node.path_depth.saturating_sub(1),
+            is_directory: node.node.is_directory(),
+            is_expandable,
+            is_expanded,
+            display_status: node.display_status.clone(),
+            display_name: node.node.display_name.clone(),
+            tooltip_text: if node.node.relative_path.is_empty() {
+                node.node.display_name.clone()
+            } else {
+                node.node.relative_path.clone()
+            },
+            is_selectable: matches!(node.node.kind, NavigatorTreeNodeKind::File)
+                && node.node.source_index.is_some(),
+        });
     }
 
+    let push_children = push_visible_row && is_expanded;
     for child in &node.children {
-        collect_selectable_source_indices(child, out);
+        flatten_filtered_tree(
+            child,
+            expansion_overrides,
+            push_children,
+            out,
+            selectable_source_indices,
+        );
     }
 }
 
@@ -323,6 +303,27 @@ fn expansion_state(
         .get(key)
         .copied()
         .unwrap_or(path_depth <= 1)
+}
+
+pub(crate) fn navigator_tree_toggle_target(
+    entry_rows: &[CompareEntryRowViewModel],
+    key: &str,
+) -> Option<(String, u16)> {
+    let normalized_key = normalize_relative_path(key);
+    if normalized_key.is_empty() {
+        return None;
+    }
+
+    let prefix = format!("{normalized_key}/");
+    entry_rows
+        .iter()
+        .map(|row| normalize_relative_path(&row.relative_path))
+        .any(|relative_path| relative_path.starts_with(prefix.as_str()))
+        .then(|| {
+            let path_depth =
+                u16::try_from(path_components(normalized_key.as_str()).len()).unwrap_or(u16::MAX);
+            (normalized_key, path_depth)
+        })
 }
 
 fn compute_base_status(key: &str, nodes: &mut BTreeMap<String, CanonicalNavigatorNode>) -> String {
@@ -451,19 +452,23 @@ mod tests {
 
         let tree = build_canonical_navigator_tree(&rows);
 
-        let src = tree.node("src").expect("src directory should exist");
+        let src = tree.nodes.get("src").expect("src directory should exist");
         assert!(src.is_directory());
-        assert_eq!(src.path_depth(), 1);
+        assert_eq!(src.path_depth, 1);
         assert_eq!(src.child_keys, vec!["src/app".to_string()]);
 
-        let app = tree.node("src/app").expect("app directory should exist");
+        let app = tree
+            .nodes
+            .get("src/app")
+            .expect("app directory should exist");
         assert!(app.is_directory());
         assert_eq!(app.child_keys.len(), 2);
         assert!(app.child_keys.contains(&"src/app/lib.rs".to_string()));
         assert!(app.child_keys.contains(&"src/app/main.rs".to_string()));
 
         let main = tree
-            .node("src/app/main.rs")
+            .nodes
+            .get("src/app/main.rs")
             .expect("main file should exist");
         assert!(!main.is_directory());
         assert_eq!(main.source_index, Some(0));
@@ -556,5 +561,19 @@ mod tests {
             projection.selectable_source_indices,
             BTreeSet::from([0usize, 1usize])
         );
+    }
+
+    #[test]
+    fn toggle_target_accepts_missing_ancestor_directory_with_descendants() {
+        let rows = vec![
+            row("src/app/main.rs", "different", "file", true),
+            row("src/app/lib.rs", "equal", "file", true),
+        ];
+
+        assert_eq!(
+            navigator_tree_toggle_target(&rows, "src/app"),
+            Some((String::from("src/app"), 2))
+        );
+        assert_eq!(navigator_tree_toggle_target(&rows, "src/app/main.rs"), None);
     }
 }
