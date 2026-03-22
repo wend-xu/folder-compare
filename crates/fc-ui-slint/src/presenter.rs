@@ -4,7 +4,7 @@ use crate::bridge;
 use crate::commands::UiCommand;
 use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
 use crate::settings::{self, AppPreferences, BehaviorSettings, ProviderSettings};
-use crate::state::AppState;
+use crate::state::{AppState, NavigatorViewMode};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -95,12 +95,26 @@ impl Presenter {
             UiCommand::UpdateEntryFilter(filter) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.entry_filter = filter;
-                Self::reconcile_selected_row_visibility(&mut state);
+                Self::reconcile_selected_row_membership(&mut state);
             }
             UiCommand::UpdateEntryStatusFilter(filter) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.set_entry_status_filter(&filter);
-                Self::reconcile_selected_row_visibility(&mut state);
+                Self::reconcile_selected_row_membership(&mut state);
+            }
+            UiCommand::SetNavigatorViewModeTree => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.set_navigator_runtime_view_mode(NavigatorViewMode::Tree);
+                Self::reconcile_selected_row_membership(&mut state);
+            }
+            UiCommand::SetNavigatorViewModeFlat => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.set_navigator_runtime_view_mode(NavigatorViewMode::Flat);
+                Self::reconcile_selected_row_membership(&mut state);
+            }
+            UiCommand::ToggleNavigatorTreeNode(key) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.toggle_navigator_tree_node(&key);
             }
             UiCommand::SelectRow(index) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -185,7 +199,7 @@ impl Presenter {
                     state.analysis_request_timeout_secs = timeout_secs;
                     state.show_hidden_files = show_hidden_files;
                     state.clear_analysis_panel();
-                    Self::reconcile_selected_row_visibility(&mut state);
+                    Self::reconcile_selected_row_membership(&mut state);
                     state.analysis_hint = Some(match provider_kind {
                         fc_ai::AiProviderKind::Mock => {
                             "Using mock provider. No remote request will be sent.".to_string()
@@ -291,7 +305,7 @@ impl Presenter {
             .iter()
             .position(|row| row.relative_path == path);
         match restore_index {
-            Some(index) if state.is_row_visible_in_filter(index) => {
+            Some(index) if state.is_row_member_in_active_results(index) => {
                 state.selected_row = Some(index);
                 state.selected_relative_path = Some(path);
                 Self::clear_file_view_state(state);
@@ -426,6 +440,7 @@ impl Presenter {
                         let count = vm.entry_rows.len();
                         state.summary_text = vm.summary_text;
                         state.entry_rows = vm.entry_rows;
+                        state.navigator_tree_expansion_overrides.clear();
                         state.warning_lines = vm.warnings;
                         state.truncated = vm.truncated;
                         state.error_message = None;
@@ -450,6 +465,7 @@ impl Presenter {
                     Err(message) => {
                         state.summary_text.clear();
                         state.entry_rows.clear();
+                        state.navigator_tree_expansion_overrides.clear();
                         state.warning_lines.clear();
                         state.truncated = false;
                         state.error_message = Some(message);
@@ -675,9 +691,9 @@ impl Presenter {
         });
     }
 
-    fn reconcile_selected_row_visibility(state: &mut AppState) {
+    fn reconcile_selected_row_membership(state: &mut AppState) {
         if let Some(selected_row) = state.selected_row {
-            if !state.is_row_visible_in_filter(selected_row) {
+            if !state.is_row_member_in_active_results(selected_row) {
                 let stale_path = Self::selection_path_at(state, selected_row);
                 state.selected_row = None;
                 state.selected_relative_path = stale_path;
@@ -978,6 +994,84 @@ mod tests {
         let snapshot = presenter.state_snapshot();
         assert_eq!(snapshot.selected_row, Some(selected_index));
         assert!(snapshot.selected_diff.is_some());
+    }
+
+    #[test]
+    fn collapsing_selected_file_ancestor_keeps_file_view_open() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::create_dir(left.path().join("src")).expect("left src should be created");
+        fs::create_dir(right.path().join("src")).expect("right src should be created");
+        fs::write(left.path().join("src/main.rs"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("src/main.rs"), "right\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+
+        let selected_index = presenter
+            .state_snapshot()
+            .entry_rows
+            .iter()
+            .position(|row| row.relative_path == "src/main.rs")
+            .expect("nested file row should exist");
+        presenter.handle_command(UiCommand::SelectRow(selected_index as i32));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+
+        presenter.handle_command(UiCommand::ToggleNavigatorTreeNode("src".to_string()));
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, Some(selected_index));
+        assert_eq!(
+            snapshot.selected_relative_path.as_deref(),
+            Some("src/main.rs")
+        );
+        assert!(snapshot.selected_diff.is_some());
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::DetailedReady
+        );
+    }
+
+    #[test]
+    fn switching_to_tree_marks_directory_selection_stale() {
+        let state = Arc::new(Mutex::new(AppState {
+            entry_rows: vec![
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: "src".to_string(),
+                    status: "equal".to_string(),
+                    entry_kind: "directory".to_string(),
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    entry_kind: "file".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+            ],
+            selected_row: Some(0),
+            selected_relative_path: Some("src".to_string()),
+            navigator_runtime_view_mode: NavigatorViewMode::Flat,
+            ..AppState::default()
+        }));
+        let presenter = Presenter::new(state);
+
+        presenter.handle_command(UiCommand::SetNavigatorViewModeTree);
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, None);
+        assert_eq!(snapshot.selected_relative_path.as_deref(), Some("src"));
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::StaleSelection
+        );
     }
 
     #[test]

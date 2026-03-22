@@ -26,6 +26,7 @@ use std::time::Duration;
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
+    import { NavigatorTree } from "src/navigator_tree.slint";
     import { UiPalette, UiTypography } from "src/ui_palette.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
@@ -1299,6 +1300,9 @@ slint::slint! {
         in-out property <string> entry_filter;
         in-out property <string> entry_status_filter;
         in property <string> results_collection_text;
+        in property <string> navigator_runtime_view_mode;
+        in property <string> navigator_effective_view_mode;
+        in property <bool> navigator_search_forces_flat_mode;
         in property <[string]> row_statuses;
         in property <[string]> row_paths;
         in property <[string]> row_details;
@@ -1310,6 +1314,16 @@ slint::slint! {
         in property <[bool]> row_can_load_diff;
         in property <[bool]> row_display_name_matches;
         in property <[bool]> row_parent_path_matches;
+        in property <[string]> tree_row_keys;
+        in property <[string]> tree_row_display_names;
+        in property <[string]> tree_row_statuses;
+        in property <[string]> tree_row_tooltip_texts;
+        in property <[int]> tree_row_depths;
+        in property <[bool]> tree_row_is_directories;
+        in property <[bool]> tree_row_is_expandable;
+        in property <[bool]> tree_row_is_expanded;
+        in property <[bool]> tree_row_is_selectable;
+        in property <[int]> tree_row_source_indices;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
         in property <string> selected_relative_path_raw;
@@ -1486,6 +1500,10 @@ slint::slint! {
         callback right_browse_clicked();
         callback filter_changed(string);
         callback status_filter_changed(string);
+        callback navigator_view_mode_tree_requested();
+        callback navigator_view_mode_flat_requested();
+        callback navigator_tree_directory_toggled(string);
+        callback navigator_tree_file_selected(int);
         callback row_selected(int);
         callback copy_requested(string, string);
         callback analyze_clicked();
@@ -2080,17 +2098,80 @@ slint::slint! {
                             VerticalLayout {
                                 padding: 10px;
                                 spacing: 6px;
-                                Text {
-                                    text: "Results / Navigator";
-                                    color: #374656;
-                                    font-size: 15px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: "Results / Navigator";
+                                        color: #374656;
+                                        font-size: 15px;
+                                        vertical-alignment: center;
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                    ToolButton {
+                                        label: "Tree";
+                                        button_min_width: 58px;
+                                        control_height: 24px;
+                                        active: root.navigator_effective_view_mode == "tree";
+                                        enabled: !root.navigator_search_forces_flat_mode
+                                            && root.navigator_runtime_view_mode != "tree";
+                                        tapped => {
+                                            root.navigator_view_mode_tree_requested();
+                                        }
+                                    }
+                                    ToolButton {
+                                        label: "Flat";
+                                        button_min_width: 58px;
+                                        control_height: 24px;
+                                        active: root.navigator_effective_view_mode == "flat";
+                                        enabled: !root.navigator_search_forces_flat_mode
+                                            && root.navigator_runtime_view_mode != "flat";
+                                        tapped => {
+                                            root.navigator_view_mode_flat_requested();
+                                        }
+                                    }
                                 }
                                 Text {
                                     text: root.results_collection_text;
                                     color: #6f7e8d;
                                     overflow: elide;
                                 }
-                                ListView {
+                                if root.navigator_effective_view_mode == "tree" : NavigatorTree {
+                                    vertical-stretch: 1;
+                                    row_keys: root.tree_row_keys;
+                                    row_display_names: root.tree_row_display_names;
+                                    row_statuses: root.tree_row_statuses;
+                                    row_tooltip_texts: root.tree_row_tooltip_texts;
+                                    row_depths: root.tree_row_depths;
+                                    row_is_directories: root.tree_row_is_directories;
+                                    row_is_expandable: root.tree_row_is_expandable;
+                                    row_is_expanded: root.tree_row_is_expanded;
+                                    row_is_selectable: root.tree_row_is_selectable;
+                                    row_source_indices: root.tree_row_source_indices;
+                                    selected_row: root.selected_row;
+                                    interaction_enabled: !root.diff_loading;
+                                    file_selected(source_index) => {
+                                        root.hide_tooltip();
+                                        root.navigator_tree_file_selected(source_index);
+                                    }
+                                    directory_toggled(key) => {
+                                        root.hide_tooltip();
+                                        root.navigator_tree_directory_toggled(key);
+                                    }
+                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                        root.show_tooltip(
+                                            text,
+                                            anchor_x - root.absolute-position.x,
+                                            anchor_top - root.absolute-position.y,
+                                            anchor_bottom - root.absolute-position.y,
+                                        );
+                                    }
+                                    tooltip_closed() => {
+                                        root.hide_tooltip();
+                                    }
+                                }
+                                if root.navigator_effective_view_mode == "flat" : ListView {
                                     vertical-stretch: 1;
                                     for row_path[index] in root.row_paths: row_item := Rectangle {
                                         property <length> tooltip_x_inset: 8px;
@@ -4113,6 +4194,8 @@ fn should_refresh_result_models(last_state: Option<&AppState>, next_state: &AppS
                 || last.entry_filter != next_state.entry_filter
                 || last.entry_status_filter != next_state.entry_status_filter
                 || last.show_hidden_files != next_state.show_hidden_files
+                || last.navigator_tree_expansion_overrides
+                    != next_state.navigator_tree_expansion_overrides
         }
     }
 }
@@ -4138,6 +4221,16 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_row_can_load_diff(Rc::new(VecModel::<bool>::default()).into());
     window.set_row_display_name_matches(Rc::new(VecModel::<bool>::default()).into());
     window.set_row_parent_path_matches(Rc::new(VecModel::<bool>::default()).into());
+    window.set_tree_row_keys(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_tree_row_display_names(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_tree_row_statuses(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_tree_row_tooltip_texts(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_tree_row_depths(Rc::new(VecModel::<i32>::default()).into());
+    window.set_tree_row_is_directories(Rc::new(VecModel::<bool>::default()).into());
+    window.set_tree_row_is_expandable(Rc::new(VecModel::<bool>::default()).into());
+    window.set_tree_row_is_expanded(Rc::new(VecModel::<bool>::default()).into());
+    window.set_tree_row_is_selectable(Rc::new(VecModel::<bool>::default()).into());
+    window.set_tree_row_source_indices(Rc::new(VecModel::<i32>::default()).into());
     window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_old_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_new_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
@@ -4183,6 +4276,9 @@ fn sync_window_state(
     window.set_compare_has_deferred(state.compare_has_deferred());
     window.set_compare_has_oversized(state.compare_has_oversized());
     window.set_results_collection_text(state.results_collection_text().into());
+    window.set_navigator_runtime_view_mode(state.navigator_runtime_view_mode_text().into());
+    window.set_navigator_effective_view_mode(state.navigator_effective_view_mode_text().into());
+    window.set_navigator_search_forces_flat_mode(state.navigator_search_forces_flat_mode());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
     window.set_selected_relative_path_raw(
@@ -4360,6 +4456,99 @@ fn sync_window_state(
             window.get_row_parent_path_matches(),
             row_parent_path_matches,
             "row_parent_path_matches",
+        );
+
+        let projected_tree_rows = state.navigator_tree_row_projections();
+        let tree_row_keys = projected_tree_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.key.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(window.get_tree_row_keys(), tree_row_keys, "tree_row_keys");
+        let tree_row_display_names = projected_tree_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.display_name.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_display_names(),
+            tree_row_display_names,
+            "tree_row_display_names",
+        );
+        let tree_row_statuses = projected_tree_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.display_status.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_statuses(),
+            tree_row_statuses,
+            "tree_row_statuses",
+        );
+        let tree_row_tooltip_texts = projected_tree_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.tooltip_text.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_tooltip_texts(),
+            tree_row_tooltip_texts,
+            "tree_row_tooltip_texts",
+        );
+        let tree_row_depths = projected_tree_rows
+            .iter()
+            .map(|projection| i32::from(projection.depth))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_depths(),
+            tree_row_depths,
+            "tree_row_depths",
+        );
+        let tree_row_is_directories = projected_tree_rows
+            .iter()
+            .map(|projection| projection.is_directory)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_is_directories(),
+            tree_row_is_directories,
+            "tree_row_is_directories",
+        );
+        let tree_row_is_expandable = projected_tree_rows
+            .iter()
+            .map(|projection| projection.is_expandable)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_is_expandable(),
+            tree_row_is_expandable,
+            "tree_row_is_expandable",
+        );
+        let tree_row_is_expanded = projected_tree_rows
+            .iter()
+            .map(|projection| projection.is_expanded)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_is_expanded(),
+            tree_row_is_expanded,
+            "tree_row_is_expanded",
+        );
+        let tree_row_is_selectable = projected_tree_rows
+            .iter()
+            .map(|projection| projection.is_selectable)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_is_selectable(),
+            tree_row_is_selectable,
+            "tree_row_is_selectable",
+        );
+        let tree_row_source_indices = projected_tree_rows
+            .iter()
+            .map(|projection| {
+                projection
+                    .source_index
+                    .and_then(|value| i32::try_from(value).ok())
+                    .unwrap_or(-1)
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_tree_row_source_indices(),
+            tree_row_source_indices,
+            "tree_row_source_indices",
         );
     }
 
@@ -4893,6 +5082,107 @@ pub fn run() -> anyhow::Result<()> {
             &filter_cache,
             Some(&filter_context_menu_controller),
             &filter_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let tree_mode_bridge = bridge.clone();
+    let tree_mode_cache = Arc::clone(&sync_cache);
+    let tree_mode_context_menu_controller = context_menu_controller.clone();
+    let tree_mode_loading_mask_controller = loading_mask_controller.clone();
+    app.on_navigator_view_mode_tree_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        tree_mode_context_menu_controller.close();
+        tree_mode_bridge.dispatch(UiCommand::SetNavigatorViewModeTree);
+        sync_window_state_if_changed(
+            &window,
+            &tree_mode_bridge,
+            &tree_mode_cache,
+            Some(&tree_mode_context_menu_controller),
+            &tree_mode_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let flat_mode_bridge = bridge.clone();
+    let flat_mode_cache = Arc::clone(&sync_cache);
+    let flat_mode_context_menu_controller = context_menu_controller.clone();
+    let flat_mode_loading_mask_controller = loading_mask_controller.clone();
+    app.on_navigator_view_mode_flat_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        flat_mode_context_menu_controller.close();
+        flat_mode_bridge.dispatch(UiCommand::SetNavigatorViewModeFlat);
+        sync_window_state_if_changed(
+            &window,
+            &flat_mode_bridge,
+            &flat_mode_cache,
+            Some(&flat_mode_context_menu_controller),
+            &flat_mode_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let tree_toggle_bridge = bridge.clone();
+    let tree_toggle_cache = Arc::clone(&sync_cache);
+    let tree_toggle_context_menu_controller = context_menu_controller.clone();
+    let tree_toggle_loading_mask_controller = loading_mask_controller.clone();
+    app.on_navigator_tree_directory_toggled(move |key| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        if window.get_diff_loading() {
+            return;
+        }
+
+        tree_toggle_context_menu_controller.close();
+        tree_toggle_bridge.dispatch(UiCommand::ToggleNavigatorTreeNode(key.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &tree_toggle_bridge,
+            &tree_toggle_cache,
+            Some(&tree_toggle_context_menu_controller),
+            &tree_toggle_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let tree_file_bridge = bridge.clone();
+    let tree_file_cache = Arc::clone(&sync_cache);
+    let tree_file_context_menu_controller = context_menu_controller.clone();
+    let tree_file_loading_mask_controller = loading_mask_controller.clone();
+    app.on_navigator_tree_file_selected(move |index| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        if window.get_diff_loading() {
+            return;
+        }
+        tree_file_context_menu_controller.close();
+        window.set_workspace_tab(0);
+        if window.get_selected_row() == index
+            && (window.get_diff_loaded() || window.get_diff_loading())
+        {
+            return;
+        }
+
+        tree_file_bridge.dispatch(UiCommand::SelectRow(index));
+        tree_file_bridge.dispatch(UiCommand::LoadSelectedDiff);
+        sync_window_state_if_changed(
+            &window,
+            &tree_file_bridge,
+            &tree_file_cache,
+            Some(&tree_file_context_menu_controller),
+            &tree_file_loading_mask_controller,
             SyncMode::Passive,
         );
     });

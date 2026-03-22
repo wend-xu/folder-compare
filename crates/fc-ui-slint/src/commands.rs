@@ -22,6 +22,12 @@ pub enum UiCommand {
     UpdateEntryFilter(String),
     /// Updates compare row status scope filter.
     UpdateEntryStatusFilter(String),
+    /// Switches non-search Results / Navigator mode to tree.
+    SetNavigatorViewModeTree,
+    /// Switches non-search Results / Navigator mode to flat.
+    SetNavigatorViewModeFlat,
+    /// Toggles one directory node in tree mode.
+    ToggleNavigatorTreeNode(String),
     /// Updates selected result row.
     SelectRow(i32),
     /// Loads detailed diff for selected row.

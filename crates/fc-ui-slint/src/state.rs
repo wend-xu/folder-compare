@@ -1,7 +1,12 @@
 //! App state for compare + detailed diff UI workflow.
 
+use crate::navigator_tree::{
+    NavigatorTreeProjection, NavigatorTreeRowProjection, build_canonical_navigator_tree,
+    project_navigator_tree_rows,
+};
 use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
 use fc_ai::{AiConfig, AiProviderKind};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 const WARNING_WRAP_COLUMNS: usize = 96;
@@ -74,6 +79,22 @@ pub struct NavigatorRowProjection {
     pub parent_path_matches_filter: bool,
 }
 
+/// Runtime Results / Navigator view mode for non-search browsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavigatorViewMode {
+    Tree,
+    Flat,
+}
+
+impl NavigatorViewMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tree => "tree",
+            Self::Flat => "flat",
+        }
+    }
+}
+
 /// In-memory UI state for compare workflow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppState {
@@ -93,6 +114,10 @@ pub struct AppState {
     pub entry_filter: String,
     /// Status filter scope applied to compare rows (`all`, `different`, ...).
     pub entry_status_filter: String,
+    /// Non-search runtime mode for Results / Navigator.
+    pub navigator_runtime_view_mode: NavigatorViewMode,
+    /// Expansion overrides for directory nodes in tree mode.
+    pub navigator_tree_expansion_overrides: BTreeMap<String, bool>,
     /// Warning lines from compare report.
     pub warning_lines: Vec<String>,
     /// Top-level compare error message.
@@ -150,6 +175,8 @@ impl Default for AppState {
             entry_rows: Vec::new(),
             entry_filter: String::new(),
             entry_status_filter: "all".to_string(),
+            navigator_runtime_view_mode: NavigatorViewMode::Tree,
+            navigator_tree_expansion_overrides: BTreeMap::new(),
             warning_lines: Vec::new(),
             error_message: None,
             truncated: false,
@@ -695,6 +722,71 @@ impl AppState {
             .collect()
     }
 
+    /// Returns true when search text currently forces flat results mode.
+    pub fn navigator_search_forces_flat_mode(&self) -> bool {
+        !normalize_filter_needle(&self.entry_filter).is_empty()
+    }
+
+    /// Returns the effective Results / Navigator mode after search fallback is applied.
+    pub fn effective_navigator_view_mode(&self) -> NavigatorViewMode {
+        if self.navigator_search_forces_flat_mode() {
+            NavigatorViewMode::Flat
+        } else {
+            self.navigator_runtime_view_mode
+        }
+    }
+
+    /// Returns the runtime non-search mode token for UI syncing.
+    pub fn navigator_runtime_view_mode_text(&self) -> String {
+        self.navigator_runtime_view_mode.as_str().to_string()
+    }
+
+    /// Returns the effective mode token for UI syncing.
+    pub fn navigator_effective_view_mode_text(&self) -> String {
+        self.effective_navigator_view_mode().as_str().to_string()
+    }
+
+    /// Updates the non-search runtime mode.
+    pub fn set_navigator_runtime_view_mode(&mut self, mode: NavigatorViewMode) {
+        self.navigator_runtime_view_mode = mode;
+    }
+
+    /// Returns visible tree row projections for tree mode rendering.
+    pub fn navigator_tree_row_projections(&self) -> Vec<NavigatorTreeRowProjection> {
+        self.navigator_tree_projection().rows
+    }
+
+    /// Returns true when a directory node toggle was applied.
+    pub fn toggle_navigator_tree_node(&mut self, key: &str) -> bool {
+        let trimmed_key = key.trim();
+        if trimmed_key.is_empty() {
+            return false;
+        }
+
+        let tree = build_canonical_navigator_tree(&self.entry_rows);
+        let Some(node) = tree.node(trimmed_key) else {
+            return false;
+        };
+        if !node.is_directory() || !node.has_children() {
+            return false;
+        }
+
+        let default_expanded = node.path_depth() <= 1;
+        let current = self
+            .navigator_tree_expansion_overrides
+            .get(trimmed_key)
+            .copied()
+            .unwrap_or(default_expanded);
+        let next = !current;
+        if next == default_expanded {
+            self.navigator_tree_expansion_overrides.remove(trimmed_key);
+        } else {
+            self.navigator_tree_expansion_overrides
+                .insert(trimmed_key.to_string(), next);
+        }
+        true
+    }
+
     /// Updates status filter scope in canonical form.
     pub fn set_entry_status_filter(&mut self, filter: &str) {
         self.entry_status_filter = normalize_status_filter_token(filter);
@@ -707,6 +799,17 @@ impl AppState {
             .get(index)
             .map(|row| self.row_visible_in_results(row, status_filter.as_str()))
             .unwrap_or(false)
+    }
+
+    /// Returns true when one source row remains part of the active navigator membership set.
+    pub fn is_row_member_in_active_results(&self, index: usize) -> bool {
+        match self.effective_navigator_view_mode() {
+            NavigatorViewMode::Flat => self.is_row_visible_in_filter(index),
+            NavigatorViewMode::Tree => self
+                .navigator_tree_projection()
+                .selectable_source_indices
+                .contains(&index),
+        }
     }
 
     /// Returns collection summary text for Results / Navigator.
@@ -1560,6 +1663,17 @@ impl AppState {
             && (!self.analysis_remote_mode() || self.analysis_remote_config_ready())
     }
 
+    fn navigator_tree_projection(&self) -> NavigatorTreeProjection {
+        let tree = build_canonical_navigator_tree(&self.entry_rows);
+        let status_filter = normalize_status_filter_token(&self.entry_status_filter);
+        project_navigator_tree_rows(
+            &tree,
+            self.show_hidden_files,
+            status_filter.as_str(),
+            &self.navigator_tree_expansion_overrides,
+        )
+    }
+
     fn row_matches_filter_controls(
         &self,
         row: &CompareEntryRowViewModel,
@@ -2224,6 +2338,34 @@ mod tests {
     }
 
     #[test]
+    fn navigator_effective_view_mode_forces_flat_while_search_is_active() {
+        let mut state = AppState::default();
+        assert_eq!(
+            state.effective_navigator_view_mode(),
+            NavigatorViewMode::Tree
+        );
+
+        state.entry_filter = "main.rs".to_string();
+        assert!(state.navigator_search_forces_flat_mode());
+        assert_eq!(
+            state.effective_navigator_view_mode(),
+            NavigatorViewMode::Flat
+        );
+
+        state.entry_filter.clear();
+        assert_eq!(
+            state.effective_navigator_view_mode(),
+            NavigatorViewMode::Tree
+        );
+
+        state.set_navigator_runtime_view_mode(NavigatorViewMode::Flat);
+        assert_eq!(
+            state.effective_navigator_view_mode(),
+            NavigatorViewMode::Flat
+        );
+    }
+
+    #[test]
     fn results_collection_text_mentions_hidden_entries_filtered_by_settings() {
         let state = AppState {
             entry_rows: vec![
@@ -2248,6 +2390,61 @@ mod tests {
             state.results_collection_text(),
             "Showing 1 / 2 · 1 hidden by Settings · Diff"
         );
+    }
+
+    #[test]
+    fn tree_projection_keeps_directories_non_selectable_and_files_selectable() {
+        let state = AppState {
+            entry_rows: vec![
+                CompareEntryRowViewModel {
+                    relative_path: "src".to_string(),
+                    status: "equal".to_string(),
+                    entry_kind: "directory".to_string(),
+                    ..CompareEntryRowViewModel::default()
+                },
+                CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    entry_kind: "file".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..CompareEntryRowViewModel::default()
+                },
+            ],
+            ..AppState::default()
+        };
+
+        let rows = state.navigator_tree_row_projections();
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].is_directory);
+        assert!(!rows[0].is_selectable);
+        assert_eq!(rows[1].key, "src/main.rs");
+        assert!(rows[1].is_selectable);
+    }
+
+    #[test]
+    fn tree_membership_ignores_collapsed_ancestor() {
+        let mut state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "src/main.rs".to_string(),
+                status: "different".to_string(),
+                entry_kind: "file".to_string(),
+                can_load_diff: true,
+                can_load_analysis: true,
+                ..CompareEntryRowViewModel::default()
+            }],
+            selected_row: Some(0),
+            selected_relative_path: Some("src/main.rs".to_string()),
+            ..AppState::default()
+        };
+
+        assert!(state.is_row_member_in_active_results(0));
+        assert!(state.toggle_navigator_tree_node("src"));
+        let rows = state.navigator_tree_row_projections();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].key, "src");
+        assert!(!rows[0].is_expanded);
+        assert!(state.is_row_member_in_active_results(0));
     }
 
     #[test]

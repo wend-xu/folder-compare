@@ -1,0 +1,263 @@
+import { ListView } from "std-widgets.slint";
+import { UiPalette } from "ui_palette.slint";
+
+component TreeStatusPill inherits Rectangle {
+    in property <string> label;
+    in property <string> tone: "neutral";
+
+    height: 17px;
+    min-width: 46px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.tone == "different"
+        ? UiPalette.status_pill_tone_different_border
+        : (root.tone == "equal"
+            ? UiPalette.status_pill_tone_equal_border
+            : (root.tone == "left"
+                ? UiPalette.status_pill_tone_left_border
+                : (root.tone == "right"
+                    ? UiPalette.status_pill_tone_right_border
+                    : UiPalette.status_pill_tone_neutral_border)));
+    background: root.tone == "different"
+        ? UiPalette.status_pill_tone_different_background
+        : (root.tone == "equal"
+            ? UiPalette.status_pill_tone_equal_background
+            : (root.tone == "left"
+                ? UiPalette.status_pill_tone_left_background
+                : (root.tone == "right"
+                    ? UiPalette.status_pill_tone_right_background
+                    : UiPalette.status_pill_tone_neutral_background)));
+
+    Text {
+        x: 4px;
+        width: parent.width - 8px;
+        height: parent.height;
+        text: root.label;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: 11px;
+        color: root.tone == "different"
+            ? UiPalette.status_pill_tone_different_text
+            : (root.tone == "equal"
+                ? UiPalette.status_pill_tone_equal_text
+                : (root.tone == "left"
+                    ? UiPalette.status_pill_tone_left_text
+                    : (root.tone == "right"
+                        ? UiPalette.status_pill_tone_right_text
+                        : UiPalette.status_pill_tone_neutral_text)));
+    }
+}
+
+component NavigatorTreeRow inherits Rectangle {
+    in property <string> row_key;
+    in property <string> display_name;
+    in property <string> status;
+    in property <string> tooltip_text;
+    in property <int> depth: 0;
+    in property <bool> directory: false;
+    in property <bool> expandable: false;
+    in property <bool> expanded: false;
+    in property <bool> selectable: false;
+    in property <int> source_index: -1;
+    in property <int> selected_row: -1;
+    in property <bool> enabled: true;
+    callback file_selected(int);
+    callback directory_toggled(string);
+    callback tooltip_requested(string, length, length, length);
+    callback tooltip_closed();
+
+    property <bool> row_selected: root.selectable && root.source_index == root.selected_row;
+    property <string> row_status_label: root.status == "different"
+        ? "diff"
+        : (root.status == "equal"
+            ? "equal"
+            : (root.status == "left-only"
+                ? "left"
+                : (root.status == "right-only"
+                    ? "right"
+                    : root.status)));
+    property <string> row_status_tone: root.status == "different"
+        ? "different"
+        : (root.status == "equal"
+            ? "equal"
+            : (root.status == "left-only"
+                ? "left"
+                : (root.status == "right-only"
+                    ? "right"
+                    : "neutral")));
+    property <brush> item_border_color: root.row_selected
+        ? UiPalette.results_row_selected_border
+        : (root.status == "different"
+            ? UiPalette.results_row_tone_different_border
+            : (root.status == "equal"
+                ? UiPalette.results_row_tone_equal_border
+                : (root.status == "left-only"
+                    ? UiPalette.results_row_tone_left_border
+                    : (root.status == "right-only"
+                        ? UiPalette.results_row_tone_right_border
+                        : UiPalette.results_row_tone_neutral_border))));
+    property <brush> item_background_color: root.row_selected
+        ? UiPalette.results_row_selected_background
+        : (root.status == "different"
+            ? UiPalette.results_row_tone_different_background
+            : (root.status == "equal"
+                ? UiPalette.results_row_tone_equal_background
+                : (root.status == "left-only"
+                    ? UiPalette.results_row_tone_left_background
+                    : (root.status == "right-only"
+                        ? UiPalette.results_row_tone_right_background
+                        : UiPalette.results_row_tone_neutral_background))));
+    property <brush> label_color: root.row_selected
+        ? UiPalette.results_row_selected_path_text
+        : UiPalette.results_row_tone_neutral_path_text;
+    property <brush> disclosure_color: root.row_selected
+        ? UiPalette.results_row_selected_context_text
+        : UiPalette.results_row_tone_neutral_context_text;
+    property <length> indent_width: 14px * root.depth;
+    property <bool> label_truncated: label_text.preferred-width > label_clip.width + 1px;
+
+    height: 34px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: root.item_border_color;
+    background: root.item_background_color;
+    opacity: root.enabled ? 1 : 0.72;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 6px;
+
+        Rectangle {
+            width: root.indent_width;
+            background: transparent;
+        }
+
+        Text {
+            width: 12px;
+            text: root.expandable ? (root.expanded ? "v" : ">") : "";
+            color: root.disclosure_color;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            font-size: 11px;
+        }
+
+        TreeStatusPill {
+            label: root.row_status_label;
+            tone: root.row_status_tone;
+        }
+
+        label_clip := Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            background: transparent;
+
+            label_text := Text {
+                width: parent.width;
+                text: root.display_name;
+                color: root.label_color;
+                vertical-alignment: center;
+                font-size: 13px;
+                font-weight: root.directory ? 600 : 500;
+                overflow: elide;
+            }
+        }
+    }
+
+    TouchArea {
+        width: parent.width;
+        height: parent.height;
+        enabled: root.enabled;
+        changed has-hover => {
+            if self.has-hover && root.tooltip_text != "" && root.label_truncated {
+                root.tooltip_requested(
+                    root.tooltip_text,
+                    self.absolute-position.x + 8px,
+                    self.absolute-position.y,
+                    self.absolute-position.y + self.height,
+                );
+            } else {
+                root.tooltip_closed();
+            }
+        }
+        clicked => {
+            root.tooltip_closed();
+            if root.directory && root.expandable {
+                root.directory_toggled(root.row_key);
+            } else if root.selectable {
+                root.file_selected(root.source_index);
+            }
+        }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.move {
+                if root.tooltip_text != "" && root.label_truncated {
+                    root.tooltip_requested(
+                        root.tooltip_text,
+                        self.absolute-position.x + 8px,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
+                    );
+                }
+            } else if event.kind == PointerEventKind.down {
+                root.tooltip_closed();
+            } else if event.kind == PointerEventKind.cancel {
+                root.tooltip_closed();
+            }
+        }
+    }
+}
+
+export component NavigatorTree inherits Rectangle {
+    in property <[string]> row_keys;
+    in property <[string]> row_display_names;
+    in property <[string]> row_statuses;
+    in property <[string]> row_tooltip_texts;
+    in property <[int]> row_depths;
+    in property <[bool]> row_is_directories;
+    in property <[bool]> row_is_expandable;
+    in property <[bool]> row_is_expanded;
+    in property <[bool]> row_is_selectable;
+    in property <[int]> row_source_indices;
+    in property <int> selected_row: -1;
+    in property <bool> interaction_enabled: true;
+    callback file_selected(int);
+    callback directory_toggled(string);
+    callback tooltip_requested(string, length, length, length);
+    callback tooltip_closed();
+
+    ListView {
+        width: parent.width;
+        height: parent.height;
+
+        for row_key[index] in root.row_keys: row_item := NavigatorTreeRow {
+            row_key: row_key;
+            display_name: root.row_display_names[index];
+            status: root.row_statuses[index];
+            tooltip_text: root.row_tooltip_texts[index];
+            depth: root.row_depths[index];
+            directory: root.row_is_directories[index];
+            expandable: root.row_is_expandable[index];
+            expanded: root.row_is_expanded[index];
+            selectable: root.row_is_selectable[index];
+            source_index: root.row_source_indices[index];
+            selected_row: root.selected_row;
+            enabled: root.interaction_enabled;
+            file_selected(index) => {
+                root.file_selected(index);
+            }
+            directory_toggled(key) => {
+                root.directory_toggled(key);
+            }
+            tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                root.tooltip_requested(text, anchor_x, anchor_top, anchor_bottom);
+            }
+            tooltip_closed() => {
+                root.tooltip_closed();
+            }
+        }
+
+        scrolled => {
+            root.tooltip_closed();
+        }
+    }
+}
