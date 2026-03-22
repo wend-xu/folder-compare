@@ -204,4 +204,28 @@ cargo test --workspace
   - explicit stale-selection / unavailable 语义
   - tooltip / Settings / Hidden-files 边界
   - macOS immersive title bar / non-mac legacy top bar contract
-- README 不维护长期 roadmap；如需判断下一阶段可做什么，直接参考 `docs/architecture.md`。
+- README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
+
+## 12. 长期路线（参考）
+
+- 本节用于保留产品长期方向，便于快速理解项目后续可能演进到哪里。
+- 这是方向性 roadmap，主要保留历史演进脉络参考。
+- 它不覆盖 `docs/architecture.md` 中的当前稳定事实，也不替代当前线程的实际执行入口。
+- phase 编号按当前真实推进事实校正；已确认的 `Phase 17` 实际落点是 `Settings` 升级，因此原先其后的长期路线整体顺延。
+
+- `Phase 16`
+  - 结果视图增强（状态筛选 / 排序 / 更强过滤）
+- `Phase 17`
+  - `Settings` 升级（设置入口统一、Provider / Behavior 分区、首轮行为偏好）
+- `Phase 18`
+  - 目录树 / 层级视图
+- `Phase 19`
+  - Compare View / File View 双模式工作区
+- `Phase 20`
+  - AI 分析增强（多任务 / hunk 关联 / 缓存）
+- `Phase 21`
+  - Diff / Analysis 高级交互
+- `Phase 22`
+  - 后台任务与性能体系
+- `Phase 23`
+  - 产品化收尾
