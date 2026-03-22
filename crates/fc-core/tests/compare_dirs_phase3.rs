@@ -1,5 +1,5 @@
 use fc_core::{
-    compare_dirs, CompareError, CompareOptions, CompareRequest, EntryDetail, EntryStatus, PathSide,
+    CompareError, CompareOptions, CompareRequest, EntryDetail, EntryStatus, PathSide, compare_dirs,
 };
 use std::collections::BTreeMap;
 use std::fs;

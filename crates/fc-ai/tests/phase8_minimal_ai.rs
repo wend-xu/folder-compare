@@ -1,7 +1,6 @@
 use fc_ai::{
-    analyze_diff, AiConfig, AiError, AiProvider, AnalysisTask, AnalyzeDiffRequest,
-    AnalyzeDiffResponse, InvalidRequestKind, PromptPayload, ProviderExecutionFailureKind,
-    RiskLevel,
+    AiConfig, AiError, AiProvider, AnalysisTask, AnalyzeDiffRequest, AnalyzeDiffResponse,
+    InvalidRequestKind, PromptPayload, ProviderExecutionFailureKind, RiskLevel, analyze_diff,
 };
 use std::sync::Mutex;
 
@@ -195,18 +194,22 @@ fn analyzer_orchestrates_truncation_and_prompt_build() {
             .as_deref(),
         Some("abcd")
     );
-    assert!(provider
-        .req_note
-        .lock()
-        .expect("lock should succeed")
-        .as_deref()
-        .unwrap_or_default()
-        .contains("truncated from 6 chars to 4 chars"));
-    assert!(provider
-        .prompt_body
-        .lock()
-        .expect("lock should succeed")
-        .as_deref()
-        .unwrap_or_default()
-        .contains("Target Path: src/lib.rs"));
+    assert!(
+        provider
+            .req_note
+            .lock()
+            .expect("lock should succeed")
+            .as_deref()
+            .unwrap_or_default()
+            .contains("truncated from 6 chars to 4 chars")
+    );
+    assert!(
+        provider
+            .prompt_body
+            .lock()
+            .expect("lock should succeed")
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Target Path: src/lib.rs")
+    );
 }

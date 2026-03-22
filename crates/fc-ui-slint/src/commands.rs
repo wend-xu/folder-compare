@@ -4,7 +4,7 @@ use fc_ai::providers::openai_compatible::OpenAiCompatibleProvider;
 use fc_ai::services::analyzer::Analyzer;
 use fc_ai::{AiProviderKind, AnalyzeDiffRequest, AnalyzeDiffResponse, MockAiProvider};
 use fc_core::{
-    compare_dirs, diff_text_file, CompareReport, CompareRequest, TextDiffRequest, TextDiffResult,
+    CompareReport, CompareRequest, TextDiffRequest, TextDiffResult, compare_dirs, diff_text_file,
 };
 
 /// Commands emitted by UI interactions.
@@ -38,16 +38,17 @@ pub enum UiCommand {
     UpdateAiApiKey(String),
     /// Updates OpenAI-compatible model input.
     UpdateAiModel(String),
-    /// Saves provider settings using dialog draft values.
-    SaveProviderSettings {
+    /// Saves application settings using dialog draft values.
+    SaveAppSettings {
         provider_kind: AiProviderKind,
         endpoint: String,
         api_key: String,
         model: String,
         timeout_secs_text: String,
+        show_hidden_files: bool,
     },
-    /// Clears provider settings validation/persistence error.
-    ClearProviderSettingsError,
+    /// Clears settings validation/persistence error.
+    ClearSettingsError,
 }
 
 /// Executes one compare request against `fc-core`.

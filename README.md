@@ -1,14 +1,21 @@
 # Folder Compare (Rust Workspace)
 
-一个面向本地目录对比的 Rust workspace 项目。
+一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-03-17）：
+当前项目状态（2026-03-21）：
 
-- 代码稳定基线：`Phase 15.2D`
-- 依赖升级路线：已接受、尚未执行
-- 当前依赖：workspace `rust-version = 1.75`，`slint = 1.8.0`
+- workspace `version = "0.2.18"`
+- workspace `edition = "2024"`
+- `rust-toolchain = 1.94.0`
+- workspace `rust-version = 1.94`
+- `slint = 1.15.1`
+- `slint-build = 1.15.1`
+- `Phase 16A` 到 `Phase 17D` 的当前稳定基线已收口完成
+- `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
+- `15.2E` 已在当前基线上发货
+- 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
 
-![display](./docs/assets/display_0_2_15/display.gif)
+![display](./docs/assets/display_0_2_18/display.gif)
 
 ## 1. Workspace 结构
 
@@ -16,73 +23,124 @@
   - 核心比较引擎（纯本地、确定性）
   - `compare_dirs` / `diff_text_file`
 - `crates/fc-ai`
-  - AI 分析能力层
-  - `Analyzer` + `AiProvider` trait
-  - `MockAiProvider`（稳定演示）
-  - `OpenAiCompatibleProvider`（真实远程调用）
+  - 可选 AI 分析层
+  - `Analyzer` + `AiProvider`
+  - `MockAiProvider`
+  - `OpenAiCompatibleProvider`
 - `crates/fc-ui-slint`
   - Slint 桌面 UI
-  - compare + detailed diff + analysis 闭环
+  - compare + diff + analysis 闭环
+  - 平台窗口层集成（含 macOS immersive title bar facade）
 
-## 2. 当前推进进度
+## 2. 当前稳定产品基线
 
-### 已完成（稳定基线）
+- 顶层 IA 保持 `Top Bar + Sidebar + Workspace`
+- Sidebar 当前稳定为四块：
+  - `Compare Inputs`
+  - `Compare Status`
+  - `Filter / Scope`
+  - `Results / Navigator`
+- Workspace 当前稳定为 attached `Diff / Analysis` file-view shell：
+  - `Tabs -> Header -> Helper Strip -> Body`
+- `Compare Status` 保持 summary-first，并支持块内 `Show details / Hide details` 与 `Copy Summary` / `Copy Detail`
+- `Results / Navigator` 保持 flat list，不引入 tree / grouping / alternate mode
+- Results row 信息层级当前稳定为：
+  - 主信息：status pill + filename
+  - 次信息：capability-first summary
+  - 弱信息：parent-path disambiguation
+- selection 语义当前稳定区分：
+  - `no-selection`
+  - `stale-selection`
+  - `unavailable`
+- Search / Status / Hidden-files 改变后，若当前 row 不再可见，则进入 explicit stale-selection，不自动跳到第一项
+- compare 重跑只按同一路径做保守恢复；无法恢复则继续 stale
 
-- `Phase 1-7`：workspace、core 能力、文本 diff、大目录/大文件保护
-- `Phase 8`：`fc-ai` 最小可用化（Analyzer + Mock）
-- `Phase 9-10.8`：UI compare MVP、detailed diff 面板与可用性收敛
-- `Phase 11-12`：UI 集成 AI、OpenAI-compatible provider 与配置切换
-- `Phase 13-14.2`：IA 重构、Provider Settings 全局化、配置持久化、UI 视觉收敛
-- `Phase 15.0-15.2D`：
-  - File View（Diff/Analysis）壳层产品化
-  - Analysis 结构化结果呈现与 copy 流程
-  - `toast-controller`（overlay）
-  - `loading-mask`（局部遮罩）
-  - `ui_palette`（语义色板）
-  - window-local `context-menu core`（非输入表面）
+## 3. 当前 UI / 交互事实
 
-### 当前主线（正在推进）
+- `Compare Inputs`
+  - `Compare` 是 full-width primary action lane
+  - 不再保留按钮右侧说明文案
+  - disabled/running 说明由 restrained tooltip 承担
+- `Filter / Scope`
+  - 搜索 contract 当前为 `path / name`
+  - 保留显式 `Clear` 按钮
+- `Results / Navigator`
+  - 顶部摘要使用集合状态文案（`Showing visible / total ...`）
+  - 搜索高亮保持 label-level，不引入 match-span parsing
+  - row tooltip 只做完整 filename + parent path completion
+- `Diff`
+  - 状态机：`no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
+  - single-side preview 继续是一等路径
+  - detail 横向滚动使用显式 `ScrollView`
+  - header/body 共用列几何
+- `Analysis`
+  - 状态机：`no-selection | stale-selection -> waiting | ready | unavailable -> loading -> error | success`
+  - success 面板继续包含：
+    - `Summary`
+    - `Risk Level`
+    - `Core Judgment`
+    - `Key Points`
+    - `Review Suggestions`
+    - `Notes`
 
-- `Phase 15.3A` preflight：统一版本来源、补齐升级 checklist/smoke checklist、文档对齐
-- 在 `Phase 15.3A/15.3B` 完成前，不直接推进 `Phase 16`
+## 4. Settings / Tooltip / Hidden Files
 
-## 3. 15.2D 后升级声明（版本限制）
+- 配置入口：App Bar -> `Settings`
+- 当前 Settings 只保留两个 section：
+  - `Provider`
+  - `Behavior`
+- `Behavior` 当前只包含一个持久化偏好：`Hidden files`
+- `Hidden files` 当前只是 UI / presentation preference：
+  - 影响 `Results / Navigator` 默认可见集合
+  - 影响顶部摘要文案
+  - 不改 compare request
+  - 不改 compare-summary source counts
+  - 不改 `fc-core` contract
+- tooltip 当前是 shared window-local overlay，只承担：
+  - 截断文本 completion
+  - disabled/running `Compare` 的 restrained hint
+- tooltip 不是 explanation-heavy hover system
 
-由于当前稳定基线仍锁定 `slint = 1.8.0`，`15.2E`（editable input context menu）在现版本实现成本与风险过高。
+## 5. 平台与窗口层
 
-因此在 `15.2D` 之后，项目将按既定路线准备升级：
+- `fc-ui-slint` 当前通过 `window_chrome` 模块收口平台窗口层差异
+- macOS：
+  - 使用 immersive title bar strip
+  - 启动前显式安装 winit backend selector
+  - 通过 Slint winit hook 启用 transparent title bar / full-size content view / hidden title
+  - blank-area drag 只在顶部 strip 内显式触发
+- Windows / Linux：
+  - 保持 legacy `SectionCard` top bar
+  - 不进入新的窗口初始化路径
+- 当前窗口层 baseline 不包括：
+  - `no-frame`
+  - raw AppKit / `objc2`
+  - traffic lights reposition
+  - 非 macOS 标题栏统一方案
 
-- Rust 升级到 `1.94.0`（常见口述写法：`1.9.4`）
-- Slint 升级到 `1.15.x`（建议 pin 到 `1.15.1`）
+## 6. 文本、菜单与运行时事实
 
-说明：该升级路线已经在文档中确认，但当前仓库依赖尚未实际切换。
+- `Compare Inputs`、`Filter / Scope -> Search`、`Settings -> Provider` 普通输入框继续使用 `slint 1.15.1` 原生 editable-input context menu
+- `Settings -> Provider -> API Key` 使用专用 `ApiKeyLineEdit`
+  - hidden：`Paste` only
+  - visible：`Select All`、`Copy`、`Paste`、`Cut`
+- `Analysis success` 正文文本支持 native text-surface `Copy` / `Select All` right-click
+- `Risk Level` 保持显式 `Copy` 按钮-only
+- `SelectableDiffText` / `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
+- ordinary inputs / `ApiKeyLineEdit` 共用 `UiTypography.editable_input_font_family`
+- UI 主同步路径已切到 event-driven sync
+- `Results / Navigator` 与 `Diff` 行模型使用 persistent `VecModel`
+- `loading-mask` 与 `toast` 保持 UI-local boundary
+- settings persistence 当前以 `settings.toml` 为唯一活跃基线；若只存在旧版 `provider_settings.toml`，启动时会一次性迁移
 
-## 4. 升级路线（Roadmap）
-
-- `Phase 15.3A`：upgrade preflight（不改依赖）
-- `Phase 15.3B`：仅升级 Rust 到 `1.94.0`（保持 Slint `1.8.0`）
-- `Phase 15.4`：升级 Slint 到 `1.15.x`，恢复 `15.2D` 行为等价
-- `Phase 15.5`：在新基线上重开并完成 `15.2E`
-- `Phase 15.6`：升级后清理（同步机制、模型重建等）
-- `Phase 16`：恢复结果导航增强（sorting / quick jump / 更强过滤）
-
-## 5. 当前能力总览
-
-- IA：`App Bar + Sidebar + Workspace`
-- Workspace：`Diff / Analysis` 共享壳层（connected tabs + header + content）
-- Compare 闭环：路径输入、Browse、校验反馈、summary-first 状态
-- Results/Navigator：搜索 + 状态过滤 + 选择驱动 Diff 上下文
-- Diff：`no-selection -> loading -> unavailable/error -> detailed|preview`
-- Analysis：`no-selection -> not-started -> loading -> error|success`
-- Provider Settings：全局 modal、Save/Cancel、持久化恢复
-- context menu（当前范围）：仅 non-input safe surfaces
-
-## 6. 运行方式
+## 7. 运行方式
 
 ### 前置要求
 
-- Rust `1.75+`（当前基线）
-- macOS 优先（Windows / Linux 也考虑支持）
+- Rust `1.94.0`
+- 推荐使用 `rustup`
+- 仓库内已固定 `rust-toolchain.toml`
+- macOS arm64 仍是当前主验证平台
 
 ### 启动 UI
 
@@ -92,57 +150,58 @@ cargo run -p fc-ui-slint
 
 ### 基础流程
 
-1. 输入或 Browse 选择 Left/Right 目录
-2. 点击 Compare
-3. 在 Results 选择文件查看 Diff
-4. 如需配置 provider：App Bar -> `Provider Settings`
-5. 切换到 Analysis 并点击 Analyze
+1. 输入或 Browse 选择 Left / Right 目录
+2. 点击 `Compare`
+3. 在 `Results / Navigator` 中选择文件查看 `Diff`
+4. 如需配置 provider 或 behavior：App Bar -> `Settings`
+5. 切换到 `Analysis` 并点击 `Analyze`
 
-## 7. OpenAI-compatible 说明
+## 8. Settings / OpenAI-compatible
 
-### 配置入口与持久化
+### 持久化位置
 
-- 配置入口：App Bar -> `Provider Settings`
-- 持久化文件名：`provider_settings.toml`
+- 配置入口：App Bar -> `Settings`
+- 持久化文件名：`settings.toml`
 - 配置目录优先级：
-  - `FOLDER_COMPARE_CONFIG_DIR`（环境变量覆盖）
+  - `FOLDER_COMPARE_CONFIG_DIR`
   - macOS：`~/Library/Application Support/folder-compare`
   - Windows：`%APPDATA%/folder-compare`
   - Linux：`$XDG_CONFIG_HOME/folder-compare` 或 `~/.config/folder-compare`
 
-### 必填配置
+### 可用 provider
 
-- `Endpoint`：OpenAI-compatible 根路径（如 `https://api.openai.com/v1`）
+- `Mock`
+- `OpenAI-compatible`
+
+### OpenAI-compatible 必填配置
+
+- `Endpoint`
 - `API Key`
 - `Model`
 
-## 8. 测试与验证
+## 9. 常用验证命令
 
 ```bash
 cargo check --workspace
 cargo test --workspace
 ```
 
-测试原则：
+## 10. 文档入口
 
-- 不依赖真实外网
-- 远程 provider 测试使用本地 mock server / fake response
-- UI 测试重点覆盖 bridge/presenter/state 编排逻辑
+- `docs/thread-context.md`
+  - 新线程交接、当前稳定事实、Phase 18 入口
+- `docs/architecture.md`
+  - 当前稳定架构基线、边界、deferred、Phase 18 entry conditions
+- `docs/upgrade-plan-rust-1.94-slint-1.15.md`
+  - 依赖升级与独立 edition 里程碑的归档背景
 
-## 9. 设计边界
+## 11. 当前开发入口
 
-- `fc-core` 不依赖 UI/AI
-- `fc-ai` 不侵入 core 逻辑
-- UI 负责编排与展示，不承载核心业务规则
-- compare / diff / analysis 三层状态严格分离
-- `15.2D` 是当前稳定发货基线；`15.2E` 计划在升级后推进
-
-## 10. 后续主线（长期）
-
-- `Phase 16`：结果视图增强（状态筛选 / 排序 / 更强过滤）
-- `Phase 17`：目录树 / 层级视图
-- `Phase 18`：Compare View / File View 双模式工作区
-- `Phase 19`：AI 分析增强（多任务 / hunk 关联 / 缓存）
-- `Phase 20`：Diff / Analysis 高级交互
-- `Phase 21`：后台任务与性能体系
-- `Phase 22`：产品化收尾
+- 当前默认入口是 Pre-Phase 18 稳定基线，而不是继续重开旧 phase closeout。
+- 新工作应优先复用当前：
+  - Sidebar 四块 IA
+  - attached `Diff / Analysis` shell
+  - explicit stale-selection / unavailable 语义
+  - tooltip / Settings / Hidden-files 边界
+  - macOS immersive title bar / non-mac legacy top bar contract
+- README 不维护长期 roadmap；如需判断下一阶段可做什么，直接参考 `docs/architecture.md`。

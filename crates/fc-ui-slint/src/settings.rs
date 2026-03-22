@@ -1,14 +1,22 @@
-//! Provider settings persistence for fc-ui-slint.
+//! App settings persistence for fc-ui-slint.
 
 use anyhow::Context;
 use fc_ai::AiProviderKind;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
-const SETTINGS_FILE_NAME: &str = "provider_settings.toml";
-const SETTINGS_VERSION: u32 = 1;
+const SETTINGS_FILE_NAME: &str = "settings.toml";
+const LEGACY_PROVIDER_SETTINGS_FILE_NAME: &str = "provider_settings.toml";
+const SETTINGS_VERSION: u32 = 2;
 
-/// Persisted provider settings payload.
+#[cfg(test)]
+static TEST_SETTINGS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+#[cfg(test)]
+static TEST_SETTINGS_DIR_OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+
+/// Persisted provider configuration payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSettings {
     /// Selected provider mode.
@@ -35,9 +43,32 @@ impl Default for ProviderSettings {
     }
 }
 
+/// Persisted behavior preferences.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BehaviorSettings {
+    /// Whether dot-prefixed files/folders remain visible in Results / Navigator.
+    pub show_hidden_files: bool,
+}
+
+impl Default for BehaviorSettings {
+    fn default() -> Self {
+        Self {
+            show_hidden_files: true,
+        }
+    }
+}
+
+/// Persisted application settings payload.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AppPreferences {
+    /// Provider configuration for AI analysis.
+    pub provider: ProviderSettings,
+    /// Non-provider UI behavior preferences.
+    pub behavior: BehaviorSettings,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct ProviderSettingsToml {
-    version: u32,
     provider_kind: AiProviderKind,
     openai_endpoint: String,
     openai_api_key: String,
@@ -45,10 +76,15 @@ struct ProviderSettingsToml {
     timeout_secs: u64,
 }
 
+impl Default for ProviderSettingsToml {
+    fn default() -> Self {
+        Self::from(&ProviderSettings::default())
+    }
+}
+
 impl From<&ProviderSettings> for ProviderSettingsToml {
     fn from(value: &ProviderSettings) -> Self {
         Self {
-            version: SETTINGS_VERSION,
             provider_kind: value.provider_kind,
             openai_endpoint: value.openai_endpoint.clone(),
             openai_api_key: value.openai_api_key.clone(),
@@ -74,42 +110,146 @@ impl From<ProviderSettingsToml> for ProviderSettings {
     }
 }
 
-/// Returns the provider settings file path.
-pub fn provider_settings_file_path() -> PathBuf {
-    provider_settings_dir().join(SETTINGS_FILE_NAME)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct BehaviorSettingsToml {
+    show_hidden_files: bool,
 }
 
-/// Loads provider settings from disk.
-pub fn load_provider_settings() -> anyhow::Result<Option<ProviderSettings>> {
-    let path = provider_settings_file_path();
-    if !path.exists() {
+impl Default for BehaviorSettingsToml {
+    fn default() -> Self {
+        Self::from(&BehaviorSettings::default())
+    }
+}
+
+impl From<&BehaviorSettings> for BehaviorSettingsToml {
+    fn from(value: &BehaviorSettings) -> Self {
+        Self {
+            show_hidden_files: value.show_hidden_files,
+        }
+    }
+}
+
+impl From<BehaviorSettingsToml> for BehaviorSettings {
+    fn from(value: BehaviorSettingsToml) -> Self {
+        Self {
+            show_hidden_files: value.show_hidden_files,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct AppPreferencesToml {
+    version: u32,
+    #[serde(default)]
+    provider: ProviderSettingsToml,
+    #[serde(default)]
+    behavior: BehaviorSettingsToml,
+}
+
+impl From<&AppPreferences> for AppPreferencesToml {
+    fn from(value: &AppPreferences) -> Self {
+        Self {
+            version: SETTINGS_VERSION,
+            provider: ProviderSettingsToml::from(&value.provider),
+            behavior: BehaviorSettingsToml::from(&value.behavior),
+        }
+    }
+}
+
+impl From<AppPreferencesToml> for AppPreferences {
+    fn from(value: AppPreferencesToml) -> Self {
+        Self {
+            provider: value.provider.into(),
+            behavior: value.behavior.into(),
+        }
+    }
+}
+
+/// Returns the current settings file path.
+pub fn settings_file_path() -> PathBuf {
+    settings_dir().join(SETTINGS_FILE_NAME)
+}
+
+/// Loads application settings from disk, migrating the legacy provider-only file when needed.
+pub fn load_app_preferences() -> anyhow::Result<Option<AppPreferences>> {
+    let path = settings_file_path();
+    if path.exists() {
+        return read_settings_file(&path).map(Some);
+    }
+
+    let legacy_path = legacy_provider_settings_file_path();
+    if !legacy_path.exists() {
         return Ok(None);
     }
 
-    let raw = std::fs::read_to_string(&path)
-        .with_context(|| format!("read provider settings from {}", path.display()))?;
-    let parsed: ProviderSettingsToml = toml::from_str(&raw)
-        .with_context(|| format!("parse provider settings from {}", path.display()))?;
-    Ok(Some(parsed.into()))
+    let migrated = read_legacy_provider_settings_file(&legacy_path)?;
+    save_app_preferences(&migrated).with_context(|| {
+        format!(
+            "migrate legacy provider settings from {} to {}",
+            legacy_path.display(),
+            path.display()
+        )
+    })?;
+    Ok(Some(migrated))
 }
 
-/// Saves provider settings to disk and returns the written path.
-pub fn save_provider_settings(settings: &ProviderSettings) -> anyhow::Result<PathBuf> {
-    let path = provider_settings_file_path();
+/// Saves application settings to disk and returns the written path.
+pub fn save_app_preferences(settings: &AppPreferences) -> anyhow::Result<PathBuf> {
+    let path = settings_file_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("create provider settings dir {}", parent.display()))?;
+            .with_context(|| format!("create settings dir {}", parent.display()))?;
     }
 
-    let payload: ProviderSettingsToml = settings.into();
-    let serialized =
-        toml::to_string_pretty(&payload).context("serialize provider settings to toml")?;
+    let payload: AppPreferencesToml = settings.into();
+    let serialized = toml::to_string_pretty(&payload).context("serialize settings to toml")?;
     std::fs::write(&path, serialized)
-        .with_context(|| format!("write provider settings to {}", path.display()))?;
+        .with_context(|| format!("write settings to {}", path.display()))?;
+    cleanup_legacy_provider_settings_file();
     Ok(path)
 }
 
-fn provider_settings_dir() -> PathBuf {
+#[cfg(test)]
+pub(crate) struct TestSettingsDirGuard {
+    _lock: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl TestSettingsDirGuard {
+    pub(crate) fn new(path: &std::path::Path) -> Self {
+        let lock = TEST_SETTINGS_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("test settings lock should not be poisoned");
+        *TEST_SETTINGS_DIR_OVERRIDE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("test settings dir override should not be poisoned") = Some(path.to_path_buf());
+        Self { _lock: lock }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestSettingsDirGuard {
+    fn drop(&mut self) {
+        *TEST_SETTINGS_DIR_OVERRIDE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("test settings dir override should not be poisoned") = None;
+    }
+}
+
+fn settings_dir() -> PathBuf {
+    #[cfg(test)]
+    if let Some(dir) = TEST_SETTINGS_DIR_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .expect("test settings dir override should not be poisoned")
+        .clone()
+    {
+        return dir;
+    }
+
     if let Some(dir) = std::env::var_os("FOLDER_COMPARE_CONFIG_DIR") {
         return PathBuf::from(dir);
     }
@@ -142,52 +282,132 @@ fn provider_settings_dir() -> PathBuf {
         .join(".folder-compare")
 }
 
+fn legacy_provider_settings_file_path() -> PathBuf {
+    settings_dir().join(LEGACY_PROVIDER_SETTINGS_FILE_NAME)
+}
+
+fn read_settings_file(path: &std::path::Path) -> anyhow::Result<AppPreferences> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("read settings from {}", path.display()))?;
+    let parsed: AppPreferencesToml =
+        toml::from_str(&raw).with_context(|| format!("parse settings from {}", path.display()))?;
+    Ok(parsed.into())
+}
+
+fn read_legacy_provider_settings_file(path: &std::path::Path) -> anyhow::Result<AppPreferences> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("read legacy provider settings from {}", path.display()))?;
+    let parsed: ProviderSettingsToml = toml::from_str(&raw)
+        .with_context(|| format!("parse legacy provider settings from {}", path.display()))?;
+    Ok(AppPreferences {
+        provider: parsed.into(),
+        behavior: BehaviorSettings::default(),
+    })
+}
+
+fn cleanup_legacy_provider_settings_file() {
+    let legacy_path = legacy_provider_settings_file_path();
+    let _ = std::fs::remove_file(&legacy_path);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     #[test]
-    fn load_returns_none_when_file_does_not_exist() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock should not be poisoned");
+    fn load_returns_none_when_no_settings_files_exist() {
         let dir = tempfile::tempdir().expect("temp dir should be created");
-        std::env::set_var("FOLDER_COMPARE_CONFIG_DIR", dir.path());
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
 
-        let loaded = load_provider_settings().expect("loading should succeed");
+        let loaded = load_app_preferences().expect("loading should succeed");
         assert!(loaded.is_none());
-
-        std::env::remove_var("FOLDER_COMPARE_CONFIG_DIR");
     }
 
     #[test]
     fn save_then_load_round_trip() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock should not be poisoned");
         let dir = tempfile::tempdir().expect("temp dir should be created");
-        std::env::set_var("FOLDER_COMPARE_CONFIG_DIR", dir.path());
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
 
-        let settings = ProviderSettings {
-            provider_kind: AiProviderKind::OpenAiCompatible,
-            openai_endpoint: "https://api.example.com/v1".to_string(),
-            openai_api_key: "sk-test".to_string(),
-            openai_model: "gpt-4o-mini".to_string(),
-            timeout_secs: 45,
+        let settings = AppPreferences {
+            provider: ProviderSettings {
+                provider_kind: AiProviderKind::OpenAiCompatible,
+                openai_endpoint: "https://api.example.com/v1".to_string(),
+                openai_api_key: "sk-test".to_string(),
+                openai_model: "gpt-4o-mini".to_string(),
+                timeout_secs: 45,
+            },
+            behavior: BehaviorSettings {
+                show_hidden_files: false,
+            },
         };
-        let path = save_provider_settings(&settings).expect("save should succeed");
+        let path = save_app_preferences(&settings).expect("save should succeed");
         assert!(path.exists());
 
-        let loaded = load_provider_settings()
+        let loaded = load_app_preferences()
             .expect("load should succeed")
             .expect("settings should exist");
         assert_eq!(loaded, settings);
+    }
 
-        std::env::remove_var("FOLDER_COMPARE_CONFIG_DIR");
+    #[test]
+    fn load_migrates_legacy_provider_settings_file() {
+        let dir = tempfile::tempdir().expect("temp dir should be created");
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
+
+        let legacy_settings = ProviderSettings {
+            provider_kind: AiProviderKind::OpenAiCompatible,
+            openai_endpoint: "https://api.example.com/v1".to_string(),
+            openai_api_key: "sk-legacy".to_string(),
+            openai_model: "gpt-4o-mini".to_string(),
+            timeout_secs: 55,
+        };
+        let legacy_payload = toml::to_string_pretty(&ProviderSettingsToml::from(&legacy_settings))
+            .expect("legacy payload should serialize");
+        std::fs::write(legacy_provider_settings_file_path(), legacy_payload)
+            .expect("legacy settings should be written");
+
+        let loaded = load_app_preferences()
+            .expect("load should succeed")
+            .expect("settings should exist");
+        assert_eq!(loaded.provider, legacy_settings);
+        assert_eq!(loaded.behavior, BehaviorSettings::default());
+        assert!(settings_file_path().exists());
+        assert!(!legacy_provider_settings_file_path().exists());
+    }
+
+    #[test]
+    fn load_prefers_settings_file_over_legacy_provider_settings_file() {
+        let dir = tempfile::tempdir().expect("temp dir should be created");
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
+
+        let settings = AppPreferences {
+            provider: ProviderSettings {
+                provider_kind: AiProviderKind::Mock,
+                openai_endpoint: String::new(),
+                openai_api_key: String::new(),
+                openai_model: "gpt-4o-mini".to_string(),
+                timeout_secs: 30,
+            },
+            behavior: BehaviorSettings {
+                show_hidden_files: false,
+            },
+        };
+        save_app_preferences(&settings).expect("settings should be saved");
+
+        let legacy_payload = toml::to_string_pretty(&ProviderSettingsToml {
+            provider_kind: AiProviderKind::OpenAiCompatible,
+            openai_endpoint: "https://api.example.com/v1".to_string(),
+            openai_api_key: "sk-legacy".to_string(),
+            openai_model: "gpt-4o-mini".to_string(),
+            timeout_secs: 55,
+        })
+        .expect("legacy payload should serialize");
+        std::fs::write(legacy_provider_settings_file_path(), legacy_payload)
+            .expect("legacy settings should be written");
+
+        let loaded = load_app_preferences()
+            .expect("load should succeed")
+            .expect("settings should exist");
+        assert_eq!(loaded, settings);
     }
 }

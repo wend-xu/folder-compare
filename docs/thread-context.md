@@ -2,162 +2,264 @@
 
 ## 目的
 
-本文件用于“开新线程”的快速交接，定位是短周期执行上下文，不替代长期架构文档。
+- 本文件用于“开新线程”的短周期交接。
+- 只记录当前稳定事实、硬边界、下一线程入口，不再把已完成的 phase train 当作待执行队列。
+- 当前主参考是 `docs/architecture.md` 的 Pre-Phase 18 stable baseline summary；本文件负责把它压缩成可直接接手的线程上下文。
 
-## 本轮更新说明（2026-03-17）
+## 本轮更新说明（2026-03-21）
 
-- 轮次定义：`Dependency upgrade roadmap alignment and Phase 15.3A preflight sequencing on top of stable 15.2D baseline`。
-- 改了什么：
-  - 在 `docs/architecture.md` 中正式落下依赖升级路线：`Phase 15.3A` -> `Phase 15.3B` -> `Phase 15.4` -> `Phase 15.5` -> `Phase 15.6` -> `Phase 16`；
-  - 新增 `docs/upgrade-plan-rust-1.94-slint-1.15.md`，把目标版本、修改面、风险、人工验收、Codex 提示词拆成独立升级方案；
-  - 把本文件从“`15.2E` feasibility assessment 线程”切换到“升级计划已接受、下一步先做 `Phase 15.3A` preflight”的执行上下文；
-  - 明确当前主线不再默认“直接推进 phase 16”，而是先完成升级前收口、Rust 升级、Slint 升级，再在新基线上重开 `15.2E`。
-- 为什么影响下一线程：如果下一线程仍按旧假设直接做 `Phase 16` 或在 `slint = 1.8.0` 上强行落 `15.2E`，会与当前 accepted roadmap 冲突，并再次把依赖问题和产品问题混在一起。
-- 保持不变：`15.2D` 代码基线不变；IA 仍是 `App Bar + Sidebar + Workspace`；`Diff/Analysis` shell、connected tabs、loading scope boundary、`SelectableSectionText`/`SelectableDiffText`、所有输入绑定结构、modal draft 行为、以及本地 `toast/loading/menu` controller 边界均不改；本轮仍未实际执行 Rust/Slint 升级。
+- 本轮完成了 Pre-Phase 18 文档收口：
+  - `docs/architecture.md` 已重组为 “stable baseline before Phase 18”
+  - 本文件已同步为同一口径
+  - `README.md` 已同步到当前真实产品事实
+- 已完成并关闭：
+  - `Phase 17D`
+  - `Phase 17C`
+  - `Phase 17B fix-1`
+  - `Phase 17B`
+  - `Phase 17A fix-1`
+  - `Phase 17A`
+  - `Phase 16C fix-1`
+  - `Phase 16C`
+  - `Phase 16A`
+  - `Phase 16A fix-1`
+  - `Phase 16B`
+  - `Phase 15.3A`
+  - `Phase 15.3B`
+  - `Phase 15.4`
+  - `Phase 15.5`
+  - `Phase 15.5 fix-1`
+  - `Phase 15.5 fix-2`
+  - `Phase 15.5 fix-3`
+  - `Phase 15.6`
+  - `Phase 15.7`
+  - `Phase 15.8`
+  - `Phase 15.8 fix-1`
+  - 独立 workspace `edition = "2024"` 里程碑
+- 当前默认入口不再是“继续剩余 `Phase 17`”。
+- 当前默认入口是：把现有产品/UI/平台 contract 视为稳定基线，在此之上开始 `Phase 18`。
 
 ## 快照（Snapshot）
 
-- 日期：2026-03-17（Asia/Shanghai）
+- 日期：`2026-03-21`（Asia/Shanghai）
 - 分支：`dev`
-- 工作区：有改动（docs 对齐依赖升级路线与 `Phase 15.3A` preflight；代码保持 `15.2D` 基线）
+- 当前工作区：Pre-Phase 18 文档收口改动
+  - `docs/architecture.md`
+  - `docs/thread-context.md`
+  - `README.md`
 - 最近提交：
-  - `6afab36` phase 15.1B fix-3：Analysis selectable text（success sections only）
-  - `8d932c1` phase 15.1B fix2: analysis success cannot scroll
-  - `19388d5` Phase 15.1B fix1 ：Analysis View 产品化 收口
-- 当前架构基线：`docs/architecture.md`（`Phase 15.2D` 为稳定代码基线；依赖升级路线已接受但尚未执行；`15.2E` 保持 deferred，计划在 `Phase 15.5` 于 `slint = 1.15.x` 基线上重开）
+  - `5a00c3c` `Phase 17D`：macOS 沉浸式标题栏
+  - `e189e81` `Phase 17C`：历史 UI bug 收口与 Compare Inputs 交互收尾
+  - `2bb03b8` `Phase 17B fix-1`：Settings 容器稳定性与持久化 contract 收口
+  - `c8e98ea` `Phase 17B`：Settings 入口与偏好模型第一轮演进
 
-## 当前目标（Execution Focus）
+## 当前稳定基线（Stable Baseline）
 
-1. 以当前 `Phase 15.2D` stable baseline 为前提，先执行 `Phase 15.3A`：统一版本来源、升级 checklist、文档和交接口径。
-2. 在 `Phase 15.3A` 与 `Phase 15.3B` 完成前，不直接推进 `Phase 16`，也不在 `slint = 1.8.0` 上重开 `15.2E`。
-3. 保持升级路线分层：先 Rust `1.94.0`，再 Slint `1.15.x`，再在新基线上完成 editable input integration，并把后续清理与 `Phase 16` 拆开。
+### 工具链与版本
+
+- workspace `version = "0.2.18"`
+- workspace `edition = "2024"`
+- `rust-toolchain = 1.94.0`
+- workspace `rust-version = 1.94`
+- `slint = 1.15.1`
+- `slint-build = 1.15.1`
+- `15.2E` 已在上述基线上发货
+
+### 稳定产品结构
+
+- 顶层结构稳定为 `Top Bar + Sidebar + Workspace`
+- Sidebar 当前稳定为四块 IA：
+  - `Compare Inputs`
+  - `Compare Status`
+  - `Filter / Scope`
+  - `Results / Navigator`
+- Workspace 当前稳定为一个 attached workbench shell：
+  - `Diff`
+  - `Analysis`
+  - 共享 `Tabs -> Header -> Helper Strip -> Body` 节奏
+- `Diff` / `Analysis` 共享 file-view shell；只有 ready content 不同，外围 workbench contract 不同。
+
+### 稳定交互 contract
+
+- `Compare Inputs`
+  - 继续只负责路径输入、Browse、Compare 主动作
+  - `Compare` 是 full-width primary action lane
+  - 按钮右侧状态说明文案已移除
+- `Compare Status`
+  - 继续保持 summary-first
+  - 块内保留 `Show details / Hide details`
+  - 保留 `Copy Summary` / `Copy Detail`
+- `Filter / Scope`
+  - 继续只负责 `path / name` 搜索与状态 scope
+  - 不改 compare source data 与 compare-summary source counts
+- `Results / Navigator`
+  - 保持 flat list，不引入 tree / grouping / alternate mode
+  - row 信息层级稳定为：
+    - 主信息：status pill + filename
+    - 次信息：capability-first summary
+    - 弱信息：parent-path disambiguation
+
+### 稳定状态语义
+
+- `no-selection`
+  - 当前没有活动选中项
+- `stale-selection`
+  - 之前的相对路径不再属于当前可见 `Results / Navigator` 集合
+  - 左侧清掉可见选中态
+  - 右侧保留显式 stale context
+  - 不自动跳到第一项
+- `unavailable`
+  - 当前 row 有效，但 viewer / analysis 无法为该 row 产出受支持内容
+- Search / Status / Hidden-files 改变后，只要当前 row 不再可见，就复用同一套 stale-selection contract。
+- compare 重跑后只做同路径的保守恢复；无法恢复就保持 stale，不自动跳转。
+
+### `Diff / Analysis` 稳定 shell
+
+- `Diff` 状态机稳定为：
+  - `no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
+- single-side preview 继续是一等路径：
+  - `left-only`
+  - `right-only`
+  - `equal`
+- `Analysis` 状态机稳定为：
+  - `no-selection | stale-selection -> waiting | ready | unavailable -> loading -> error | success`
+- `Analysis success` 继续是结构化 review-conclusion panel：
+  - `Summary`
+  - `Risk Level`
+  - `Core Judgment`
+  - `Key Points`
+  - `Review Suggestions`
+  - `Notes`
+
+### tooltip / Settings / Hidden files 边界
+
+- tooltip 当前是一个 shared window-local overlay
+- 它的职责只包括：
+  - 截断文本 completion
+  - disabled/running `Compare` 的 restrained state hint
+- tooltip 不是 explanation-heavy hover system
+- `App Bar -> Settings` 是单一全局设置入口
+- Settings 当前只保留两个 section：
+  - `Provider`
+  - `Behavior`
+- `Hidden files` 当前只是 UI / presentation preference：
+  - 影响当前和后续 `Results / Navigator` 的默认可见集合
+  - 影响顶部摘要文案
+  - 不改 compare request
+  - 不改 `fc-core`
+  - 不改 `Compare Status` source counts
+
+### 平台与窗口层基线
+
+- 平台分支当前收口在 `fc-ui-slint::window_chrome`
+- macOS：
+  - 使用 immersive title bar strip
+  - 通过 Slint winit hook 打开 transparent title bar / full-size content view / hidden native title
+  - 顶部 strip 保持 full-bleed
+  - 拖拽仅在 strip 内显式触发 `drag_window()`
+- Windows / Linux：
+  - 保持 legacy `SectionCard` top bar
+  - 不进入新的窗口初始化路径
+- 当前窗口层 contract 不包括：
+  - `no-frame`
+  - raw AppKit / `objc2`
+  - traffic lights reposition
+  - 非 macOS 标题栏统一方案
+
+### 已稳定的 supporting contracts
+
+- ordinary editable inputs 继续使用 `slint 1.15.1` native editable-input context menu
+- `Settings -> Provider -> API Key` 继续使用专用 `ApiKeyLineEdit`
+- `Analysis success` 正文继续使用 native text-surface right-click
+- `SelectableDiffText` / `SelectableSectionText` 继续共用 `UiTypography.selectable_content_font_family`
+- ordinary inputs / `ApiKeyLineEdit` 继续共用 `UiTypography.editable_input_font_family`
+- UI 主同步路径继续是 event-driven sync
+- `Results / Navigator` 与 `Diff` 行模型继续是 persistent `VecModel`
+- settings persistence 继续以 `settings.toml` 为唯一活跃基线，`provider_settings.toml` 只承担一次性迁移输入
+
+## 当前执行焦点（Execution Focus）
+
+1. 当前默认入口是稳定基线，而不是继续清扫旧 phase。
+2. `Phase 18` 可以开始聚焦：
+   - 现有 `Diff / Analysis` shell 内的 file-view / analysis 工作
+   - 基于当前 selection/state-shell contract 的 review-efficiency 改进
+   - 不改变 Sidebar / Workspace / window-layer 的窄范围增量工作
+3. `Phase 18` 不应混入：
+   - 新 IA
+   - tree / grouping / dual-mode workspace
+   - window-system rework
+   - full settings framework
+   - compare-level hidden-entry policy
+   - global tooltip / loading / toast / controller system
 
 ## 本阶段范围（In Scope / Out of Scope）
 
 - In Scope：
-  - 依赖升级路线对齐：`architecture.md`、`thread-context.md`、`upgrade-plan-rust-1.94-slint-1.15.md`
-  - `Phase 15.3A` preflight：版本来源统一、升级 checklist、smoke checklist、handoff 约束
-  - 明确 `Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.6`、`Phase 16` 的边界与前后依赖关系
-  - 文档与当前 `15.2D` 稳定代码基线对齐
+  - 现有 `Diff / Analysis` shell 内的窄范围演进
+  - 复用当前结果行层级、selection 语义、tooltip/Settings/Hidden-files 边界的功能增量
+  - 以当前窗口层 contract 为前提的非破坏性迭代
 - Out of Scope：
-  - IA 重置（`App Bar + Sidebar + Workspace` 保持不变）
-  - runtime theme 切换、全量主题系统、全量 hex 清洗
-  - `Provider Settings -> Settings` UI 升级
-  - Tree explorer / compare-view dual mode
-  - Compare View 新模式或目录树扩展
-  - `fc-core` / `fc-ai` 合约改动
-  - 全局 loading/theme/notification controller
-  - 超出现有边界契约的 AI provider 架构扩展
-  - 在当前 `slint = 1.8.0` 依赖上强行落地任何 editable input context-menu wiring
-  - 直接推进 `Phase 16`
-  - 在同一轮里同时做 Rust/Slint 升级与 `edition = "2024"` 迁移
-  - 通过 overlay `TouchArea`、私有事件链路、或自写 caret/selection/editing 逻辑硬接 `LineEdit` / `TextInput`
+  - tree / hierarchy / grouping navigation
+  - Compare View / File View 双模式 workspace
+  - 新的窗口系统方案
+  - full settings framework
+  - compare-level hidden-entry policy
+  - global loading / toast / tooltip controller
+  - 重开 `Phase 15.x`、edition `2024`、或 `Phase 16A` 到 `Phase 17D` 已接受 baseline
 
 ## 硬契约（Do Not Break）
 
-1. `fc-core` 必须保持确定性，并与 UI/网络/provider 关注点隔离。
+1. `fc-core` 必须保持确定性，并与 UI / 网络 / provider 关注点隔离。
 2. `fc-ai` 是可选解释层；即使关闭 AI，compare 输出也必须完整可用。
-3. `fc-ui-slint` 负责 orchestration/presentation，不承载 core 业务规则。
-4. Workspace 结构保持 `Tabs -> Header -> Content`，connected workspace tabs + attached workbench surface 是当前 accepted baseline，同一时刻仅一个主分支激活。
-5. Compare Status 保持 summary-first，不演化为重型第二详情面板。
-6. 依赖升级路线必须按 accepted phase train 推进，不把 `Phase 15.4`、`Phase 15.5`、`Phase 15.6`、`Phase 16` 的目标重新糊成一个大版本。
+3. `fc-ui-slint` 负责 orchestration / presentation，不承载 core 业务规则。
+4. Sidebar 继续保持四块 IA；Workspace 继续保持 attached `Diff / Analysis` shell。
+5. `Compare Status` 保持 summary-first，不演化成第二个重型详情面板。
+6. `Results / Navigator` 保持 flat list 与 filename-first row hierarchy。
+7. selection / stale-selection / unavailable 语义保持稳定，不重新引入自动跳首项。
+8. tooltip 保持 completion-first / restrained-hint-first，不演化成 explanation-heavy hover system。
+9. `Hidden files` 继续是 UI preference，不推进到 compare/core policy。
+10. 不回退 macOS immersive title bar / non-mac legacy top bar / `window_chrome` platform split 的当前 contract。
+11. 不回退 event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared typography tokens。
+12. 不把新的 phase roadmap 叙事写回本文件；本文件只记录当前事实和下一线程入口。
 
 ## 开始前优先阅读文件（Key Files）
 
-1. `docs/thread-context.md`：当前执行上下文与交接清单
-2. `docs/architecture.md`：长期架构契约与 deferred decisions
-3. `docs/upgrade-plan-rust-1.94-slint-1.15.md`：独立升级方案、版本线、人工验收、Codex 提示词
-4. `Cargo.toml` 与 `rust-toolchain.toml`：workspace 版本基线与工具链入口
-5. `docs/macos_dmg.sh`：当前 bundle / DMG 版本来源
-6. `crates/fc-ui-slint/src/app.rs`：UI shell、modal、sync、callbacks
-7. `crates/fc-ui-slint/src/presenter.rs`：状态编排与命令流
-8. `crates/fc-ui-slint/src/state.rs`：UI state machine 与派生展示字段
-9. `crates/fc-ui-slint/src/bridge.rs`：UI 与 core/ai API 的映射边界
+1. `docs/thread-context.md`
+2. `docs/architecture.md`
+3. `README.md`
+4. `docs/upgrade-plan-rust-1.94-slint-1.15.md`
+   - 只在需要升级与独立 edition 里程碑背景时再阅读
+5. `crates/fc-ui-slint/src/app.rs`
+6. `crates/fc-ui-slint/src/presenter.rs`
+7. `crates/fc-ui-slint/src/settings.rs`
+8. `crates/fc-ui-slint/src/window_chrome.rs`
+9. `Cargo.toml`
+10. `rust-toolchain.toml`
 
-## 当前工作队列（Active Work Queue）
+## 验证（Verification）
 
-- Now：
-  - `15.2E` feasibility assessment 已完成：在 `slint = 1.8.0` 上保持 deferred，不落代码
-  - 依赖升级路线已接受：下一步先做 `Phase 15.3A` preflight，不直接写升级代码
-  - 维护 `15.2D` stable baseline，不把 input/menu 生命周期或风险逻辑反向污染到主线
-- Next：
-  - `Phase 15.3A`：版本来源统一、文档对齐、升级 checklist、smoke checklist
-  - `Phase 15.3B`：只升级 Rust 到 `1.94.0`，保持 `slint = 1.8.0`
-  - `Phase 15.4`：升级到 `slint = 1.15.x`，先恢复 `15.2D` 行为等价
-  - `Phase 15.5`：在新基线上重开并完成 `15.2E`
-- Later：
-  - `Phase 15.6`：同步与 model churn 清理
-  - `Phase 16`：结果导航效率迭代（sorting / quick jump / filter ergonomics，限定在当前 IA）
-  - 承接 `docs/architecture.md` 中 deferred 的 provider hardening 与 global notification orchestration
-
-## 已知风险与评审重点（Known Risks / Review Focus）
-
-1. 不要破坏已验收的 connected tabs / workbench seam / shell hierarchy。
-2. `context-menu core` 必须保持 window-local；不要把 menu lifecycle 反向塞回 `AppState/Presenter`。
-3. 在当前依赖版本下，不要再尝试通过 overlay `TouchArea`、私有事件拦截或自写编辑逻辑接 editable input surface。
-4. 右键接线不能破坏 `Results / Navigator` 左键选择、Diff 行号双击复制、Analysis success 文本选择与滚动；`Risk Level` 保持 `Copy` 按钮-only，不再属于 menu safe surface。
-5. `toast-controller` 仍是 overlay toast only；不要回退 15.2A 的边界。
-6. 不要跳过 `Phase 15.3A` / `Phase 15.3B` 直接做 `Phase 15.4` 或 `Phase 16`；否则问题定位会重新混乱。
-7. 不要在 Rust/Slint 升级同一轮里顺手切 `edition = "2024"`；edition 迁移应单列。
-
-## 验证命令（Verification Commands）
-
-```bash
-cargo check --workspace
-cargo test --workspace
-cargo run -p fc-ui-slint
-```
-
-文档 / preflight 线程可按需降级为：
-
-```bash
-cargo check --workspace
-```
+- 本轮是文档同步任务。
+- 本轮未运行：
+  - `cargo check --workspace`
+  - `cargo test --workspace`
+  - `cargo run -p fc-ui-slint`
 
 ## 新线程提示词模板（Handoff Prompt）
 
 建议新线程首条消息直接使用：
 
-> 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
-> 再阅读 `docs/upgrade-plan-rust-1.94-slint-1.15.md`。  
-> 以当前 `Phase 15.1B fix-3` + `Phase 15.2A toast-controller overlay only` + `Phase 15.2B loading-mask(+sync projection fix)` + `Phase 15.2C ui_palette` + `Phase 15.2D menu core` 版本为基线。  
-> 把 `15.2D` 视为当前稳定代码基线；依赖升级路线已接受，但尚未执行。  
-> 下一步默认从 `Phase 15.3A` 开始，不要直接推进 `Phase 16`，也不要在 `slint = 1.8.0` 上重开 `15.2E`。  
-> 保持当前 IA 与 phase 边界。  
-> 不要回退 Diff/tabs/Analysis shell 收敛结果，也不要把本地 toast/loading/menu controller 重新塞进 `AppState/Presenter`。  
-> 不要把 Rust/Slint 升级和 `edition = "2024"` 迁移混在同一轮。  
-> 不要用 overlay `TouchArea`、私有事件链路或自写 caret/selection/editing 去硬接 editable inputs。  
-> 仅执行本次任务范围内改动，并说明对 contract 的影响。
+> 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`，必要时再看 `README.md`。  
+> 把 `Phase 15.3A` 到 `Phase 15.8 fix-1`、`Phase 16A`、`Phase 16A fix-1`、`Phase 16B`、`Phase 16C`、`Phase 16C fix-1`、`Phase 17A`、`Phase 17A fix-1`、`Phase 17B`、`Phase 17B fix-1`、`Phase 17C`、`Phase 17D`，以及独立 workspace `edition = "2024"` 里程碑，全部视为已完成。  
+> 把当前产品/UI/平台 contract 视为 Pre-Phase 18 稳定基线：Sidebar 四块 IA、attached `Diff / Analysis` shell、filename-first results rows、explicit stale-selection 语义、tooltip completion boundary、`Settings -> Provider / Behavior`、`Hidden files` UI preference boundary、macOS immersive title bar / non-mac legacy top bar。  
+> 后续工作默认从 `Phase 18` 入口开始，只在现有 `Diff / Analysis` shell 内推进需要的 file-view / analysis / review-efficiency 改进；不要重开 IA、window-system、full settings framework、compare-level hidden policy、或已接受 baseline。  
+> 保持现有产品行为、UI contract、shell / menu / loading / toast / sync 边界不变。
 
 ## 更新契约（Mandatory）
 
-### Update triggers
-
-同一 PR 内，以下任一变化发生时必须更新本文件：
-
-1. 当前执行目标、队列顺序、短期 phase 约束发生变化。
-2. 与当前推进相关的分支上下文变化（长期分支切换、里程碑切换）。
-3. 风险画像、评审重点、验证命令发生变化。
-4. 为避免新线程误判，handoff 指令需要调整。
-5. 语言与术语策略发生变化（见 `Writing rules`）。
-
-### Required sections to touch per trigger
-
-- 编辑本文件时，必须更新 `快照（Snapshot）`。
-- 优先级变化时，更新 `当前目标` 与 `当前工作队列`。
-- 约束变化时，更新 `本阶段范围` 与 `硬契约`。
-- 验证策略变化时，更新 `已知风险与评审重点` 与 `验证命令`。
-
-### Writing rules
-
-1. 以中文为主叙述，关键术语保留英文原词（如 `Workspace`、`Diff`、`Analysis`、`Provider Settings`）。
-2. 保持短小、可执行、可交接，优先使用可操作条目。
-3. 记录“当前事实与边界”，不复制冗长历史叙事。
-4. 每次更新必须说明：改了什么、为什么影响下一线程、什么保持不变。
-5. 术语命名应与 `docs/architecture.md` 对齐，不得为同一 contract 造新别名。
-
-### Handoff Definition of Done
-
-1. 新线程仅阅读本文件 + `docs/architecture.md` 即可开始实施。
-2. 队列与约束与代码和评审意图一致。
-3. `快照（Snapshot）` 中不存在过期分支/阶段假设。
+- 编辑本文件时，必须同步检查 `docs/architecture.md` 与 `README.md` 是否也需要更新。
+- 术语必须与 `docs/architecture.md` 对齐，不得为同一 contract 造新别名。
+- 本文件应优先记录：
+  - 什么已经完成
+  - 当前稳定基线是什么
+  - 下一线程应该从哪里进入
+  - 什么不应被重新混入

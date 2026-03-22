@@ -50,14 +50,18 @@ mod tests {
         };
 
         let payload = build_prompt_payload(&req);
-        assert!(payload
-            .user_prompt
-            .contains("Task: summarize the code change clearly."));
+        assert!(
+            payload
+                .user_prompt
+                .contains("Task: summarize the code change clearly.")
+        );
         assert!(payload.user_prompt.contains("Target Path: src/lib.rs"));
         assert!(payload.user_prompt.contains("Language Hint: rust"));
-        assert!(payload
-            .user_prompt
-            .contains("Return strict JSON object only"));
+        assert!(
+            payload
+                .user_prompt
+                .contains("Return strict JSON object only")
+        );
         assert!(payload.user_prompt.contains("Diff Excerpt:\n-old\n+new"));
     }
 
@@ -79,11 +83,15 @@ mod tests {
         };
 
         let payload = build_prompt_payload(&req);
-        assert!(payload
-            .user_prompt
-            .contains("Summary Stats: hunks=1, added=5, removed=1, context=2"));
-        assert!(payload
-            .user_prompt
-            .contains("Truncation Note: truncated from 100 to 50"));
+        assert!(
+            payload
+                .user_prompt
+                .contains("Summary Stats: hunks=1, added=5, removed=1, context=2")
+        );
+        assert!(
+            payload
+                .user_prompt
+                .contains("Truncation Note: truncated from 100 to 50")
+        );
     }
 }

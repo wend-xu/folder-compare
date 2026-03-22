@@ -3,10 +3,10 @@
 use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
 use crate::context_menu::{
-    build_action_specs, build_analysis_section_payload, build_results_row_payload,
-    build_workspace_header_payload, should_close_for_sync_transition, ContextMenuBuildResult,
+    CONTEXT_MENU_COPY_ACTION_ID, CONTEXT_MENU_COPY_SUMMARY_ACTION_ID, ContextMenuBuildResult,
     ContextMenuCustomAction, ContextMenuInvocation, ContextMenuSyncState, ContextMenuTextPayload,
-    CONTEXT_MENU_COPY_ACTION_ID, CONTEXT_MENU_COPY_SUMMARY_ACTION_ID,
+    build_action_specs, build_analysis_section_payload, build_compare_status_payload,
+    build_results_row_payload, build_workspace_header_payload, should_close_for_sync_transition,
 };
 use crate::folder_picker;
 use crate::presenter::Presenter;
@@ -14,17 +14,19 @@ use crate::state::AppState;
 use crate::toast_controller::{
     ToastPlacement, ToastQueueState, ToastRequest, ToastStrategy, ToastTone,
 };
+use crate::window_chrome;
 use copypasta::{ClipboardContext, ClipboardProvider};
 use fc_ai::AiProviderKind;
-use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
+use slint::{Model, ModelRc, SharedString, Timer, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
-    import { UiPalette } from "src/ui_palette.slint";
+    import { UiPalette, UiTypography } from "src/ui_palette.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
     // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
@@ -44,7 +46,11 @@ slint::slint! {
         in property <bool> enabled: true;
         in property <length> button_min_width: 72px;
         in property <length> control_height: 30px;
+        in property <string> tooltip_text: "";
+        out property <bool> hovered: button_touch_area.has_hover;
         callback tapped();
+        callback tooltip_requested(string, length, length, length);
+        callback tooltip_closed();
 
         min-width: self.button_min_width;
         height: self.control_height;
@@ -66,10 +72,93 @@ slint::slint! {
             font-size: 14px;
         }
 
-        TouchArea {
-            enabled: root.enabled;
+        button_touch_area := TouchArea {
+            enabled: root.enabled || root.tooltip_text != "";
             clicked => {
-                root.tapped();
+                if root.enabled {
+                    root.tapped();
+                }
+            }
+
+            changed has-hover => {
+                if self.has-hover && root.tooltip_text != "" {
+                    root.tooltip_requested(
+                        root.tooltip_text,
+                        self.absolute-position.x + 10px,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
+                    );
+                } else {
+                    root.tooltip_closed();
+                }
+            }
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.cancel {
+                    root.tooltip_closed();
+                }
+            }
+        }
+    }
+
+    component TitleBarSurface inherits Rectangle {
+        in property <length> leading_inset: 0px;
+        in property <string> title_text: "Folder Compare";
+        callback settings_tapped();
+        callback drag_requested();
+
+        background: #f7f9fc;
+        clip: true;
+
+        TouchArea {
+            width: parent.width;
+            height: parent.height;
+
+            pointer-event(event) => {
+                if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                    root.drag_requested();
+                }
+            }
+        }
+
+        Rectangle {
+            x: 0px;
+            y: parent.height - 1px;
+            width: parent.width;
+            height: 1px;
+            background: #e2e8f0;
+        }
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 8px;
+            padding-bottom: 6px;
+            spacing: 8px;
+
+            Rectangle {
+                width: root.leading_inset;
+                background: transparent;
+            }
+
+            Text {
+                text: root.title_text;
+                font-size: 15px;
+                color: #334252;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            ToolButton {
+                label: "Settings";
+                button_min_width: 96px;
+                control_height: 24px;
+                tapped => {
+                    root.settings_tapped();
+                }
             }
         }
     }
@@ -258,6 +347,79 @@ slint::slint! {
         }
     }
 
+    component HighlightTextLabel inherits Rectangle {
+        in property <string> text;
+        in property <bool> highlight: false;
+        in property <brush> text_color: #2f3f50;
+        in property <brush> highlight_fill: rgba(231, 221, 176, 0.45);
+        in property <length> font_size: 12px;
+        in property <int> font_weight: 400;
+        out property <bool> is_truncated: label_text.preferred-width > self.width + 1px;
+
+        clip: true;
+        height: max(16px, label_text.preferred-height + 2px);
+
+        Rectangle {
+            visible: root.highlight && root.text != "";
+            x: 0px;
+            y: 1px;
+            width: min(parent.width, label_text.preferred-width);
+            height: max(0px, parent.height - 2px);
+            border-radius: 4px;
+            background: root.highlight_fill;
+        }
+
+        label_text := Text {
+            width: parent.width;
+            height: parent.height;
+            text: root.text;
+            color: root.text_color;
+            font-size: root.font_size;
+            font-weight: root.font_weight;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    component TooltipBubble inherits Rectangle {
+        in property <string> text;
+        in property <length> max_panel_width: 520px;
+        property <length> horizontal_padding: 10px;
+        property <length> vertical_padding: 7px;
+
+        border-width: 1px;
+        border-radius: 6px;
+        border-color: UiPalette.tooltip_border;
+        background: UiPalette.tooltip_background;
+        clip: true;
+
+        width: min(
+            root.max_panel_width,
+            max(96px, bubble_text.preferred-width + root.horizontal_padding * 2)
+        );
+        height: max(28px, bubble_text.preferred-height + root.vertical_padding * 2);
+
+        Rectangle {
+            x: 1px;
+            y: 1px;
+            width: max(0px, parent.width - 2px);
+            height: min(18px, max(0px, parent.height - 2px));
+            border-radius: 5px;
+            background: UiPalette.tooltip_inner_highlight;
+        }
+
+        bubble_text := Text {
+            x: root.horizontal_padding;
+            y: root.vertical_padding;
+            width: max(0px, parent.width - root.horizontal_padding * 2);
+            text: root.text;
+            color: UiPalette.tooltip_text;
+            font-size: 12px;
+            font-family: UiTypography.selectable_content_font_family;
+            wrap: word-wrap;
+        }
+    }
+
     component LoadingMask inherits Rectangle {
         in property <string> message;
         in property <length> corner_radius: 6px;
@@ -306,10 +468,10 @@ slint::slint! {
         in property <string> tone: "neutral";
         in property <bool> embedded: false;
 
-        border-width: root.embedded ? 0px : 1px;
-        border-radius: root.embedded ? 0px : 6px;
-        border-color: root.panel_border;
-        background: root.panel_background;
+        border-width: 0px;
+        border-radius: 0px;
+        border-color: transparent;
+        background: transparent;
         clip: true;
 
         property <brush> panel_border: root.tone == "error"
@@ -349,84 +511,203 @@ slint::slint! {
                     : (root.tone == "success"
                         ? UiPalette.state_shell_tone_success_title_text
                         : UiPalette.state_shell_tone_neutral_title_text)));
+        property <length> embedded_accent_width: root.tone == "neutral" ? 0px : 1px;
+        property <brush> embedded_accent_color: root.panel_border;
+        property <brush> embedded_title_color: root.tone == "error"
+            ? UiPalette.state_shell_tone_error_title_text
+            : UiPalette.state_shell_tone_neutral_title_text;
+        property <brush> embedded_background: root.tone == "neutral"
+            ? #fcfdff
+            : root.panel_background;
+        property <length> embedded_horizontal_padding: 12px;
+        property <length> embedded_top_padding: 12px;
+        property <length> embedded_bottom_padding: 14px;
+        property <length> embedded_content_max_width: 720px;
 
-        Rectangle {
-            x: 0px;
-            y: 0px;
-            width: 6px;
+        if root.embedded : Rectangle {
+            width: parent.width;
             height: parent.height;
-            background: root.accent_color;
+            background: root.embedded_background;
+            clip: true;
+
+            Rectangle {
+                visible: root.embedded_accent_width != 0px;
+                x: 0px;
+                y: 0px;
+                width: root.embedded_accent_width;
+                height: parent.height;
+                background: root.embedded_accent_color;
+            }
+
+            HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding-left: root.embedded_horizontal_padding;
+                padding-right: root.embedded_horizontal_padding;
+                padding-top: root.embedded_top_padding;
+                padding-bottom: root.embedded_bottom_padding;
+                spacing: 0px;
+
+                Rectangle {
+                    width: min(max(0px, parent.width), root.embedded_content_max_width);
+                    height: parent.height;
+                    background: transparent;
+
+                    VerticalLayout {
+                        width: parent.width;
+                        height: parent.height;
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            height: 18px;
+                            spacing: 0px;
+
+                            StatusPill {
+                                label: root.state_label;
+                                tone: root.tone;
+                            }
+
+                            Rectangle {
+                                horizontal-stretch: 1;
+                                background: transparent;
+                            }
+                        }
+
+                        Text {
+                            text: root.title;
+                            color: root.embedded_title_color;
+                            font-size: 16px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            visible: root.body != "";
+                            text: root.body;
+                            color: UiPalette.state_shell_body_text;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            visible: root.note != "";
+                            height: 1px;
+                            background: UiPalette.state_shell_note_separator;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            visible: root.note != "";
+                            text: root.note;
+                            color: UiPalette.state_shell_note_text;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: transparent;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                }
+            }
         }
 
-        Rectangle {
-            x: 0px;
-            y: 0px;
+        if !root.embedded : Rectangle {
             width: parent.width;
-            height: 42px;
-            background: root.tone == "error"
-                ? UiPalette.state_shell_tone_error_header_background
-                : (root.tone == "warn"
-                    ? UiPalette.state_shell_tone_warn_header_background
-                    : (root.tone == "info"
-                        ? UiPalette.state_shell_tone_info_header_background
-                        : (root.tone == "success"
-                            ? UiPalette.state_shell_tone_success_header_background
-                            : UiPalette.state_shell_tone_neutral_header_background)));
+            height: parent.height;
+            border-width: 1px;
+            border-radius: 6px;
+            border-color: root.panel_border;
+            background: root.panel_background;
+            clip: true;
 
             Rectangle {
                 x: 0px;
-                y: parent.height - 1px;
-                width: parent.width;
-                height: 1px;
-                background: UiPalette.state_shell_header_separator;
-            }
-
-            StatusPill {
-                x: 18px;
-                y: 12px;
-                label: root.state_label;
-                tone: root.tone == "neutral" ? "info" : root.tone;
-            }
-        }
-
-        VerticalLayout {
-            x: 22px;
-            y: 58px;
-            width: max(0px, min(root.width - 44px, 700px));
-            spacing: 10px;
-
-            Text {
-                text: root.title;
-                color: root.title_color;
-                font-size: 18px;
-                font-weight: 600;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-            }
-
-            Text {
-                visible: root.body != "";
-                text: root.body;
-                color: UiPalette.state_shell_body_text;
-                font-size: 14px;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
+                y: 0px;
+                width: 6px;
+                height: parent.height;
+                background: root.accent_color;
             }
 
             Rectangle {
-                visible: root.note != "";
-                height: 1px;
-                background: UiPalette.state_shell_note_separator;
-                horizontal-stretch: 1;
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 42px;
+                background: root.tone == "error"
+                    ? UiPalette.state_shell_tone_error_header_background
+                    : (root.tone == "warn"
+                        ? UiPalette.state_shell_tone_warn_header_background
+                        : (root.tone == "info"
+                            ? UiPalette.state_shell_tone_info_header_background
+                            : (root.tone == "success"
+                                ? UiPalette.state_shell_tone_success_header_background
+                                : UiPalette.state_shell_tone_neutral_header_background)));
+
+                Rectangle {
+                    x: 0px;
+                    y: parent.height - 1px;
+                    width: parent.width;
+                    height: 1px;
+                    background: UiPalette.state_shell_header_separator;
+                }
+
+                StatusPill {
+                    x: 18px;
+                    y: 12px;
+                    label: root.state_label;
+                    tone: root.tone == "neutral" ? "info" : root.tone;
+                }
             }
 
-            Text {
-                visible: root.note != "";
-                text: root.note;
-                color: UiPalette.state_shell_note_text;
-                font-size: 13px;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
+            VerticalLayout {
+                x: 22px;
+                y: 58px;
+                width: max(0px, min(root.width - 44px, 700px));
+                spacing: 10px;
+
+                Text {
+                    text: root.title;
+                    color: root.title_color;
+                    font-size: 18px;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    visible: root.body != "";
+                    text: root.body;
+                    color: UiPalette.state_shell_body_text;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Rectangle {
+                    visible: root.note != "";
+                    height: 1px;
+                    background: UiPalette.state_shell_note_separator;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    visible: root.note != "";
+                    text: root.note;
+                    color: UiPalette.state_shell_note_text;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
             }
         }
     }
@@ -452,6 +733,7 @@ slint::slint! {
             color: root.foreground;
             font-size: 13px;
             font-weight: root.font_weight;
+            font-family: UiTypography.selectable_content_font_family;
             horizontal-alignment: left;
             vertical-alignment: center;
             selection-background-color: #c9daec;
@@ -478,25 +760,185 @@ slint::slint! {
             color: transparent;
             font-size: root.font_size;
             font-weight: root.font_weight;
+            font-family: UiTypography.selectable_content_font_family;
             wrap: word-wrap;
         }
 
-        TextInput {
-            x: 0px;
-            y: 0px;
-            width: parent.width;
-            height: parent.height;
-            text: root.value;
-            read-only: true;
-            single-line: false;
-            wrap: word-wrap;
-            color: root.foreground;
-            font-size: root.font_size;
-            font-weight: root.font_weight;
-            horizontal-alignment: left;
-            vertical-alignment: top;
-            selection-background-color: #c9daec;
-            selection-foreground-color: #23384d;
+        ContextMenuArea {
+            enabled: !root.value.is-empty;
+
+            Menu {
+                MenuItem {
+                    title: @tr("Copy");
+                    enabled: !root.value.is-empty;
+                    activated => {
+                        text_input.copy();
+                    }
+                }
+
+                MenuItem {
+                    title: @tr("Select All");
+                    enabled: !root.value.is-empty;
+                    activated => {
+                        text_input.focus();
+                        text_input.select-all();
+                    }
+                }
+            }
+
+            text_input := TextInput {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                text: root.value;
+                read-only: true;
+                single-line: false;
+                wrap: word-wrap;
+                color: root.foreground;
+                font-size: root.font_size;
+                font-weight: root.font_weight;
+                font-family: UiTypography.selectable_content_font_family;
+                horizontal-alignment: left;
+                vertical-alignment: top;
+                selection-background-color: #c9daec;
+                selection-foreground-color: #23384d;
+            }
+        }
+    }
+
+    component ApiKeyLineEdit inherits Rectangle {
+        in-out property <string> text;
+        in-out property <bool> revealed: false;
+        in property <bool> enabled: true;
+        in property <bool> read_only: false;
+        out property <bool> has_focus: text_input.has-focus;
+        property <bool> toggle_hovered: toggle_touch_area.has-hover && root.enabled;
+        property <length> horizontal_padding: 10px;
+        property <length> toggle_slot_width: 40px;
+        property <length> toggle_gap: 8px;
+        property <length> text_lane_width: max(1px, root.width - 2 * root.horizontal_padding - root.toggle_gap - root.toggle_slot_width);
+
+        border-width: 1px;
+        border-radius: 4px;
+        border-color: root.has_focus ? #9bb7d3 : #d7dde7;
+        background: root.enabled ? #ffffff : #f3f6fa;
+        opacity: root.enabled ? 1 : 0.6;
+        clip: true;
+        forward-focus: text_input;
+        accessible-role: AccessibleRole.text-input;
+        accessible-enabled: root.enabled;
+        accessible-read-only: root.read_only;
+        accessible-value <=> text;
+        accessible-action-set-value(v) => {
+            text = v;
+        }
+
+        // Contract: API key input keeps native TextInput editing behavior,
+        // but narrows hidden-state secret actions to paste-only.
+        ContextMenuArea {
+            enabled: root.enabled;
+
+            Menu {
+                if root.revealed : MenuItem {
+                    title: @tr("Cut");
+                    enabled: !root.read_only && root.enabled && !root.text.is-empty;
+                    activated => {
+                        text_input.cut();
+                    }
+                }
+
+                if root.revealed : MenuItem {
+                    title: @tr("Copy");
+                    enabled: !root.text.is-empty;
+                    activated => {
+                        text_input.copy();
+                    }
+                }
+
+                MenuItem {
+                    title: @tr("Paste");
+                    enabled: !root.read_only && root.enabled;
+                    activated => {
+                        text_input.paste();
+                    }
+                }
+
+                if root.revealed : MenuItem {
+                    title: @tr("Select All");
+                    enabled: !root.text.is-empty;
+                    activated => {
+                        text_input.select-all();
+                    }
+                }
+            }
+
+            text_input := TextInput {
+                property <length> computed_x;
+
+                x: root.horizontal_padding + min(
+                    0px,
+                    max(root.text_lane_width - self.width - self.text-cursor-width, self.computed_x)
+                );
+                y: 0px;
+                width: max(root.text_lane_width - self.text-cursor-width, self.preferred-width);
+                height: parent.height;
+                text <=> root.text;
+                enabled: root.enabled;
+                read-only: root.read_only;
+                single-line: true;
+                vertical-alignment: center;
+                input-type: root.revealed ? InputType.text : InputType.password;
+                color: #33485d;
+                font-size: 13px;
+                font-family: UiTypography.editable_input_font_family;
+                selection-background-color: #c9daec;
+                selection-foreground-color: #23384d;
+                accessible-role: none;
+
+                cursor-position-changed(cursor-position) => {
+                    if cursor-position.x + self.computed_x < 0px {
+                        self.computed_x = -cursor-position.x;
+                    } else if cursor-position.x + self.computed_x > root.text_lane_width - self.text-cursor-width {
+                        self.computed_x = root.text_lane_width - cursor-position.x - self.text-cursor-width;
+                    }
+                }
+
+                key-pressed(event) => {
+                    if !root.revealed && event.modifiers.control
+                        && (event.text == "a" || event.text == "A"
+                            || event.text == "c" || event.text == "C"
+                            || event.text == "x" || event.text == "X") {
+                        return accept;
+                    }
+                    reject
+                }
+            }
+
+            toggle_label := Text {
+                x: parent.width - root.horizontal_padding - root.toggle_slot_width;
+                y: 0px;
+                width: root.toggle_slot_width;
+                height: parent.height;
+                text: root.revealed ? "Hide" : "Show";
+                color: root.toggle_hovered ? #2f5a83 : #5d6f82;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            toggle_touch_area := TouchArea {
+                x: toggle_label.x;
+                y: 0px;
+                width: toggle_label.width;
+                height: parent.height;
+                enabled: root.enabled;
+                clicked => {
+                    root.revealed = !root.revealed;
+                    text_input.focus();
+                }
+            }
         }
     }
 
@@ -538,21 +980,46 @@ slint::slint! {
                 HorizontalLayout {
                     spacing: 8px;
 
-                    Text {
-                        text: root.section_label;
-                        color: #708193;
-                        font-size: 11px;
-                        font-weight: 600;
-                        vertical-alignment: center;
+                    header_context_lane := Rectangle {
+                        background: transparent;
                         horizontal-stretch: 1;
+
+                        Text {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            height: parent.height;
+                            text: root.section_label;
+                            color: #708193;
+                            font-size: 11px;
+                            font-weight: 600;
+                            horizontal-alignment: left;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            pointer-event(event) => {
+                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                    root.context_menu_requested(
+                                        self.absolute-position.x + self.mouse-x,
+                                        self.absolute-position.y + self.mouse-y,
+                                        root.section_label,
+                                        root.title,
+                                        root.body,
+                                        root.copy_value,
+                                    );
+                                }
+                            }
+                        }
                     }
 
                     Rectangle {
                         visible: root.copy_value != "";
+                        width: copy_text.preferred-width;
                         height: 20px;
                         background: transparent;
 
-                        Text {
+                        copy_text := Text {
                             text: "Copy";
                             color: #6d7b8b;
                             vertical-alignment: center;
@@ -565,25 +1032,9 @@ slint::slint! {
                         }
                     }
                 }
-
-                TouchArea {
-                    pointer-event(event) => {
-                        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                            root.context_menu_requested(
-                                self.absolute-position.x + self.mouse-x,
-                                self.absolute-position.y + self.mouse-y,
-                                root.section_label,
-                                root.title,
-                                root.body,
-                                root.copy_value,
-                            );
-                        }
-                    }
-                }
             }
 
-            SelectableSectionText {
-                visible: root.title != "";
+            if root.title != "" : SelectableSectionText {
                 value: root.title;
                 foreground: #2f4a63;
                 font-size: 18px;
@@ -591,8 +1042,7 @@ slint::slint! {
                 horizontal-stretch: 1;
             }
 
-            SelectableSectionText {
-                visible: root.body != "";
+            if root.body != "" : SelectableSectionText {
                 value: root.body;
                 foreground: #4d6176;
                 font-size: 13px;
@@ -631,22 +1081,47 @@ slint::slint! {
         callback activated(string);
 
         property <bool> hovered: action_touch_area.has_hover && root.enabled;
+        property <length> item_inset: 2px;
 
-        height: 30px;
-        border-radius: 4px;
-        background: root.hovered ? UiPalette.context_menu_core_item_hover : transparent;
-        opacity: root.enabled ? 1 : 0.5;
-        clip: true;
+        height: 36px;
+        background: transparent;
+        opacity: root.enabled ? 1 : 0.94;
 
-        Text {
-            text: root.label;
-            x: 10px;
-            y: 0px;
-            width: max(0px, parent.width - 20px);
-            height: parent.height;
-            color: UiPalette.context_menu_core_text;
-            vertical-alignment: center;
-            overflow: elide;
+        item_surface := Rectangle {
+            x: root.item_inset;
+            y: 2px;
+            width: max(0px, parent.width - 2 * root.item_inset);
+            height: max(0px, parent.height - 4px);
+            border-width: root.hovered ? 1px : 0px;
+            border-radius: 8px;
+            border-color: UiPalette.context_menu_core_item_hover_border;
+            background: root.hovered ? UiPalette.context_menu_core_item_hover : transparent;
+            clip: true;
+
+            Rectangle {
+                visible: root.hovered;
+                x: 0px;
+                y: 7px;
+                width: 3px;
+                height: max(0px, parent.height - 14px);
+                border-radius: 2px;
+                background: UiPalette.context_menu_core_item_active_accent;
+            }
+
+            Text {
+                text: root.label;
+                x: 15px;
+                y: 0px;
+                width: max(0px, parent.width - 30px);
+                height: parent.height;
+                color: root.enabled
+                    ? UiPalette.context_menu_core_text
+                    : UiPalette.context_menu_core_disabled_text;
+                vertical-alignment: center;
+                overflow: elide;
+                font-size: 13px;
+                font-weight: root.hovered ? 600 : 500;
+            }
         }
 
         action_touch_area := TouchArea {
@@ -655,6 +1130,103 @@ slint::slint! {
                     root.activated(root.action_id);
                 }
             }
+        }
+    }
+
+    component AppLineEdit inherits LineEdit {
+        font-family: UiTypography.editable_input_font_family;
+    }
+
+    component TooltipLineEdit inherits Rectangle {
+        in-out property <string> text;
+        in property <string> placeholder_text;
+        in property <bool> enabled: true;
+        callback edited(string);
+        callback tooltip_requested(string, length, length, length);
+        callback tooltip_closed();
+
+        out property <bool> has_focus: line_edit.has-focus;
+        property <length> text_lane_padding: 18px;
+        property <length> tooltip_x_inset: 8px;
+        property <bool> can_show_tooltip: root.enabled
+            && !root.has_focus
+            && root.text != ""
+            && text_probe.preferred-width > max(1px, line_edit.width - root.text_lane_padding);
+
+        changed text => {
+            if !root.can_show_tooltip {
+                root.tooltip_closed();
+            }
+        }
+
+        changed has_focus => {
+            if root.has_focus {
+                root.tooltip_closed();
+            }
+        }
+
+        min-height: line_edit.min-height;
+        max-height: line_edit.max-height;
+        preferred-height: line_edit.preferred-height;
+        forward-focus: line_edit;
+
+        hover_sensor := TouchArea {
+            width: parent.width;
+            height: parent.height;
+            enabled: root.enabled && root.text != "";
+
+            changed has-hover => {
+                if self.has-hover && root.can_show_tooltip {
+                    root.tooltip_requested(
+                        root.text,
+                        self.absolute-position.x + root.tooltip_x_inset,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
+                    );
+                } else {
+                    root.tooltip_closed();
+                }
+            }
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    if self.has-hover && root.can_show_tooltip {
+                        root.tooltip_requested(
+                            root.text,
+                            self.absolute-position.x + root.tooltip_x_inset,
+                            self.absolute-position.y,
+                            self.absolute-position.y + self.height,
+                        );
+                    } else {
+                        root.tooltip_closed();
+                    }
+                } else if event.kind == PointerEventKind.down {
+                    root.tooltip_closed();
+                    line_edit.focus();
+                }
+            }
+
+            line_edit := AppLineEdit {
+                width: parent.width;
+                height: parent.height;
+                text <=> root.text;
+                enabled: root.enabled;
+                placeholder-text: root.placeholder_text;
+                edited(value) => {
+                    root.edited(value);
+                }
+            }
+        }
+
+        text_probe := Text {
+            x: 0px;
+            y: 0px;
+            width: 0px;
+            height: 0px;
+            visible: false;
+            text: root.text;
+            font-size: line_edit.font-size;
+            font-family: UiTypography.editable_input_font_family;
         }
     }
 
@@ -702,6 +1274,9 @@ slint::slint! {
         min-width: 900px;
         min-height: 620px;
         background: #f2f4f7;
+        in property <bool> immersive_titlebar_enabled: false;
+        in property <length> titlebar_visual_height: 36px;
+        in property <length> titlebar_leading_inset: 0px;
         in property <length> sidebar_form_label_width: 52px;
         in property <length> sidebar_action_button_width: 72px;
 
@@ -712,6 +1287,10 @@ slint::slint! {
         in property <string> summary_text;
         in property <string> compact_summary_text;
         in property <string> compare_metrics_text;
+        in property <string> compare_status_note_text;
+        in property <bool> compare_status_has_detail;
+        in property <string> compare_summary_copy_text;
+        in property <string> compare_detail_copy_text;
         in property <string> warnings_text;
         in property <string> error_text;
         in property <bool> compare_truncated;
@@ -719,12 +1298,18 @@ slint::slint! {
         in property <bool> compare_has_oversized;
         in-out property <string> entry_filter;
         in-out property <string> entry_status_filter;
-        in property <string> filter_stats_text;
+        in property <string> results_collection_text;
         in property <[string]> row_statuses;
         in property <[string]> row_paths;
         in property <[string]> row_details;
+        in property <[string]> row_display_names;
+        in property <[string]> row_parent_paths;
+        in property <[string]> row_tooltip_texts;
+        in property <[string]> row_secondary_texts;
         in property <[int]> row_source_indices;
         in property <[bool]> row_can_load_diff;
+        in property <[bool]> row_display_name_matches;
+        in property <[bool]> row_parent_path_matches;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
         in property <string> selected_relative_path_raw;
@@ -779,16 +1364,19 @@ slint::slint! {
         in property <string> analysis_review_suggestions_copy_text;
         in property <string> analysis_notes_copy_text;
         in property <string> analysis_full_copy_text;
-        in property <string> provider_settings_error_text;
+        in property <bool> show_hidden_files;
+        in property <string> settings_error_text;
         in-out property <int> workspace_tab: 0;
-        in-out property <bool> compare_warnings_expanded: false;
-        in-out property <bool> provider_settings_open: false;
-        in-out property <int> provider_settings_mode: 0;
-        in-out property <string> provider_settings_endpoint;
-        in-out property <string> provider_settings_api_key;
-        in-out property <string> provider_settings_model;
-        in-out property <string> provider_settings_timeout;
-        in-out property <bool> provider_settings_show_api_key: false;
+        in-out property <bool> compare_status_details_expanded: false;
+        in-out property <bool> settings_open: false;
+        in-out property <int> settings_section: 0;
+        in-out property <int> settings_provider_mode: 0;
+        in-out property <string> settings_provider_endpoint;
+        in-out property <string> settings_provider_api_key;
+        in-out property <string> settings_provider_model;
+        in-out property <string> settings_provider_timeout;
+        in-out property <bool> settings_show_hidden_files: true;
+        in-out property <bool> settings_provider_show_api_key: false;
         in-out property <int> selected_row: -1;
         in property <string> selected_row_status;
         in property <string> diff_mode_label;
@@ -818,20 +1406,81 @@ slint::slint! {
         in property <[string]> context_menu_action_labels;
         in property <[string]> context_menu_action_ids;
         in property <[bool]> context_menu_action_enabled;
+        in-out property <bool> tooltip_visible: false;
+        in-out property <string> tooltip_text: "";
+        in-out property <length> tooltip_anchor_x: 0px;
+        in-out property <length> tooltip_anchor_top: 0px;
+        in-out property <length> tooltip_anchor_bottom: 0px;
+        property <length> tooltip_gap: 6px;
+        property <bool> compare_ready: !root.running && root.left_root != "" && root.right_root != "";
+        property <string> compare_button_tooltip_text: root.running
+            ? "Comparing folders..."
+            : (root.left_root == "" && root.right_root == ""
+                ? "Choose left and right folders to enable Compare."
+                : (root.left_root == ""
+                    ? "Choose a left folder to enable Compare."
+                    : (root.right_root == ""
+                        ? "Choose a right folder to enable Compare."
+                        : "")));
         property <bool> has_selected_result: root.selected_row >= 0;
         property <bool> diff_shell_ready: root.diff_shell_state_token == "preview-ready"
             || root.diff_shell_state_token == "detailed-ready";
         property <bool> diff_show_shell: root.diff_shell_state_token == "no-selection"
+            || root.diff_shell_state_token == "stale-selection"
             || root.diff_shell_state_token == "loading"
             || root.diff_shell_state_token == "unavailable"
             || root.diff_shell_state_token == "error"
             || (root.diff_shell_ready && !root.diff_has_rows);
         property <length> diff_number_column_width: 52px;
         property <length> diff_marker_column_width: 20px;
+        property <length> diff_separator_width: 1px;
+        property <length> diff_old_column_x: 0px;
+        property <length> diff_first_separator_x: root.diff_old_column_x + root.diff_number_column_width;
+        property <length> diff_new_column_x: root.diff_first_separator_x + root.diff_separator_width;
+        property <length> diff_second_separator_x: root.diff_new_column_x + root.diff_number_column_width;
+        property <length> diff_marker_column_x: root.diff_second_separator_x + root.diff_separator_width;
+        property <length> diff_third_separator_x: root.diff_marker_column_x + root.diff_marker_column_width;
+        property <length> diff_content_column_x: root.diff_third_separator_x + root.diff_separator_width;
+        property <length> diff_header_separator_inset: 4px;
         property <length> diff_scrollbar_safe_inset: 18px;
         property <length> workbench_header_height: 66px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
+        property <string> diff_helper_strip_text: root.diff_shell_ready && root.diff_has_rows
+            ? ("Select text or double-click a line number to copy the full row."
+                + (root.diff_content_char_capacity > 112
+                    ? " Long lines scroll horizontally."
+                    : ""))
+            : (root.diff_shell_note_text != ""
+                ? root.diff_shell_note_text
+                : root.diff_context_summary_text);
+        function show_tooltip(
+            text: string,
+            anchor_x: length,
+            anchor_top: length,
+            anchor_bottom: length,
+        ) {
+            root.tooltip_text = text;
+            root.tooltip_anchor_x = anchor_x;
+            root.tooltip_anchor_top = anchor_top;
+            root.tooltip_anchor_bottom = anchor_bottom;
+            root.tooltip_visible = text != "";
+        }
+        function hide_tooltip() {
+            root.tooltip_visible = false;
+            root.tooltip_text = "";
+        }
+        function open_settings() {
+            root.settings_provider_mode = root.analysis_remote_mode ? 1 : 0;
+            root.settings_provider_endpoint = root.analysis_endpoint;
+            root.settings_provider_api_key = root.analysis_api_key;
+            root.settings_provider_model = root.analysis_model;
+            root.settings_provider_timeout = root.analysis_timeout_text;
+            root.settings_show_hidden_files = root.show_hidden_files;
+            root.settings_provider_show_api_key = false;
+            root.settings_open = true;
+            root.settings_clicked();
+        }
         callback compare_clicked();
         callback left_browse_clicked();
         callback right_browse_clicked();
@@ -845,21 +1494,47 @@ slint::slint! {
         callback analysis_endpoint_changed(string);
         callback analysis_api_key_changed(string);
         callback analysis_model_changed(string);
-        callback provider_settings_clicked();
-        callback provider_settings_save_clicked();
-        callback provider_settings_cancel_clicked();
+        callback settings_clicked();
+        callback settings_save_clicked();
+        callback settings_cancel_clicked();
+        callback compare_status_context_menu_requested(string, string);
         callback results_context_menu_requested(string, string, string, bool);
         callback workspace_header_context_menu_requested(string, string, string, string, string);
         callback analysis_section_context_menu_requested(string, string, string, string);
         callback context_menu_close_requested();
         callback context_menu_action_triggered(string);
+        callback titlebar_drag_requested();
 
         VerticalLayout {
-            padding: 10px;
+            padding-top: root.immersive_titlebar_enabled ? 0px : 10px;
+            padding-right: 10px;
+            padding-bottom: 10px;
+            padding-left: 10px;
             spacing: 8px;
 
-            // Contract: app bar shell (title + global provider settings entry).
-            SectionCard {
+            if root.immersive_titlebar_enabled : Rectangle {
+                height: root.titlebar_visual_height;
+                background: transparent;
+                clip: false;
+
+                TitleBarSurface {
+                    x: -10px;
+                    y: 0px;
+                    width: parent.width + 20px;
+                    height: parent.height;
+                    leading_inset: root.titlebar_leading_inset;
+                    title_text: "Folder Compare";
+                    drag_requested => {
+                        root.titlebar_drag_requested();
+                    }
+                    settings_tapped => {
+                        root.open_settings();
+                    }
+                }
+            }
+
+            // Contract: app bar shell (title + global settings entry).
+            if !root.immersive_titlebar_enabled : SectionCard {
                 height: 36px;
                 border-color: #e5e9ef;
                 background: #f7f9fc;
@@ -876,18 +1551,11 @@ slint::slint! {
                         horizontal-stretch: 1;
                     }
                     ToolButton {
-                        label: "Provider Settings";
-                        button_min_width: 132px;
+                        label: "Settings";
+                        button_min_width: 96px;
                         control_height: 26px;
                         tapped => {
-                            root.provider_settings_mode = root.analysis_remote_mode ? 1 : 0;
-                            root.provider_settings_endpoint = root.analysis_endpoint;
-                            root.provider_settings_api_key = root.analysis_api_key;
-                            root.provider_settings_model = root.analysis_model;
-                            root.provider_settings_timeout = root.analysis_timeout_text;
-                            root.provider_settings_show_api_key = false;
-                            root.provider_settings_open = true;
-                            root.provider_settings_clicked();
+                            root.open_settings();
                         }
                     }
                 }
@@ -897,200 +1565,398 @@ slint::slint! {
                 vertical-stretch: 1;
                 spacing: 10px;
 
-                // Contract: sidebar shell.
-                // Hosts compare setup/status/filter/navigation controls; detailed file view stays in workspace.
-                Rectangle {
-                    horizontal-stretch: 0;
-                    min-width: 360px;
-                    max-width: 360px;
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        // Contract: Compare Inputs.
-                        // Collects left/right roots and compare trigger; does not render compare results.
-                        SectionCard {
-                            height: 142px;
-                            VerticalLayout {
-                                padding: 9px;
-                                spacing: 6px;
-                                Text {
-                                    text: "Compare Inputs";
-                                    color: #3b4a5b;
-                                    font-size: 15px;
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Left";
-                                        width: root.sidebar_form_label_width;
-                                        color: #5d6d7e;
-                                        vertical-alignment: center;
-                                    }
-                                    LineEdit {
-                                        text <=> root.left_root;
-                                        enabled: !root.running;
-                                        horizontal-stretch: 1;
-                                    }
-                                    ToolButton {
-                                        label: "Browse";
-                                        button_min_width: root.sidebar_action_button_width;
-                                        control_height: 28px;
-                                        enabled: !root.running;
-                                        tapped => {
-                                            root.left_browse_clicked();
-                                        }
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Right";
-                                        width: root.sidebar_form_label_width;
-                                        color: #5d6d7e;
-                                        vertical-alignment: center;
-                                    }
-                                    LineEdit {
-                                        text <=> root.right_root;
-                                        enabled: !root.running;
-                                        horizontal-stretch: 1;
-                                    }
-                                    ToolButton {
-                                        label: "Browse";
-                                        button_min_width: root.sidebar_action_button_width;
-                                        control_height: 28px;
-                                        enabled: !root.running;
-                                        tapped => {
-                                            root.right_browse_clicked();
-                                        }
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    ToolButton {
-                                        label: root.running ? "Comparing..." : "Compare";
-                                        primary: true;
-                                        button_min_width: 120px;
-                                        control_height: 31px;
-                                        enabled: !root.running && root.left_root != "" && root.right_root != "";
-                                        tapped => {
-                                            root.compare_clicked();
-                                        }
-                                    }
-                                    Text {
-                                        text: root.running
-                                            ? "Running compare..."
-                                            : (root.left_root == "" || root.right_root == ""
-                                                ? "Select left and right folders."
-                                                : "Ready");
-                                        color: #6c7a89;
-                                        overflow: elide;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-                        }
-
-                        sidebar_busy_scope := Rectangle {
-                            vertical-stretch: 1;
-                            background: transparent;
-                            clip: true;
+                        // Contract: sidebar shell.
+                        // Hosts compare setup/status/filter/navigation controls; detailed file view stays in workspace.
+                        Rectangle {
+                            horizontal-stretch: 0;
+                            min-width: 360px;
+                            max-width: 360px;
                             VerticalLayout {
                                 spacing: 8px;
+
+                                // Contract: Compare Inputs.
+                                // Collects left/right roots and compare trigger; does not render compare results.
+                                SectionCard {
+                                    height: 146px;
+                                    VerticalLayout {
+                                        padding: 10px;
+                                        spacing: 6px;
+                                        Text {
+                                            text: "Compare Inputs";
+                                            color: #3b4a5b;
+                                            font-size: 15px;
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: "Left";
+                                                width: root.sidebar_form_label_width;
+                                                color: #5d6d7e;
+                                                vertical-alignment: center;
+                                            }
+                                            TooltipLineEdit {
+                                                text <=> root.left_root;
+                                                enabled: !root.running;
+                                                horizontal-stretch: 1;
+                                                placeholder_text: "Choose left folder";
+                                                tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                    root.show_tooltip(
+                                                        value,
+                                                        anchor_x - root.absolute-position.x,
+                                                        anchor_y - root.absolute-position.y,
+                                                        anchor_bottom - root.absolute-position.y,
+                                                    );
+                                                }
+                                                tooltip_closed => {
+                                                    root.hide_tooltip();
+                                                }
+                                            }
+                                            ToolButton {
+                                                label: "Browse";
+                                                button_min_width: root.sidebar_action_button_width;
+                                                control_height: 28px;
+                                                enabled: !root.running;
+                                                tapped => {
+                                                    root.left_browse_clicked();
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            Text {
+                                                text: "Right";
+                                                width: root.sidebar_form_label_width;
+                                                color: #5d6d7e;
+                                                vertical-alignment: center;
+                                            }
+                                            TooltipLineEdit {
+                                                text <=> root.right_root;
+                                                enabled: !root.running;
+                                                horizontal-stretch: 1;
+                                                placeholder_text: "Choose right folder";
+                                                tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                    root.show_tooltip(
+                                                        value,
+                                                        anchor_x - root.absolute-position.x,
+                                                        anchor_y - root.absolute-position.y,
+                                                        anchor_bottom - root.absolute-position.y,
+                                                    );
+                                                }
+                                                tooltip_closed => {
+                                                    root.hide_tooltip();
+                                                }
+                                            }
+                                            ToolButton {
+                                                label: "Browse";
+                                                button_min_width: root.sidebar_action_button_width;
+                                                control_height: 28px;
+                                                enabled: !root.running;
+                                                tapped => {
+                                                    root.right_browse_clicked();
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            compare_button := ToolButton {
+                                                label: root.running ? "Comparing..." : "Compare";
+                                                primary: true;
+                                                button_min_width: 0px;
+                                                control_height: 32px;
+                                                horizontal-stretch: 1;
+                                                enabled: root.compare_ready;
+                                                tooltip_text: root.compare_button_tooltip_text;
+                                                tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                    root.show_tooltip(
+                                                        value,
+                                                        anchor_x - root.absolute-position.x,
+                                                        anchor_y - root.absolute-position.y,
+                                                        anchor_bottom - root.absolute-position.y,
+                                                    );
+                                                }
+                                                tooltip_closed => {
+                                                    root.hide_tooltip();
+                                                }
+                                                tapped => {
+                                                    root.compare_clicked();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                sidebar_busy_scope := Rectangle {
+                                    vertical-stretch: 1;
+                                    background: transparent;
+                                    clip: true;
+                                    VerticalLayout {
+                                        spacing: 8px;
 
                                 // Contract: Compare Status.
                                 // Summarizes compare run status/metrics/warnings; no row selection or file-level content here.
                                 SectionCard {
-                            height: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "") ? 132px : 88px;
-                            VerticalLayout {
-                                padding: 9px;
-                                spacing: 4px;
-                                Text {
-                                    text: "Compare Status";
-                                    color: #3b4a5b;
-                                    font-size: 15px;
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: root.status_text;
-                                        color: #455d74;
-                                        overflow: elide;
-                                        vertical-alignment: center;
-                                    }
-                                    StatusPill {
-                                        visible: root.compare_truncated;
-                                        label: "truncated";
-                                        tone: "warn";
-                                    }
-                                    StatusPill {
-                                        visible: root.warnings_text != "";
-                                        label: "warning";
-                                        tone: "warn";
-                                    }
-                                    StatusPill {
-                                        visible: root.error_text != "";
-                                        label: "error";
-                                        tone: "error";
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                    TextAction {
-                                        visible: root.summary_text != "" || root.warnings_text != "" || root.error_text != "";
-                                        label: root.compare_warnings_expanded ? "Hide details" : "Details";
-                                        tapped => {
-                                            root.compare_warnings_expanded = !root.compare_warnings_expanded;
-                                        }
-                                    }
-                                }
-                                Text {
-                                    text: root.compare_metrics_text
-                                        + (root.compare_has_deferred ? " | deferred" : "")
-                                        + (root.compare_has_oversized ? " | oversized" : "");
-                                    color: #566a7f;
-                                    overflow: elide;
-                                }
-                                Rectangle {
-                                    visible: root.compare_warnings_expanded && (root.summary_text != "" || root.warnings_text != "" || root.error_text != "");
-                                    height: 42px;
-                                    border-width: 1px;
-                                    border-color: #dde5ef;
-                                    border-radius: 4px;
-                                    background: #f7fafd;
-                                    clip: true;
+                                    height: root.compare_status_details_expanded && root.compare_status_has_detail
+                                        ? 206px
+                                        : (root.compare_status_note_text != "" ? 106px : 92px);
                                     VerticalLayout {
-                                        padding: 5px;
-                                        spacing: 2px;
-                                        Text {
-                                            visible: root.summary_text != "";
-                                            text: root.compact_summary_text;
-                                            color: #637285;
-                                            overflow: elide;
-                                            horizontal-stretch: 1;
+                                        padding: 10px;
+                                        spacing: 6px;
+
+                                        compare_status_header := Rectangle {
+                                            height: 20px;
+                                            background: transparent;
+
+                                            HorizontalLayout {
+                                                spacing: 8px;
+
+                                                compare_status_title_lane := Rectangle {
+                                                    background: transparent;
+                                                    horizontal-stretch: 1;
+
+                                                    Text {
+                                                        x: 0px;
+                                                        y: 0px;
+                                                        width: parent.width;
+                                                        height: parent.height;
+                                                        text: "Compare Status";
+                                                        color: #3b4a5b;
+                                                        font-size: 15px;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    TouchArea {
+                                                        pointer-event(event) => {
+                                                            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                root.compare_status_context_menu_requested(
+                                                                    root.compare_summary_copy_text,
+                                                                    root.compare_detail_copy_text,
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                TextAction {
+                                                    visible: root.compare_status_has_detail;
+                                                    label: root.compare_status_details_expanded ? "Hide details" : "Show details";
+                                                    tapped => {
+                                                        root.compare_status_details_expanded = !root.compare_status_details_expanded;
+                                                    }
+                                                }
+                                            }
                                         }
-                                        Text {
-                                            visible: root.error_text != "";
-                                            text: root.error_text;
-                                            color: #8a2f2f;
-                                            overflow: elide;
-                                            horizontal-stretch: 1;
+
+                                        compare_status_summary_surface := Rectangle {
+                                            height: root.compare_status_note_text != "" ? 48px : 34px;
+                                            background: transparent;
+
+                                            VerticalLayout {
+                                                spacing: 4px;
+
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: root.status_text;
+                                                        color: #455d74;
+                                                        overflow: elide;
+                                                        vertical-alignment: center;
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                    StatusPill {
+                                                        visible: root.compare_truncated;
+                                                        label: "truncated";
+                                                        tone: "warn";
+                                                    }
+                                                    StatusPill {
+                                                        visible: root.warnings_text != "";
+                                                        label: "warning";
+                                                        tone: "warn";
+                                                    }
+                                                    StatusPill {
+                                                        visible: root.error_text != "";
+                                                        label: "error";
+                                                        tone: "error";
+                                                    }
+                                                }
+
+                                                Text {
+                                                    visible: root.compare_metrics_text != "";
+                                                    text: root.compare_metrics_text;
+                                                    color: #566a7f;
+                                                    overflow: elide;
+                                                    horizontal-stretch: 1;
+                                                }
+
+                                                Text {
+                                                    visible: root.compare_status_note_text != "";
+                                                    text: root.compare_status_note_text;
+                                                    color: #6c7b8a;
+                                                    overflow: elide;
+                                                    horizontal-stretch: 1;
+                                                }
+                                            }
+
+                                            TouchArea {
+                                                pointer-event(event) => {
+                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                        root.compare_status_context_menu_requested(
+                                                            root.compare_summary_copy_text,
+                                                            root.compare_detail_copy_text,
+                                                        );
+                                                    }
+                                                }
+                                            }
                                         }
-                                        Text {
-                                            visible: root.warnings_text != "";
-                                            text: root.warnings_text;
-                                            color: #7a5a2f;
-                                            overflow: elide;
-                                            horizontal-stretch: 1;
+
+                                        compare_status_detail_tray := Rectangle {
+                                            visible: root.compare_status_details_expanded && root.compare_status_has_detail;
+                                            height: 104px;
+                                            border-width: 1px;
+                                            border-color: #dde5ef;
+                                            border-radius: 5px;
+                                            background: #f7fafd;
+                                            clip: true;
+
+                                            compare_status_detail_scroll := ScrollView {
+                                                width: parent.width;
+                                                height: parent.height;
+                                                scrolled => {
+                                                    root.context_menu_close_requested();
+                                                }
+                                                viewport-width: self.width;
+                                                viewport-height: max(
+                                                    self.height,
+                                                    compare_status_detail_content.y + compare_status_detail_content.preferred-height + 8px
+                                                );
+                                                compare_status_detail_viewport := Rectangle {
+                                                    width: compare_status_detail_scroll.viewport-width;
+                                                    height: compare_status_detail_scroll.viewport-height;
+
+                                                    compare_status_detail_content := VerticalLayout {
+                                                        x: 8px;
+                                                        y: 8px;
+                                                        width: max(0px, parent.width - 16px);
+                                                        spacing: 6px;
+
+                                                        if root.compact_summary_text != "" : Rectangle {
+                                                            height: compare_status_summary_detail.preferred-height;
+                                                            background: transparent;
+
+                                                            compare_status_summary_detail := VerticalLayout {
+                                                                spacing: 2px;
+                                                                Text {
+                                                                    text: "Summary";
+                                                                    color: #708193;
+                                                                    font-size: 11px;
+                                                                    font-weight: 600;
+                                                                }
+                                                                Text {
+                                                                    text: root.compact_summary_text;
+                                                                    color: #586c81;
+                                                                    font-size: 12px;
+                                                                    wrap: word-wrap;
+                                                                    horizontal-stretch: 1;
+                                                                }
+                                                            }
+
+                                                            TouchArea {
+                                                                pointer-event(event) => {
+                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                        root.compare_status_context_menu_requested(
+                                                                            root.compare_summary_copy_text,
+                                                                            root.compare_detail_copy_text,
+                                                                        );
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if root.warnings_text != "" : Rectangle {
+                                                            height: compare_status_warning_detail.preferred-height;
+                                                            background: transparent;
+
+                                                            compare_status_warning_detail := VerticalLayout {
+                                                                spacing: 2px;
+                                                                Text {
+                                                                    text: "Warnings";
+                                                                    color: #826136;
+                                                                    font-size: 11px;
+                                                                    font-weight: 600;
+                                                                }
+                                                                Text {
+                                                                    text: root.warnings_text;
+                                                                    color: #7a5a2f;
+                                                                    font-size: 12px;
+                                                                    wrap: word-wrap;
+                                                                    horizontal-stretch: 1;
+                                                                }
+                                                            }
+
+                                                            TouchArea {
+                                                                pointer-event(event) => {
+                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                        root.compare_status_context_menu_requested(
+                                                                            root.compare_summary_copy_text,
+                                                                            root.compare_detail_copy_text,
+                                                                        );
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if root.error_text != "" : Rectangle {
+                                                            height: compare_status_error_detail.preferred-height;
+                                                            background: transparent;
+
+                                                            compare_status_error_detail := VerticalLayout {
+                                                                spacing: 2px;
+                                                                Text {
+                                                                    text: "Error";
+                                                                    color: #8a2f2f;
+                                                                    font-size: 11px;
+                                                                    font-weight: 600;
+                                                                }
+                                                                Text {
+                                                                    text: root.error_text;
+                                                                    color: #8a2f2f;
+                                                                    font-size: 12px;
+                                                                    wrap: word-wrap;
+                                                                    horizontal-stretch: 1;
+                                                                }
+                                                            }
+
+                                                            TouchArea {
+                                                                pointer-event(event) => {
+                                                                    if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                        root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                        root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                        root.compare_status_context_menu_requested(
+                                                                            root.compare_summary_copy_text,
+                                                                            root.compare_detail_copy_text,
+                                                                        );
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        }
 
                         // Contract: Filter / Scope.
                         // Applies text/status filters to navigator rows; does not mutate source compare data.
                         SectionCard {
-                            height: 108px;
+                            height: 104px;
                             VerticalLayout {
                                 padding: 10px;
                                 spacing: 6px;
@@ -1107,13 +1973,24 @@ slint::slint! {
                                         color: #5d6d7e;
                                         vertical-alignment: center;
                                     }
-                                    LineEdit {
+                                    TooltipLineEdit {
                                         text <=> root.entry_filter;
                                         horizontal-stretch: 1;
                                         enabled: !root.running;
-                                        placeholder-text: "path or detail";
+                                        placeholder_text: "path or name";
                                         edited(value) => {
                                             root.filter_changed(value);
+                                        }
+                                        tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                            root.show_tooltip(
+                                                value,
+                                                anchor_x - root.absolute-position.x,
+                                                anchor_y - root.absolute-position.y,
+                                                anchor_bottom - root.absolute-position.y,
+                                            );
+                                        }
+                                        tooltip_closed => {
+                                            root.hide_tooltip();
                                         }
                                     }
                                     ToolButton {
@@ -1192,22 +2069,6 @@ slint::slint! {
                                             }
                                         }
                                     }
-                                    Text {
-                                        text: "scope: "
-                                            + (root.entry_status_filter == "all"
-                                                ? "All"
-                                                : (root.entry_status_filter == "different"
-                                                    ? "Diff"
-                                                    : (root.entry_status_filter == "equal"
-                                                        ? "Equal"
-                                                        : (root.entry_status_filter == "left-only"
-                                                            ? "Left"
-                                                            : "Right"))));
-                                        width: 84px;
-                                        color: #6f7e8d;
-                                        vertical-alignment: center;
-                                        horizontal-alignment: right;
-                                    }
                                 }
                             }
                         }
@@ -1225,17 +2086,22 @@ slint::slint! {
                                     font-size: 15px;
                                 }
                                 Text {
-                                    text: root.filter_stats_text;
+                                    text: root.results_collection_text;
                                     color: #6f7e8d;
                                     overflow: elide;
                                 }
                                 ListView {
                                     vertical-stretch: 1;
                                     for row_path[index] in root.row_paths: row_item := Rectangle {
+                                        property <length> tooltip_x_inset: 8px;
                                         property <int> source_index: root.row_source_indices[index];
                                         property <string> row_status: root.row_statuses[index];
                                         property <bool> row_unavailable: !root.row_can_load_diff[index];
                                         property <bool> row_selected: source_index == root.selected_row;
+                                        property <string> display_name: root.row_display_names[index];
+                                        property <string> parent_path: root.row_parent_paths[index];
+                                        property <string> tooltip_text: root.row_tooltip_texts[index];
+                                        property <string> secondary_text: root.row_secondary_texts[index];
                                         property <string> row_status_label: row_status == "different"
                                             ? "diff"
                                             : (row_status == "equal"
@@ -1286,15 +2152,42 @@ slint::slint! {
                                         property <brush> detail_text_color: row_selected
                                             ? UiPalette.results_row_selected_detail_text
                                             : (row_unavailable ? UiPalette.results_row_unavailable_detail_text : UiPalette.results_row_tone_neutral_detail_text);
+                                        property <brush> context_text_color: row_selected
+                                            ? UiPalette.results_row_selected_context_text
+                                            : (row_unavailable ? UiPalette.results_row_unavailable_context_text : UiPalette.results_row_tone_neutral_context_text);
+                                        property <brush> match_fill: row_selected
+                                            ? UiPalette.results_row_selected_match_background
+                                            : UiPalette.results_row_match_background;
+                                        function update_row_tooltip(
+                                            anchor_x: length,
+                                            anchor_top: length,
+                                            anchor_bottom: length,
+                                        ) {
+                                            if row_item.tooltip_text != ""
+                                                && (display_name_label.is_truncated
+                                                    || (parent_path_label.visible && parent_path_label.is_truncated)) {
+                                                root.show_tooltip(
+                                                    row_item.tooltip_text,
+                                                    anchor_x + row_item.tooltip_x_inset - root.absolute-position.x,
+                                                    anchor_top - root.absolute-position.y,
+                                                    anchor_bottom - root.absolute-position.y,
+                                                );
+                                            } else {
+                                                root.hide_tooltip();
+                                            }
+                                        }
 
-                                        height: 44px;
+                                        height: 50px;
                                         border-width: 1px;
                                         border-color: row_item.item_border_color;
                                         border-radius: 3px;
                                         background: row_item.item_background_color;
 
                                         VerticalLayout {
-                                            padding: 4px;
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            padding-top: 5px;
+                                            padding-bottom: 5px;
                                             spacing: 2px;
                                             HorizontalLayout {
                                                 spacing: 7px;
@@ -1302,36 +2195,82 @@ slint::slint! {
                                                     label: row_item.row_status_label;
                                                     tone: row_item.row_unavailable ? "neutral" : row_item.row_status_tone;
                                                 }
-                                                Text {
-                                                    text: row_path;
-                                                    color: row_item.path_text_color;
+                                                display_name_label := HighlightTextLabel {
+                                                    text: row_item.display_name;
+                                                    text_color: row_item.path_text_color;
+                                                    highlight: root.row_display_name_matches[index];
+                                                    highlight_fill: row_item.match_fill;
+                                                    font_size: 13px;
+                                                    font_weight: 600;
+                                                    horizontal-stretch: 1;
+                                                }
+                                            }
+                                            HorizontalLayout {
+                                                spacing: 4px;
+                                                secondary_text_label := Text {
+                                                    text: row_item.secondary_text;
+                                                    color: row_item.detail_text_color;
                                                     vertical-alignment: center;
+                                                    font-size: 11px;
                                                     horizontal-stretch: 1;
                                                     overflow: elide;
                                                 }
-                                            }
-                                            Text {
-                                                text: row_item.row_unavailable ? "detailed diff unavailable" : root.row_details[index];
-                                                color: row_item.detail_text_color;
-                                                vertical-alignment: center;
-                                                horizontal-stretch: 1;
-                                                overflow: elide;
+                                                Text {
+                                                    visible: row_item.parent_path != "";
+                                                    text: "·";
+                                                    color: row_item.context_text_color;
+                                                    vertical-alignment: center;
+                                                    font-size: 11px;
+                                                }
+                                                parent_path_label := HighlightTextLabel {
+                                                    visible: row_item.parent_path != "";
+                                                    text: row_item.parent_path;
+                                                    text_color: row_item.context_text_color;
+                                                    highlight: root.row_parent_path_matches[index];
+                                                    highlight_fill: row_item.match_fill;
+                                                    font_size: 11px;
+                                                    font_weight: 400;
+                                                    max-width: 108px;
+                                                }
                                             }
                                         }
 
                                         TouchArea {
+                                            width: parent.width;
+                                            height: parent.height;
                                             enabled: !root.diff_loading;
+                                            changed has-hover => {
+                                                if self.has-hover {
+                                                    row_item.update_row_tooltip(
+                                                        self.absolute-position.x,
+                                                        self.absolute-position.y,
+                                                        self.absolute-position.y + self.height,
+                                                    );
+                                                } else {
+                                                    root.hide_tooltip();
+                                                }
+                                            }
                                             clicked => {
+                                                root.hide_tooltip();
                                                 root.row_selected(row_item.source_index);
                                             }
                                             pointer-event(event) => {
+                                                if event.kind == PointerEventKind.move {
+                                                    row_item.update_row_tooltip(
+                                                        self.absolute-position.x,
+                                                        self.absolute-position.y,
+                                                        self.absolute-position.y + self.height,
+                                                    );
+                                                } else if event.kind == PointerEventKind.down {
+                                                    root.hide_tooltip();
+                                                }
                                                 if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
                                                     root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
                                                     root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
                                                     root.results_context_menu_requested(
                                                         row_path,
                                                         row_item.row_status,
-                                                        row_item.row_unavailable ? "detailed diff unavailable" : root.row_details[index],
+                                                        root.row_details[index],
                                                         row_item.row_unavailable,
                                                     );
                                                 }
@@ -1339,6 +2278,7 @@ slint::slint! {
                                         }
                                     }
                                     scrolled => {
+                                        root.hide_tooltip();
                                         root.context_menu_close_requested();
                                     }
                                 }
@@ -1362,22 +2302,24 @@ slint::slint! {
                 SectionCard {
                     horizontal-stretch: 1;
                     min-width: 500px;
-                    border-color: #d2dbe7;
-                    background: #f8fbfe;
+                    border-color: transparent;
+                    background: transparent;
                     VerticalLayout {
                         padding: 0px;
                         spacing: 0px;
 
                         Rectangle {
                             vertical-stretch: 1;
-                            background: #fbfcfe;
+                            background: transparent;
                             workbench_host := Rectangle {
-                                x: 10px;
-                                y: 8px;
-                                width: max(0px, parent.width - 20px);
-                                height: max(0px, parent.height - 18px);
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                height: parent.height;
                                 background: transparent;
 
+                                property <brush> panel_border: #d7e0ec;
+                                property <length> panel_corner_radius: 8px;
                                 property <length> tab_row_height: 36px;
                                 property <length> panel_overlap: 4px;
                                 property <length> panel_top: self.tab_row_height - self.panel_overlap;
@@ -1388,8 +2330,8 @@ slint::slint! {
                                     width: parent.width;
                                     height: max(0px, parent.height - workbench_host.panel_top);
                                     border-width: 1px;
-                                    border-color: #d7e0ec;
-                                    border-radius: 8px;
+                                    border-color: workbench_host.panel_border;
+                                    border-radius: workbench_host.panel_corner_radius;
                                     background: #fcfdff;
                                     clip: true;
 
@@ -1430,6 +2372,10 @@ slint::slint! {
 
                                                     HorizontalLayout {
                                                         spacing: 6px;
+                                                        StatusPill {
+                                                            label: "Diff";
+                                                            tone: "neutral";
+                                                        }
                                                         if root.has_selected_result : StatusPill {
                                                             label: root.diff_mode_label;
                                                             tone: root.diff_mode_tone;
@@ -1438,7 +2384,9 @@ slint::slint! {
                                                             label: root.diff_result_status_label;
                                                             tone: root.diff_result_status_tone;
                                                         }
-                                                        if root.diff_shell_state_token == "loading"
+                                                        if !root.has_selected_result
+                                                            || root.diff_shell_state_token == "stale-selection"
+                                                            || root.diff_shell_state_token == "loading"
                                                             || root.diff_shell_state_token == "unavailable"
                                                             || root.diff_shell_state_token == "error" : StatusPill {
                                                             label: root.diff_shell_state_label;
@@ -1475,6 +2423,31 @@ slint::slint! {
                                                 }
                                             }
 
+                                            Rectangle {
+                                                height: root.workbench_helper_strip_height;
+                                                background: #f5f8fc;
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #dbe4ef;
+                                                }
+
+                                                HorizontalLayout {
+                                                    padding: 7px;
+                                                    spacing: 8px;
+                                                    Text {
+                                                        text: root.diff_helper_strip_text;
+                                                        color: #617285;
+                                                        font-size: 12px;
+                                                        vertical-alignment: center;
+                                                        horizontal-stretch: 1;
+                                                        overflow: elide;
+                                                    }
+                                                }
+                                            }
+
                                             if root.diff_show_shell : DiffStateShell {
                                                 vertical-stretch: 1;
                                                 embedded: true;
@@ -1492,34 +2465,6 @@ slint::slint! {
                                                 VerticalLayout {
                                                     padding: 0px;
                                                     spacing: 0px;
-
-                                                    Rectangle {
-                                                        height: root.workbench_helper_strip_height;
-                                                        background: #f5f8fc;
-                                                        Rectangle {
-                                                            x: 0px;
-                                                            y: parent.height - 1px;
-                                                            width: parent.width;
-                                                            height: 1px;
-                                                            background: #dbe4ef;
-                                                        }
-
-                                                        HorizontalLayout {
-                                                            padding: 7px;
-                                                            spacing: 8px;
-                                                            Text {
-                                                                text: "Select text or double-click a line number to copy the full row."
-                                                                    + (root.diff_content_char_capacity > 112
-                                                                        ? " Long lines scroll horizontally."
-                                                                        : "");
-                                                                color: #617285;
-                                                                font-size: 12px;
-                                                                vertical-alignment: center;
-                                                                horizontal-stretch: 1;
-                                                                overflow: elide;
-                                                            }
-                                                        }
-                                                    }
 
                                                     diff_ready_surface := Rectangle {
                                                         vertical-stretch: 1;
@@ -1550,94 +2495,115 @@ slint::slint! {
                                                             }
 
                                                             Rectangle {
-                                                                x: diff_rows.viewport-x;
+                                                                x: diff_body_scroll.viewport-x;
                                                                 y: 0px;
                                                                 width: diff_ready_surface.table_width;
                                                                 height: parent.height;
 
-                                                                HorizontalLayout {
-                                                                    padding: 5px;
-                                                                    spacing: 0px;
-                                                                    Text {
-                                                                        text: root.diff_left_column_label;
-                                                                        width: root.diff_number_column_width;
-                                                                        horizontal-alignment: right;
-                                                                        vertical-alignment: center;
-                                                                        font-size: 12px;
-                                                                        color: #667789;
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height - 6px;
-                                                                        background: #dce5f0;
-                                                                    }
-                                                                    Text {
-                                                                        text: root.diff_right_column_label;
-                                                                        width: root.diff_number_column_width;
-                                                                        horizontal-alignment: right;
-                                                                        vertical-alignment: center;
-                                                                        font-size: 12px;
-                                                                        color: #667789;
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height - 6px;
-                                                                        background: #dce5f0;
-                                                                    }
-                                                                    Text {
-                                                                        text: " ";
-                                                                        width: root.diff_marker_column_width;
-                                                                    }
-                                                                    Rectangle {
-                                                                        width: 1px;
-                                                                        height: parent.height - 6px;
-                                                                        background: #dce5f0;
-                                                                    }
-                                                                    Text {
-                                                                        text: "content";
-                                                                        color: #667789;
-                                                                        font-size: 12px;
-                                                                        vertical-alignment: center;
-                                                                        horizontal-stretch: 1;
-                                                                    }
+                                                                Text {
+                                                                    x: 0px;
+                                                                    y: 0px;
+                                                                    width: max(0px, root.diff_number_column_width - 8px);
+                                                                    height: parent.height;
+                                                                    text: root.diff_left_column_label;
+                                                                    horizontal-alignment: right;
+                                                                    vertical-alignment: center;
+                                                                    font-size: 12px;
+                                                                    color: #667789;
+                                                                }
+                                                                Rectangle {
+                                                                    x: root.diff_first_separator_x;
+                                                                    y: root.diff_header_separator_inset;
+                                                                    width: root.diff_separator_width;
+                                                                    height: max(0px, parent.height - root.diff_header_separator_inset * 2);
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    x: root.diff_new_column_x;
+                                                                    y: 0px;
+                                                                    width: max(0px, root.diff_number_column_width - 8px);
+                                                                    height: parent.height;
+                                                                    text: root.diff_right_column_label;
+                                                                    horizontal-alignment: right;
+                                                                    vertical-alignment: center;
+                                                                    font-size: 12px;
+                                                                    color: #667789;
+                                                                }
+                                                                Rectangle {
+                                                                    x: root.diff_second_separator_x;
+                                                                    y: root.diff_header_separator_inset;
+                                                                    width: root.diff_separator_width;
+                                                                    height: max(0px, parent.height - root.diff_header_separator_inset * 2);
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    x: root.diff_marker_column_x;
+                                                                    y: 0px;
+                                                                    width: root.diff_marker_column_width;
+                                                                    height: parent.height;
+                                                                    text: " ";
+                                                                }
+                                                                Rectangle {
+                                                                    x: root.diff_third_separator_x;
+                                                                    y: root.diff_header_separator_inset;
+                                                                    width: root.diff_separator_width;
+                                                                    height: max(0px, parent.height - root.diff_header_separator_inset * 2);
+                                                                    background: #dce5f0;
+                                                                }
+                                                                Text {
+                                                                    x: root.diff_content_column_x + 8px;
+                                                                    y: 0px;
+                                                                    width: max(0px, parent.width - root.diff_content_column_x - 8px);
+                                                                    height: parent.height;
+                                                                    text: "content";
+                                                                    color: #667789;
+                                                                    font-size: 12px;
+                                                                    vertical-alignment: center;
                                                                 }
                                                             }
                                                         }
 
-                                                        diff_rows := ListView {
+                                                        diff_body_scroll := ScrollView {
                                                             x: 0px;
                                                             y: 30px;
                                                             width: parent.width;
-                                                            height: max(0px, parent.height - 30px - root.diff_scrollbar_safe_inset);
+                                                            height: max(0px, parent.height - 30px);
                                                             viewport-width: diff_ready_surface.table_width;
-                                                            for row_content[index] in root.diff_contents: row_line := Rectangle {
-                                                                property <string> row_kind: root.diff_row_kinds[index];
-                                                                property <bool> is_hunk: row_kind == "hunk";
-                                                                property <bool> is_added: row_kind == "added";
-                                                                property <bool> is_removed: row_kind == "removed";
-                                                                property <string> marker_text: root.diff_markers[index];
-                                                                property <string> copy_text: row_line.is_hunk || row_line.marker_text == "" || row_line.marker_text == " "
-                                                                    ? row_content
-                                                                    : row_line.marker_text + " " + row_content;
-                                                                property <string> old_feedback_label: root.diff_old_line_nos[index] == ""
-                                                                    ? ""
-                                                                    : "Line " + root.diff_old_line_nos[index];
-                                                                property <string> new_feedback_label: root.diff_new_line_nos[index] == ""
-                                                                    ? ""
-                                                                    : "Line " + root.diff_new_line_nos[index];
+                                                            viewport-height: max(self.height, diff_rows_content.preferred-height);
+                                                            horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
+                                                            vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+                                                            diff_rows_content := VerticalLayout {
                                                                 width: diff_ready_surface.table_width;
-                                                                height: row_line.is_hunk ? 30px : 26px;
-                                                                background: row_line.is_hunk
-                                                                    ? #ebf2fa
-                                                                    : (row_line.is_added
-                                                                        ? #f1f8f3
-                                                                        : (row_line.is_removed
-                                                                            ? #fbf1f1
-                                                                            : (Math.mod(index, 2) == 0 ? #fbfdff : #f8fbfe)));
+                                                                spacing: 0px;
 
-                                                                HorizontalLayout {
-                                                                    spacing: 0px;
+                                                                for row_content[index] in root.diff_contents: row_line := Rectangle {
+                                                                    property <string> row_kind: root.diff_row_kinds[index];
+                                                                    property <bool> is_hunk: row_kind == "hunk";
+                                                                    property <bool> is_added: row_kind == "added";
+                                                                    property <bool> is_removed: row_kind == "removed";
+                                                                    property <string> marker_text: root.diff_markers[index];
+                                                                    property <string> copy_text: row_line.is_hunk || row_line.marker_text == "" || row_line.marker_text == " "
+                                                                        ? row_content
+                                                                        : row_line.marker_text + " " + row_content;
+                                                                    property <string> old_feedback_label: root.diff_old_line_nos[index] == ""
+                                                                        ? ""
+                                                                        : "Line " + root.diff_old_line_nos[index];
+                                                                    property <string> new_feedback_label: root.diff_new_line_nos[index] == ""
+                                                                        ? ""
+                                                                        : "Line " + root.diff_new_line_nos[index];
+                                                                    width: diff_ready_surface.table_width;
+                                                                    height: row_line.is_hunk ? 30px : 26px;
+                                                                    background: row_line.is_hunk
+                                                                        ? #ebf2fa
+                                                                        : (row_line.is_added
+                                                                            ? #f1f8f3
+                                                                            : (row_line.is_removed
+                                                                                ? #fbf1f1
+                                                                                : (Math.mod(index, 2) == 0 ? #fbfdff : #f8fbfe)));
+
                                                                     DiffCopyHotspot {
+                                                                        x: root.diff_old_column_x;
+                                                                        y: 0px;
                                                                         width: root.diff_number_column_width;
                                                                         height: parent.height;
                                                                         label: row_line.is_hunk ? "" : root.diff_old_line_nos[index];
@@ -1648,11 +2614,15 @@ slint::slint! {
                                                                         }
                                                                     }
                                                                     Rectangle {
-                                                                        width: 1px;
+                                                                        x: root.diff_first_separator_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_separator_width;
                                                                         height: parent.height;
                                                                         background: #e4ebf4;
                                                                     }
                                                                     DiffCopyHotspot {
+                                                                        x: root.diff_new_column_x;
+                                                                        y: 0px;
                                                                         width: root.diff_number_column_width;
                                                                         height: parent.height;
                                                                         label: row_line.is_hunk ? "" : root.diff_new_line_nos[index];
@@ -1663,11 +2633,15 @@ slint::slint! {
                                                                         }
                                                                     }
                                                                     Rectangle {
-                                                                        width: 1px;
+                                                                        x: root.diff_second_separator_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_separator_width;
                                                                         height: parent.height;
                                                                         background: #e4ebf4;
                                                                     }
                                                                     DiffCopyHotspot {
+                                                                        x: root.diff_marker_column_x;
+                                                                        y: 0px;
                                                                         width: root.diff_marker_column_width;
                                                                         height: parent.height;
                                                                         label: row_line.marker_text;
@@ -1682,35 +2656,31 @@ slint::slint! {
                                                                         }
                                                                     }
                                                                     Rectangle {
-                                                                        width: 1px;
+                                                                        x: root.diff_third_separator_x;
+                                                                        y: 0px;
+                                                                        width: root.diff_separator_width;
                                                                         height: parent.height;
                                                                         background: #e4ebf4;
                                                                     }
                                                                     SelectableDiffText {
+                                                                        x: root.diff_content_column_x;
+                                                                        y: 0px;
+                                                                        width: max(0px, parent.width - root.diff_content_column_x);
+                                                                        height: parent.height;
                                                                         value: row_content;
                                                                         foreground: row_line.is_hunk
                                                                             ? #2f5376
                                                                             : #2f4357;
                                                                         font_weight: row_line.is_hunk ? 600 : 400;
                                                                         content_padding: 8px;
-                                                                        horizontal-stretch: 1;
                                                                     }
                                                                 }
-                                                            }
-                                                        }
 
-                                                        Rectangle {
-                                                            x: 0px;
-                                                            y: parent.height - root.diff_scrollbar_safe_inset;
-                                                            width: parent.width;
-                                                            height: root.diff_scrollbar_safe_inset;
-                                                            background: #f7f9fc;
-                                                            Rectangle {
-                                                                x: 0px;
-                                                                y: 0px;
-                                                                width: parent.width;
-                                                                height: 1px;
-                                                                background: #dbe4ef;
+                                                                Rectangle {
+                                                                    width: diff_ready_surface.table_width;
+                                                                    height: root.diff_scrollbar_safe_inset;
+                                                                    background: transparent;
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -1842,7 +2812,7 @@ slint::slint! {
                                                         overflow: elide;
                                                     }
                                                     Text {
-                                                        text: "Use Provider Settings in App Bar to edit.";
+                                                        text: "Use Settings in App Bar to edit.";
                                                         color: #7b8a99;
                                                         font-size: 11px;
                                                         vertical-alignment: center;
@@ -2123,11 +3093,11 @@ slint::slint! {
                                 }
 
                                 Rectangle {
-                                    x: 0px;
+                                    x: workbench_host.panel_corner_radius;
                                     y: workbench_host.panel_top;
-                                    width: parent.width;
+                                    width: max(0px, parent.width - workbench_host.panel_corner_radius * 2);
                                     height: 1px;
-                                    background: #d7e0ec;
+                                    background: workbench_host.panel_border;
                                 }
 
                                 HorizontalLayout {
@@ -2135,13 +3105,14 @@ slint::slint! {
                                     y: 0px;
                                     width: parent.width;
                                     height: workbench_host.tab_row_height;
+                                    padding-right: 7px;
                                     spacing: 0px;
 
                                     WorkspaceTabButton {
                                         label: "Diff";
                                         selected: root.workspace_tab == 0;
                                         selected_fill: #f9fbfe;
-                                        selected_border: #d7e0ec;
+                                        selected_border: workbench_host.panel_border;
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
@@ -2153,7 +3124,7 @@ slint::slint! {
                                         label: "Analysis";
                                         selected: root.workspace_tab == 1;
                                         selected_fill: #f9fbfe;
-                                        selected_border: #d7e0ec;
+                                        selected_border: workbench_host.panel_border;
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
@@ -2173,19 +3144,60 @@ slint::slint! {
                                         overflow: elide;
                                     }
                                 }
+
+                                LoadingMask {
+                                    visible: root.workspace_loading_mask_visible;
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    height: parent.height;
+                                    message: root.loading_mask_text;
+                                    corner_radius: workbench_host.panel_corner_radius;
+                                }
                             }
                         }
                     }
-                    LoadingMask {
-                        visible: root.workspace_loading_mask_visible;
-                        x: 0px;
-                        y: 0px;
-                        width: parent.width;
-                        height: parent.height;
-                        message: root.loading_mask_text;
-                        corner_radius: 6px;
-                    }
                 }
+            }
+        }
+
+        if root.tooltip_visible && root.tooltip_text != "" && !root.context_menu_open && !root.settings_open : Rectangle {
+            property <length> panel_margin: 10px;
+            property <length> shadow_offset: 4px;
+            property <length> max_bubble_width: min(520px, max(180px, root.width - panel_margin * 2));
+            property <length> bubble_width: tooltip_panel.width;
+            property <length> bubble_height: tooltip_panel.height;
+            property <length> preferred_above_y: root.tooltip_anchor_top - bubble_height - root.tooltip_gap;
+            property <length> preferred_below_y: root.tooltip_anchor_bottom + root.tooltip_gap;
+            x: max(
+                panel_margin,
+                min(root.tooltip_anchor_x, max(panel_margin, root.width - bubble_width - panel_margin))
+            );
+            y: max(
+                panel_margin,
+                min(
+                    preferred_above_y >= panel_margin ? preferred_above_y : preferred_below_y,
+                    max(panel_margin, root.height - bubble_height - panel_margin),
+                )
+            );
+            width: bubble_width;
+            height: bubble_height;
+            background: transparent;
+
+            Rectangle {
+                x: 0px;
+                y: parent.shadow_offset;
+                width: parent.width;
+                height: parent.height;
+                border-radius: 6px;
+                background: UiPalette.tooltip_shadow;
+            }
+
+            tooltip_panel := TooltipBubble {
+                x: 0px;
+                y: 0px;
+                text: root.tooltip_text;
+                max_panel_width: parent.max_bubble_width;
             }
         }
 
@@ -2207,42 +3219,89 @@ slint::slint! {
                 }
             }
 
-            context_menu_panel := Rectangle {
-                property <length> panel_width: 220px;
-                property <length> item_height: 30px;
-                property <length> panel_padding: 5px;
+            context_menu_stack := Rectangle {
+                property <length> panel_width: 228px;
+                property <length> item_height: 36px;
+                property <length> panel_padding: 8px;
+                property <length> panel_margin: 10px;
+                property <length> shadow_margin: 16px;
                 property <length> panel_height: panel_padding * 2 + root.context_menu_action_labels.length * item_height;
-                x: max(
-                    8px,
-                    min(root.context_menu_anchor_x, max(8px, parent.width - self.width - 8px))
+                property <length> panel_x: max(
+                    panel_margin,
+                    min(root.context_menu_anchor_x, max(panel_margin, parent.width - panel_width - panel_margin))
                 );
-                y: max(
-                    8px,
-                    min(root.context_menu_anchor_y, max(8px, parent.height - self.height - 8px))
+                property <length> panel_y: max(
+                    panel_margin,
+                    min(root.context_menu_anchor_y, max(panel_margin, parent.height - panel_height - panel_margin))
                 );
-                width: self.panel_width;
-                height: self.panel_height;
-                border-width: 1px;
-                border-radius: 6px;
-                border-color: UiPalette.context_menu_core_border;
-                background: UiPalette.context_menu_core_background;
-                clip: true;
+                x: self.panel_x - self.shadow_margin;
+                y: self.panel_y - self.shadow_margin;
+                width: self.panel_width + self.shadow_margin * 2;
+                height: self.panel_height + self.shadow_margin * 2;
+                background: transparent;
 
-                TouchArea {
-                    clicked => {}
-                    pointer-event(_) => {}
+                Rectangle {
+                    x: context_menu_stack.shadow_margin + 1px;
+                    y: context_menu_stack.shadow_margin + 7px;
+                    width: context_menu_stack.panel_width;
+                    height: context_menu_stack.panel_height + 6px;
+                    border-radius: 14px;
+                    background: UiPalette.context_menu_core_shadow_soft;
                 }
 
-                VerticalLayout {
-                    padding: context_menu_panel.panel_padding;
-                    spacing: 0px;
+                Rectangle {
+                    x: context_menu_stack.shadow_margin;
+                    y: context_menu_stack.shadow_margin + 3px;
+                    width: context_menu_stack.panel_width;
+                    height: context_menu_stack.panel_height + 3px;
+                    border-radius: 12px;
+                    background: UiPalette.context_menu_core_shadow_strong;
+                }
 
-                    for action_label[index] in root.context_menu_action_labels: ContextMenuActionItem {
-                        label: action_label;
-                        action_id: root.context_menu_action_ids[index];
-                        enabled: root.context_menu_action_enabled[index];
-                        activated(action_id) => {
-                            root.context_menu_action_triggered(action_id);
+                context_menu_panel := Rectangle {
+                    x: context_menu_stack.shadow_margin;
+                    y: context_menu_stack.shadow_margin;
+                    width: context_menu_stack.panel_width;
+                    height: context_menu_stack.panel_height;
+                    border-width: 1px;
+                    border-radius: 10px;
+                    border-color: UiPalette.context_menu_core_border;
+                    background: UiPalette.context_menu_core_background;
+                    clip: true;
+
+                    Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: max(0px, parent.width - 2px);
+                        height: min(22px, max(0px, parent.height - 2px));
+                        border-radius: 9px;
+                        background: UiPalette.context_menu_core_inner_highlight;
+                    }
+
+                    Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: parent.width;
+                        height: 1px;
+                        background: rgba(255, 255, 255, 0.78);
+                    }
+
+                    TouchArea {
+                        clicked => {}
+                        pointer-event(_) => {}
+                    }
+
+                    VerticalLayout {
+                        padding: context_menu_stack.panel_padding;
+                        spacing: 0px;
+
+                        for action_label[index] in root.context_menu_action_labels: ContextMenuActionItem {
+                            label: action_label;
+                            action_id: root.context_menu_action_ids[index];
+                            enabled: root.context_menu_action_enabled[index];
+                            activated(action_id) => {
+                                root.context_menu_action_triggered(action_id);
+                            }
                         }
                     }
                 }
@@ -2293,10 +3352,10 @@ slint::slint! {
             }
         }
 
-        // Contract: Provider Settings modal.
-        // Edits global provider config and validation errors; compare/diff workflow remains in main shell.
+        // Contract: Settings modal.
+        // Edits global provider config plus a small set of persisted preferences without changing the main shell workflow.
         Rectangle {
-            visible: root.provider_settings_open;
+            visible: root.settings_open;
             x: 0px;
             y: 0px;
             width: parent.width;
@@ -2306,24 +3365,26 @@ slint::slint! {
             TouchArea {}
 
             SectionCard {
-                width: 700px;
-                height: root.provider_settings_mode == 1 ? 430px : 338px;
+                property <length> dialog_width: min(760px, parent.width - 36px);
+                property <length> dialog_height: min(474px, parent.height - 40px);
+                width: self.dialog_width;
+                height: self.dialog_height;
                 x: (parent.width - self.width) / 2;
-                y: 70px;
+                y: max(20px, (parent.height - self.height) / 2);
                 border-color: #dfe5ed;
                 background: #fcfdff;
 
                 VerticalLayout {
                     padding: 14px;
-                    spacing: 8px;
+                    spacing: 10px;
 
                     Text {
-                        text: "Provider Settings";
+                        text: "Settings";
                         color: #2f4966;
                         font-size: 18px;
                     }
                     Text {
-                        text: "Global configuration for AI analysis provider.";
+                        text: "Provider configuration and application defaults.";
                         color: #6a7888;
                     }
 
@@ -2333,119 +3394,244 @@ slint::slint! {
                     }
 
                     HorizontalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: "Mode";
-                            width: 104px;
-                            color: #4f6074;
-                            vertical-alignment: center;
-                        }
-                        SegmentedRail {
-                            height: 30px;
-                            HorizontalLayout {
-                                spacing: 0px;
-                                SegmentItem {
-                                    label: "Mock";
-                                    selected: root.provider_settings_mode == 0;
-                                    show_divider: false;
+                        vertical-stretch: 1;
+                        spacing: 14px;
+
+                        Rectangle {
+                            width: 132px;
+                            vertical-stretch: 1;
+                            background: transparent;
+
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                Text {
+                                    text: "Sections";
+                                    color: #718091;
+                                    font-size: 11px;
+                                }
+                                ToolButton {
+                                    label: "Provider";
+                                    active: root.settings_section == 0;
+                                    button_min_width: 132px;
+                                    control_height: 30px;
                                     tapped => {
-                                        root.provider_settings_mode = 0;
+                                        root.settings_section = 0;
                                     }
                                 }
-                                SegmentItem {
-                                    label: "OpenAI-compatible";
-                                    selected: root.provider_settings_mode == 1;
-                                    show_divider: true;
+                                ToolButton {
+                                    label: "Behavior";
+                                    active: root.settings_section == 1;
+                                    button_min_width: 132px;
+                                    control_height: 30px;
                                     tapped => {
-                                        root.provider_settings_mode = 1;
+                                        root.settings_section = 1;
                                     }
+                                }
+                                Rectangle {
+                                    vertical-stretch: 1;
                                 }
                             }
                         }
-                    }
 
-                    HorizontalLayout {
-                        spacing: 6px;
-                        Text {
-                            text: "Timeout";
-                            width: 104px;
-                            color: #4f6074;
-                            vertical-alignment: center;
+                        Rectangle {
+                            width: 1px;
+                            vertical-stretch: 1;
+                            background: #e7ecf3;
                         }
-                        LineEdit {
-                            text <=> root.provider_settings_timeout;
-                            width: 140px;
-                            height: 28px;
-                        }
-                        Text {
-                            text: "seconds";
-                            color: #778595;
-                            vertical-alignment: center;
-                        }
+
                         Rectangle {
                             horizontal-stretch: 1;
-                        }
-                    }
+                            vertical-stretch: 1;
+                            background: transparent;
 
-                    VerticalLayout {
-                        visible: root.provider_settings_mode == 1;
-                        spacing: 6px;
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "Endpoint";
-                                width: 104px;
-                                color: #4f6074;
-                                vertical-alignment: center;
-                            }
-                            LineEdit {
-                                text <=> root.provider_settings_endpoint;
-                                horizontal-stretch: 1;
-                                height: 28px;
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "API Key";
-                                width: 104px;
-                                color: #4f6074;
-                                vertical-alignment: center;
-                            }
-                            LineEdit {
-                                text <=> root.provider_settings_api_key;
-                                input-type: root.provider_settings_show_api_key ? InputType.text : InputType.password;
-                                horizontal-stretch: 1;
-                                height: 28px;
-                            }
-                            ToolButton {
-                                label: root.provider_settings_show_api_key ? "Hide" : "Show";
-                                button_min_width: 62px;
-                                control_height: 27px;
-                                tapped => {
-                                    root.provider_settings_show_api_key = !root.provider_settings_show_api_key;
+                            if root.settings_section == 0 : VerticalLayout {
+                                spacing: 10px;
+
+                                Text {
+                                    text: "Provider";
+                                    color: #3b4a5b;
+                                    font-size: 15px;
+                                }
+                                Text {
+                                    text: "Configure the AI analysis provider used by the Analysis tab.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Mode";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    SegmentedRail {
+                                        height: 30px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "Mock";
+                                                selected: root.settings_provider_mode == 0;
+                                                show_divider: false;
+                                                tapped => {
+                                                    root.settings_provider_mode = 0;
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "OpenAI-compatible";
+                                                selected: root.settings_provider_mode == 1;
+                                                show_divider: true;
+                                                tapped => {
+                                                    root.settings_provider_mode = 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Timeout";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    AppLineEdit {
+                                        text <=> root.settings_provider_timeout;
+                                        width: 140px;
+                                        height: 28px;
+                                    }
+                                    Text {
+                                        text: "seconds";
+                                        color: #778595;
+                                        vertical-alignment: center;
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                if root.settings_provider_mode == 1 : VerticalLayout {
+                                    spacing: 6px;
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: "Endpoint";
+                                            width: 110px;
+                                            color: #4f6074;
+                                            vertical-alignment: center;
+                                        }
+                                        AppLineEdit {
+                                            text <=> root.settings_provider_endpoint;
+                                            horizontal-stretch: 1;
+                                            height: 28px;
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: "API Key";
+                                            width: 110px;
+                                            color: #4f6074;
+                                            vertical-alignment: center;
+                                        }
+                                        ApiKeyLineEdit {
+                                            text <=> root.settings_provider_api_key;
+                                            horizontal-stretch: 1;
+                                            height: 28px;
+                                            revealed <=> root.settings_provider_show_api_key;
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: "Model";
+                                            width: 110px;
+                                            color: #4f6074;
+                                            vertical-alignment: center;
+                                        }
+                                        AppLineEdit {
+                                            text <=> root.settings_provider_model;
+                                            horizontal-stretch: 1;
+                                            height: 28px;
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    vertical-stretch: 1;
                                 }
                             }
-                        }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: "Model";
-                                width: 104px;
-                                color: #4f6074;
-                                vertical-alignment: center;
-                            }
-                            LineEdit {
-                                text <=> root.provider_settings_model;
-                                horizontal-stretch: 1;
-                                height: 28px;
+
+                            if root.settings_section == 1 : VerticalLayout {
+                                spacing: 10px;
+
+                                Text {
+                                    text: "Behavior";
+                                    color: #3b4a5b;
+                                    font-size: 15px;
+                                }
+                                Text {
+                                    text: "Control the default noise level and presentation of Results / Navigator.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Hidden files";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    SegmentedRail {
+                                        width: 220px;
+                                        height: 30px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "Show";
+                                                selected: root.settings_show_hidden_files;
+                                                show_divider: false;
+                                                tapped => {
+                                                    root.settings_show_hidden_files = true;
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Hide";
+                                                selected: !root.settings_show_hidden_files;
+                                                show_divider: true;
+                                                tapped => {
+                                                    root.settings_show_hidden_files = false;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Text {
+                                    text: "Applies to dot-prefixed files and folders in Results / Navigator. Save updates the current result list immediately and also affects future compares.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                Rectangle {
+                                    vertical-stretch: 1;
+                                }
                             }
                         }
                     }
 
                     Text {
-                        visible: root.provider_settings_error_text != "";
-                        text: root.provider_settings_error_text;
+                        visible: root.settings_error_text != "";
+                        text: root.settings_error_text;
                         color: #8c1d1d;
                         wrap: word-wrap;
                         horizontal-stretch: 1;
@@ -2466,8 +3652,8 @@ slint::slint! {
                             button_min_width: 108px;
                             control_height: 30px;
                             tapped => {
-                                root.provider_settings_open = false;
-                                root.provider_settings_cancel_clicked();
+                                root.settings_open = false;
+                                root.settings_cancel_clicked();
                             }
                         }
                         ToolButton {
@@ -2476,7 +3662,7 @@ slint::slint! {
                             button_min_width: 108px;
                             control_height: 30px;
                             tapped => {
-                                root.provider_settings_save_clicked();
+                                root.settings_save_clicked();
                             }
                         }
                     }
@@ -2520,52 +3706,76 @@ impl Default for LoadingMaskProjection {
 }
 
 #[derive(Debug, Clone)]
-struct LoadingMaskWatchdog {
+struct LoadingMaskState {
     phase: LoadingMaskPhase,
-    phase_started_at: Option<Instant>,
+    generation: u64,
+    timeout_reached: bool,
     last_projection: LoadingMaskProjection,
 }
 
-impl Default for LoadingMaskWatchdog {
+impl Default for LoadingMaskState {
     fn default() -> Self {
         Self {
             phase: LoadingMaskPhase::Idle,
-            phase_started_at: None,
+            generation: 0,
+            timeout_reached: false,
             last_projection: LoadingMaskProjection::default(),
         }
     }
 }
 
-impl LoadingMaskWatchdog {
-    fn tick(
+impl LoadingMaskState {
+    fn advance(
         &mut self,
         running: bool,
         diff_loading: bool,
         analysis_loading: bool,
-        now: Instant,
-    ) -> Option<LoadingMaskProjection> {
+    ) -> (Option<LoadingMaskProjection>, Option<u64>) {
         let phase = derive_loading_mask_phase(running, diff_loading, analysis_loading);
-        if phase == LoadingMaskPhase::Idle {
-            self.phase = LoadingMaskPhase::Idle;
-            self.phase_started_at = None;
-        } else if self.phase != phase {
+        let phase_changed = self.phase != phase;
+        if phase_changed {
             self.phase = phase;
-            self.phase_started_at = Some(now);
-        } else if self.phase_started_at.is_none() {
-            self.phase_started_at = Some(now);
+            self.generation = self.generation.wrapping_add(1);
+            self.timeout_reached = false;
         }
 
-        let timeout_reached = phase != LoadingMaskPhase::Idle
-            && self
-                .phase_started_at
-                .map(|start| now.duration_since(start) >= LOADING_MASK_TIMEOUT)
-                .unwrap_or(false);
         let projection = derive_loading_mask_projection(
             running,
             diff_loading,
             analysis_loading,
-            timeout_reached,
+            self.timeout_reached,
         );
+        let timeout_generation = if phase_changed && phase != LoadingMaskPhase::Idle {
+            Some(self.generation)
+        } else {
+            None
+        };
+        if projection == self.last_projection {
+            return (None, timeout_generation);
+        }
+        self.last_projection = projection;
+        (Some(projection), timeout_generation)
+    }
+
+    fn trigger_timeout(&mut self, generation: u64) -> Option<LoadingMaskProjection> {
+        if self.phase == LoadingMaskPhase::Idle
+            || self.generation != generation
+            || self.timeout_reached
+        {
+            return None;
+        }
+
+        self.timeout_reached = true;
+        let projection = match self.phase {
+            LoadingMaskPhase::Comparing => derive_loading_mask_projection(true, false, false, true),
+            LoadingMaskPhase::DiffLoading => {
+                derive_loading_mask_projection(false, true, false, true)
+            }
+            LoadingMaskPhase::AnalysisLoading => {
+                derive_loading_mask_projection(false, false, true, true)
+            }
+            LoadingMaskPhase::Idle => LoadingMaskProjection::default(),
+        };
         if projection == self.last_projection {
             return None;
         }
@@ -2623,6 +3833,78 @@ fn apply_loading_mask_projection(window: &MainWindow, projection: LoadingMaskPro
     window.set_sidebar_loading_mask_visible(projection.sidebar_visible);
     window.set_workspace_loading_mask_visible(projection.workspace_visible);
     window.set_loading_mask_text(projection.message.into());
+}
+
+#[derive(Clone)]
+struct LoadingMaskController {
+    inner: Arc<Mutex<LoadingMaskControllerInner>>,
+}
+
+struct LoadingMaskControllerInner {
+    window: slint::Weak<MainWindow>,
+    state: LoadingMaskState,
+}
+
+impl LoadingMaskController {
+    fn new(window: &MainWindow) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(LoadingMaskControllerInner {
+                window: window.as_weak(),
+                state: LoadingMaskState::default(),
+            })),
+        }
+    }
+
+    fn sync(&self, running: bool, diff_loading: bool, analysis_loading: bool) {
+        let (projection, timeout_generation) = {
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("loading mask controller mutex poisoned");
+            inner.state.advance(running, diff_loading, analysis_loading)
+        };
+
+        if let Some(projection) = projection {
+            self.render_projection(projection);
+        }
+        if let Some(generation) = timeout_generation {
+            self.schedule_timeout(generation);
+        }
+    }
+
+    fn schedule_timeout(&self, generation: u64) {
+        let controller = self.clone();
+        Timer::single_shot(LOADING_MASK_TIMEOUT, move || {
+            controller.on_timeout(generation);
+        });
+    }
+
+    fn on_timeout(&self, generation: u64) {
+        let projection = {
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("loading mask controller mutex poisoned");
+            inner.state.trigger_timeout(generation)
+        };
+        if let Some(projection) = projection {
+            self.render_projection(projection);
+        }
+    }
+
+    fn render_projection(&self, projection: LoadingMaskProjection) {
+        let window = {
+            let inner = self
+                .inner
+                .lock()
+                .expect("loading mask controller mutex poisoned");
+            inner.window.clone()
+        };
+        let Some(window) = window.upgrade() else {
+            return;
+        };
+        apply_loading_mask_projection(&window, projection);
+    }
 }
 
 #[derive(Clone)]
@@ -2830,6 +4112,7 @@ fn should_refresh_result_models(last_state: Option<&AppState>, next_state: &AppS
             last.entry_rows != next_state.entry_rows
                 || last.entry_filter != next_state.entry_filter
                 || last.entry_status_filter != next_state.entry_status_filter
+                || last.show_hidden_files != next_state.show_hidden_files
         }
     }
 }
@@ -2841,6 +4124,33 @@ fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppSta
         None => true,
         Some(last) => last.selected_diff != next_state.selected_diff,
     }
+}
+
+fn initialize_window_models(window: &MainWindow) {
+    window.set_row_statuses(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_paths(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_details(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_display_names(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_parent_paths(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_tooltip_texts(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_secondary_texts(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_row_source_indices(Rc::new(VecModel::<i32>::default()).into());
+    window.set_row_can_load_diff(Rc::new(VecModel::<bool>::default()).into());
+    window.set_row_display_name_matches(Rc::new(VecModel::<bool>::default()).into());
+    window.set_row_parent_path_matches(Rc::new(VecModel::<bool>::default()).into());
+    window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_old_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_new_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_markers(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_diff_contents(Rc::new(VecModel::<SharedString>::default()).into());
+}
+
+fn replace_model_contents<T: Clone + 'static>(model: ModelRc<T>, next_rows: Vec<T>, name: &str) {
+    let vec_model = model
+        .as_any()
+        .downcast_ref::<VecModel<T>>()
+        .unwrap_or_else(|| panic!("{name} must be initialized as VecModel"));
+    vec_model.set_vec(next_rows);
 }
 
 // Contract: state -> window projection.
@@ -2863,12 +4173,16 @@ fn sync_window_state(
     window.set_summary_text(state.summary_text.clone().into());
     window.set_compact_summary_text(state.compact_summary_text().into());
     window.set_compare_metrics_text(state.compare_metrics_text().into());
+    window.set_compare_status_note_text(state.compare_status_note_text().into());
+    window.set_compare_status_has_detail(state.compare_status_has_detail());
+    window.set_compare_summary_copy_text(state.compare_summary_copy_text().into());
+    window.set_compare_detail_copy_text(state.compare_detail_copy_text().into());
     window.set_warnings_text(state.warnings_text().into());
     window.set_error_text(state.error_message.clone().unwrap_or_default().into());
     window.set_compare_truncated(state.truncated);
     window.set_compare_has_deferred(state.compare_has_deferred());
     window.set_compare_has_oversized(state.compare_has_oversized());
-    window.set_filter_stats_text(state.filter_stats_text().into());
+    window.set_results_collection_text(state.results_collection_text().into());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
     window.set_selected_relative_path_raw(
@@ -2939,7 +4253,8 @@ fn sync_window_state(
     );
     window.set_analysis_notes_copy_text(state.analysis_notes_copy_text().into());
     window.set_analysis_full_copy_text(state.analysis_full_copy_text().into());
-    window.set_provider_settings_error_text(state.provider_settings_error_text().into());
+    window.set_show_hidden_files(state.show_hidden_files);
+    window.set_settings_error_text(state.settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     window.set_selected_row_status(state.selected_row_status_text().into());
     window.set_diff_mode_label(state.diff_mode_label().into());
@@ -2958,32 +4273,94 @@ fn sync_window_state(
     window.set_diff_shell_note_text(state.diff_shell_note_text().into());
     window.set_diff_content_char_capacity(state.diff_content_char_capacity());
     if should_refresh_result_models(last_state, state) {
-        let filtered_rows = state.filtered_entry_rows_with_index();
-        let row_statuses = filtered_rows
+        let projected_rows = state.navigator_row_projections();
+        let row_statuses = projected_rows
             .iter()
-            .map(|(_, row)| SharedString::from(row.status.clone()))
+            .map(|projection| SharedString::from(projection.row.status.clone()))
             .collect::<Vec<_>>();
-        window.set_row_statuses(ModelRc::new(VecModel::from(row_statuses)));
-        let row_paths = filtered_rows
+        replace_model_contents(window.get_row_statuses(), row_statuses, "row_statuses");
+        let row_paths = projected_rows
             .iter()
-            .map(|(_, row)| SharedString::from(row.relative_path.clone()))
+            .map(|projection| SharedString::from(projection.row.relative_path.clone()))
             .collect::<Vec<_>>();
-        window.set_row_paths(ModelRc::new(VecModel::from(row_paths)));
-        let row_details = filtered_rows
+        replace_model_contents(window.get_row_paths(), row_paths, "row_paths");
+        let row_details = projected_rows
             .iter()
-            .map(|(_, row)| SharedString::from(row.detail.clone()))
+            .map(|projection| SharedString::from(projection.row.detail.clone()))
             .collect::<Vec<_>>();
-        window.set_row_details(ModelRc::new(VecModel::from(row_details)));
-        let row_source_indices = filtered_rows
+        replace_model_contents(window.get_row_details(), row_details, "row_details");
+        let row_display_names = projected_rows
             .iter()
-            .map(|(index, _)| *index as i32)
+            .map(|projection| SharedString::from(projection.display_name.clone()))
             .collect::<Vec<_>>();
-        window.set_row_source_indices(ModelRc::new(VecModel::from(row_source_indices)));
-        let row_can_load_diff = filtered_rows
+        replace_model_contents(
+            window.get_row_display_names(),
+            row_display_names,
+            "row_display_names",
+        );
+        let row_parent_paths = projected_rows
             .iter()
-            .map(|(_, row)| row.can_load_diff)
+            .map(|projection| SharedString::from(projection.parent_path.clone()))
             .collect::<Vec<_>>();
-        window.set_row_can_load_diff(ModelRc::new(VecModel::from(row_can_load_diff)));
+        replace_model_contents(
+            window.get_row_parent_paths(),
+            row_parent_paths,
+            "row_parent_paths",
+        );
+        let row_tooltip_texts = projected_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.tooltip_text.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_tooltip_texts(),
+            row_tooltip_texts,
+            "row_tooltip_texts",
+        );
+        let row_secondary_texts = projected_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.secondary_text.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_secondary_texts(),
+            row_secondary_texts,
+            "row_secondary_texts",
+        );
+        let row_source_indices = projected_rows
+            .iter()
+            .map(|projection| projection.source_index as i32)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_source_indices(),
+            row_source_indices,
+            "row_source_indices",
+        );
+        let row_can_load_diff = projected_rows
+            .iter()
+            .map(|projection| projection.row.can_load_diff)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_can_load_diff(),
+            row_can_load_diff,
+            "row_can_load_diff",
+        );
+        let row_display_name_matches = projected_rows
+            .iter()
+            .map(|projection| projection.display_name_matches_filter)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_display_name_matches(),
+            row_display_name_matches,
+            "row_display_name_matches",
+        );
+        let row_parent_path_matches = projected_rows
+            .iter()
+            .map(|projection| projection.parent_path_matches_filter)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_row_parent_path_matches(),
+            row_parent_path_matches,
+            "row_parent_path_matches",
+        );
     }
 
     if should_refresh_diff_models(last_state, state) {
@@ -2992,62 +4369,146 @@ fn sync_window_state(
             .iter()
             .map(|row| SharedString::from(row.row_kind.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_row_kinds(ModelRc::new(VecModel::from(diff_row_kinds)));
+        replace_model_contents(
+            window.get_diff_row_kinds(),
+            diff_row_kinds,
+            "diff_row_kinds",
+        );
         let diff_old_line_nos = diff_rows
             .iter()
             .map(|row| SharedString::from(row.old_line_no.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_old_line_nos(ModelRc::new(VecModel::from(diff_old_line_nos)));
+        replace_model_contents(
+            window.get_diff_old_line_nos(),
+            diff_old_line_nos,
+            "diff_old_line_nos",
+        );
         let diff_new_line_nos = diff_rows
             .iter()
             .map(|row| SharedString::from(row.new_line_no.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_new_line_nos(ModelRc::new(VecModel::from(diff_new_line_nos)));
+        replace_model_contents(
+            window.get_diff_new_line_nos(),
+            diff_new_line_nos,
+            "diff_new_line_nos",
+        );
         let diff_markers = diff_rows
             .iter()
             .map(|row| SharedString::from(row.marker.clone()))
             .collect::<Vec<_>>();
-        window.set_diff_markers(ModelRc::new(VecModel::from(diff_markers)));
+        replace_model_contents(window.get_diff_markers(), diff_markers, "diff_markers");
         let diff_contents = diff_rows
             .into_iter()
             .map(|row| SharedString::from(row.content))
             .collect::<Vec<_>>();
-        window.set_diff_contents(ModelRc::new(VecModel::from(diff_contents)));
+        replace_model_contents(window.get_diff_contents(), diff_contents, "diff_contents");
     }
 }
 
-// Contract: cache-aware sync wrapper used by timer + callbacks.
-fn sync_window_state_if_changed(
+fn sync_window_snapshot_if_changed(
     window: &MainWindow,
-    bridge: &UiBridge,
+    state: AppState,
     cache: &Arc<Mutex<Option<AppState>>>,
-    context_menu_controller: &ContextMenuController,
+    context_menu_controller: Option<&ContextMenuController>,
+    loading_mask_controller: &LoadingMaskController,
     mode: SyncMode,
 ) {
-    let state = bridge.snapshot();
     let mut cache_guard = cache.lock().expect("sync cache mutex poisoned");
     if should_skip_sync(cache_guard.as_ref(), &state) {
         return;
     }
     if let Some(last_state) = cache_guard.as_ref() {
-        if should_close_for_sync_transition(
-            derive_context_menu_sync_state(last_state),
-            derive_context_menu_sync_state(&state),
-        ) {
-            context_menu_controller.close();
+        if let Some(context_menu_controller) = context_menu_controller {
+            if should_close_for_sync_transition(
+                derive_context_menu_sync_state(last_state),
+                derive_context_menu_sync_state(&state),
+            ) {
+                context_menu_controller.close();
+            }
         }
     }
     sync_window_state(window, &state, mode, cache_guard.as_ref());
-    // Keep loading-mask projection aligned with the latest synced busy flags,
-    // so short-lived diff loading started from row selection can still render immediately.
-    let immediate_projection = derive_loading_mask_projection(
-        state.running,
-        state.diff_loading,
-        state.analysis_loading,
-        false,
-    );
-    apply_loading_mask_projection(window, immediate_projection);
+    loading_mask_controller.sync(state.running, state.diff_loading, state.analysis_loading);
     *cache_guard = Some(state);
+}
+
+// Contract: cache-aware sync wrapper used by UI-thread callbacks.
+fn sync_window_state_if_changed(
+    window: &MainWindow,
+    bridge: &UiBridge,
+    cache: &Arc<Mutex<Option<AppState>>>,
+    context_menu_controller: Option<&ContextMenuController>,
+    loading_mask_controller: &LoadingMaskController,
+    mode: SyncMode,
+) {
+    sync_window_snapshot_if_changed(
+        window,
+        bridge.snapshot(),
+        cache,
+        context_menu_controller,
+        loading_mask_controller,
+        mode,
+    );
+}
+
+#[derive(Clone)]
+struct UiSyncController {
+    inner: Arc<UiSyncControllerInner>,
+}
+
+struct UiSyncControllerInner {
+    window: slint::Weak<MainWindow>,
+    state: Arc<Mutex<AppState>>,
+    cache: Arc<Mutex<Option<AppState>>>,
+    loading_mask_controller: LoadingMaskController,
+    pending: AtomicBool,
+}
+
+impl UiSyncController {
+    fn new(
+        window: &MainWindow,
+        state: Arc<Mutex<AppState>>,
+        cache: Arc<Mutex<Option<AppState>>>,
+        loading_mask_controller: LoadingMaskController,
+    ) -> Self {
+        Self {
+            inner: Arc::new(UiSyncControllerInner {
+                window: window.as_weak(),
+                state,
+                cache,
+                loading_mask_controller,
+                pending: AtomicBool::new(false),
+            }),
+        }
+    }
+
+    fn request_passive_sync(&self) {
+        if self.inner.pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        let controller = self.clone();
+        let enqueue_result = self.inner.window.upgrade_in_event_loop(move |window| {
+            controller.inner.pending.store(false, Ordering::Release);
+            let state = controller
+                .inner
+                .state
+                .lock()
+                .expect("app state mutex poisoned")
+                .clone();
+            sync_window_snapshot_if_changed(
+                &window,
+                state,
+                &controller.inner.cache,
+                None,
+                &controller.inner.loading_mask_controller,
+                SyncMode::Passive,
+            );
+        });
+        if enqueue_result.is_err() {
+            self.inner.pending.store(false, Ordering::Release);
+        }
+    }
 }
 
 fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
@@ -3186,56 +4647,37 @@ fn copy_text_with_feedback(toast_controller: &ToastController, text: &str, feedb
 
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
+    window_chrome::install_platform_windowing()?;
     let app = MainWindow::new().map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    app.set_immersive_titlebar_enabled(window_chrome::immersive_titlebar_enabled());
+    app.set_titlebar_visual_height(window_chrome::titlebar_visual_height().into());
+    app.set_titlebar_leading_inset(window_chrome::titlebar_leading_inset().into());
+    initialize_window_models(&app);
 
     let state = Arc::new(Mutex::new(AppState::default()));
-    let presenter = Presenter::new(state);
-    let bridge = UiBridge::new(presenter);
+    let presenter = Presenter::new(Arc::clone(&state));
+    let bridge = UiBridge::new(presenter.clone());
     bridge.dispatch(UiCommand::Initialize);
     let initial_state = bridge.snapshot();
     sync_window_state(&app, &initial_state, SyncMode::Full, None);
-    let sync_cache = Arc::new(Mutex::new(Some(initial_state)));
+    let sync_cache = Arc::new(Mutex::new(Some(initial_state.clone())));
     let toast_controller = ToastController::new(&app);
     let context_menu_controller = ContextMenuController::new(&app);
-
-    // Contract: background UI polling loop.
-    // Polls presenter busy flags and performs passive sync only when runtime busy-state diverges from window state.
-    let ui_refresh_timer = Timer::default();
-    let loading_mask_watchdog = Rc::new(RefCell::new(LoadingMaskWatchdog::default()));
-    let app_weak = app.as_weak();
-    let refresh_bridge = bridge.clone();
-    let refresh_cache = Arc::clone(&sync_cache);
-    let refresh_loading_mask_watchdog = Rc::clone(&loading_mask_watchdog);
-    let refresh_context_menu_controller = context_menu_controller.clone();
-    ui_refresh_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
-        let Some(window) = app_weak.upgrade() else {
-            return;
-        };
-        let bridge_busy = refresh_bridge.busy_flags();
-        let window_busy = (
-            window.get_running(),
-            window.get_diff_loading(),
-            window.get_analysis_loading(),
-        );
-        if bridge_busy != window_busy {
-            sync_window_state_if_changed(
-                &window,
-                &refresh_bridge,
-                &refresh_cache,
-                &refresh_context_menu_controller,
-                SyncMode::Passive,
-            );
-        }
-        let mut watchdog = refresh_loading_mask_watchdog.borrow_mut();
-        if let Some(projection) = watchdog.tick(
-            window.get_running(),
-            window.get_diff_loading(),
-            window.get_analysis_loading(),
-            Instant::now(),
-        ) {
-            apply_loading_mask_projection(&window, projection);
-        }
-    });
+    let loading_mask_controller = LoadingMaskController::new(&app);
+    loading_mask_controller.sync(
+        initial_state.running,
+        initial_state.diff_loading,
+        initial_state.analysis_loading,
+    );
+    let async_sync_controller = UiSyncController::new(
+        &app,
+        Arc::clone(&state),
+        Arc::clone(&sync_cache),
+        loading_mask_controller.clone(),
+    );
+    presenter.set_state_change_notifier(Arc::new(move || {
+        async_sync_controller.request_passive_sync();
+    }));
 
     // Contract: UI event dispatch and bridge binding.
     // Each callback converts UI intent into UiCommand(s), then triggers passive sync.
@@ -3243,6 +4685,33 @@ pub fn run() -> anyhow::Result<()> {
     let close_context_menu_controller = context_menu_controller.clone();
     app.on_context_menu_close_requested(move || {
         close_context_menu_controller.close();
+    });
+
+    let app_weak = app.as_weak();
+    app.on_titlebar_drag_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        window_chrome::request_titlebar_drag(&window.window());
+    });
+
+    let app_weak = app.as_weak();
+    let compare_status_context_menu_controller = context_menu_controller.clone();
+    app.on_compare_status_context_menu_requested(move |summary_text, detail_text| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+        let payload = build_compare_status_payload(summary_text.as_str(), detail_text.as_str());
+        let target_token = format!(
+            "compare-status:{}",
+            window
+                .get_status_text()
+                .to_string()
+                .trim()
+                .to_ascii_lowercase()
+        );
+        compare_status_context_menu_controller
+            .open(ContextMenuOpenRequest::builtin_only(target_token, payload));
     });
 
     let app_weak = app.as_weak();
@@ -3320,12 +4789,14 @@ pub fn run() -> anyhow::Result<()> {
     let compare_bridge = bridge.clone();
     let compare_cache = Arc::clone(&sync_cache);
     let compare_context_menu_controller = context_menu_controller.clone();
+    let compare_loading_mask_controller = loading_mask_controller.clone();
     app.on_compare_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         compare_context_menu_controller.close();
+        window.set_compare_status_details_expanded(false);
         compare_bridge.dispatch(UiCommand::UpdateLeftRoot(
             window.get_left_root().to_string(),
         ));
@@ -3337,7 +4808,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &compare_bridge,
             &compare_cache,
-            &compare_context_menu_controller,
+            Some(&compare_context_menu_controller),
+            &compare_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3376,6 +4848,7 @@ pub fn run() -> anyhow::Result<()> {
     let row_bridge = bridge.clone();
     let row_cache = Arc::clone(&sync_cache);
     let row_context_menu_controller = context_menu_controller.clone();
+    let row_loading_mask_controller = loading_mask_controller.clone();
     app.on_row_selected(move |index| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3397,7 +4870,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &row_bridge,
             &row_cache,
-            &row_context_menu_controller,
+            Some(&row_context_menu_controller),
+            &row_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3406,6 +4880,7 @@ pub fn run() -> anyhow::Result<()> {
     let filter_bridge = bridge.clone();
     let filter_cache = Arc::clone(&sync_cache);
     let filter_context_menu_controller = context_menu_controller.clone();
+    let filter_loading_mask_controller = loading_mask_controller.clone();
     app.on_filter_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3416,7 +4891,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &filter_bridge,
             &filter_cache,
-            &filter_context_menu_controller,
+            Some(&filter_context_menu_controller),
+            &filter_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3425,6 +4901,7 @@ pub fn run() -> anyhow::Result<()> {
     let status_filter_bridge = bridge.clone();
     let status_filter_cache = Arc::clone(&sync_cache);
     let status_filter_context_menu_controller = context_menu_controller.clone();
+    let status_filter_loading_mask_controller = loading_mask_controller.clone();
     app.on_status_filter_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3435,7 +4912,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &status_filter_bridge,
             &status_filter_cache,
-            &status_filter_context_menu_controller,
+            Some(&status_filter_context_menu_controller),
+            &status_filter_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3453,81 +4931,88 @@ pub fn run() -> anyhow::Result<()> {
         );
     });
 
-    // Provider settings lifecycle callbacks (open/cancel/save).
+    // Settings lifecycle callbacks (open/cancel/save).
     let app_weak = app.as_weak();
-    let provider_settings_bridge = bridge.clone();
-    let provider_settings_cache = Arc::clone(&sync_cache);
-    let provider_settings_context_menu_controller = context_menu_controller.clone();
-    app.on_provider_settings_clicked(move || {
+    let settings_bridge = bridge.clone();
+    let settings_cache = Arc::clone(&sync_cache);
+    let settings_context_menu_controller = context_menu_controller.clone();
+    let settings_loading_mask_controller = loading_mask_controller.clone();
+    app.on_settings_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
-        provider_settings_context_menu_controller.close();
-        provider_settings_bridge.dispatch(UiCommand::ClearProviderSettingsError);
+        settings_context_menu_controller.close();
+        settings_bridge.dispatch(UiCommand::ClearSettingsError);
         sync_window_state_if_changed(
             &window,
-            &provider_settings_bridge,
-            &provider_settings_cache,
-            &provider_settings_context_menu_controller,
+            &settings_bridge,
+            &settings_cache,
+            Some(&settings_context_menu_controller),
+            &settings_loading_mask_controller,
             SyncMode::Passive,
         );
     });
 
     let app_weak = app.as_weak();
-    let provider_settings_cancel_bridge = bridge.clone();
-    let provider_settings_cancel_cache = Arc::clone(&sync_cache);
-    let provider_settings_cancel_context_menu_controller = context_menu_controller.clone();
-    app.on_provider_settings_cancel_clicked(move || {
+    let settings_cancel_bridge = bridge.clone();
+    let settings_cancel_cache = Arc::clone(&sync_cache);
+    let settings_cancel_context_menu_controller = context_menu_controller.clone();
+    let settings_cancel_loading_mask_controller = loading_mask_controller.clone();
+    app.on_settings_cancel_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
-        provider_settings_cancel_context_menu_controller.close();
-        provider_settings_cancel_bridge.dispatch(UiCommand::ClearProviderSettingsError);
+        settings_cancel_context_menu_controller.close();
+        settings_cancel_bridge.dispatch(UiCommand::ClearSettingsError);
         sync_window_state_if_changed(
             &window,
-            &provider_settings_cancel_bridge,
-            &provider_settings_cancel_cache,
-            &provider_settings_cancel_context_menu_controller,
+            &settings_cancel_bridge,
+            &settings_cancel_cache,
+            Some(&settings_cancel_context_menu_controller),
+            &settings_cancel_loading_mask_controller,
             SyncMode::Passive,
         );
     });
 
     let app_weak = app.as_weak();
-    let provider_settings_save_bridge = bridge.clone();
-    let provider_settings_save_cache = Arc::clone(&sync_cache);
-    let provider_settings_toast_controller = toast_controller.clone();
-    let provider_settings_save_context_menu_controller = context_menu_controller.clone();
-    app.on_provider_settings_save_clicked(move || {
+    let settings_save_bridge = bridge.clone();
+    let settings_save_cache = Arc::clone(&sync_cache);
+    let settings_toast_controller = toast_controller.clone();
+    let settings_save_context_menu_controller = context_menu_controller.clone();
+    let settings_save_loading_mask_controller = loading_mask_controller.clone();
+    app.on_settings_save_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
-        provider_settings_save_context_menu_controller.close();
-        let provider_kind = if window.get_provider_settings_mode() == 1 {
+        settings_save_context_menu_controller.close();
+        let provider_kind = if window.get_settings_provider_mode() == 1 {
             AiProviderKind::OpenAiCompatible
         } else {
             AiProviderKind::Mock
         };
-        provider_settings_save_bridge.dispatch(UiCommand::SaveProviderSettings {
+        settings_save_bridge.dispatch(UiCommand::SaveAppSettings {
             provider_kind,
-            endpoint: window.get_provider_settings_endpoint().to_string(),
-            api_key: window.get_provider_settings_api_key().to_string(),
-            model: window.get_provider_settings_model().to_string(),
-            timeout_secs_text: window.get_provider_settings_timeout().to_string(),
+            endpoint: window.get_settings_provider_endpoint().to_string(),
+            api_key: window.get_settings_provider_api_key().to_string(),
+            model: window.get_settings_provider_model().to_string(),
+            timeout_secs_text: window.get_settings_provider_timeout().to_string(),
+            show_hidden_files: window.get_settings_show_hidden_files(),
         });
         sync_window_state_if_changed(
             &window,
-            &provider_settings_save_bridge,
-            &provider_settings_save_cache,
-            &provider_settings_save_context_menu_controller,
+            &settings_save_bridge,
+            &settings_save_cache,
+            Some(&settings_save_context_menu_controller),
+            &settings_save_loading_mask_controller,
             SyncMode::Passive,
         );
-        if window.get_provider_settings_error_text().is_empty() {
-            window.set_provider_settings_open(false);
-            provider_settings_toast_controller.dispatch(ToastRequest::new(
-                "Provider settings saved",
+        if window.get_settings_error_text().is_empty() {
+            window.set_settings_open(false);
+            settings_toast_controller.dispatch(ToastRequest::new(
+                "Settings saved",
                 ToastTone::Success,
                 ToastPlacement::Toast,
             ));
@@ -3539,6 +5024,7 @@ pub fn run() -> anyhow::Result<()> {
     let analysis_bridge = bridge.clone();
     let analysis_cache = Arc::clone(&sync_cache);
     let analyze_context_menu_controller = context_menu_controller.clone();
+    let analysis_loading_mask_controller = loading_mask_controller.clone();
     app.on_analyze_clicked(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3559,7 +5045,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &analysis_bridge,
             &analysis_cache,
-            &analyze_context_menu_controller,
+            Some(&analyze_context_menu_controller),
+            &analysis_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3569,6 +5056,7 @@ pub fn run() -> anyhow::Result<()> {
     let provider_bridge = bridge.clone();
     let provider_cache = Arc::clone(&sync_cache);
     let provider_mock_context_menu_controller = context_menu_controller.clone();
+    let provider_mock_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_provider_mock_selected(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3579,7 +5067,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_bridge,
             &provider_cache,
-            &provider_mock_context_menu_controller,
+            Some(&provider_mock_context_menu_controller),
+            &provider_mock_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3588,6 +5077,7 @@ pub fn run() -> anyhow::Result<()> {
     let provider_bridge = bridge.clone();
     let provider_cache = Arc::clone(&sync_cache);
     let provider_openai_context_menu_controller = context_menu_controller.clone();
+    let provider_openai_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_provider_openai_selected(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3598,7 +5088,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &provider_bridge,
             &provider_cache,
-            &provider_openai_context_menu_controller,
+            Some(&provider_openai_context_menu_controller),
+            &provider_openai_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3608,6 +5099,7 @@ pub fn run() -> anyhow::Result<()> {
     let endpoint_bridge = bridge.clone();
     let endpoint_cache = Arc::clone(&sync_cache);
     let endpoint_context_menu_controller = context_menu_controller.clone();
+    let endpoint_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_endpoint_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3618,7 +5110,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &endpoint_bridge,
             &endpoint_cache,
-            &endpoint_context_menu_controller,
+            Some(&endpoint_context_menu_controller),
+            &endpoint_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3627,6 +5120,7 @@ pub fn run() -> anyhow::Result<()> {
     let api_key_bridge = bridge.clone();
     let api_key_cache = Arc::clone(&sync_cache);
     let api_key_context_menu_controller = context_menu_controller.clone();
+    let api_key_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_api_key_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3637,7 +5131,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &api_key_bridge,
             &api_key_cache,
-            &api_key_context_menu_controller,
+            Some(&api_key_context_menu_controller),
+            &api_key_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3646,6 +5141,7 @@ pub fn run() -> anyhow::Result<()> {
     let model_bridge = bridge.clone();
     let model_cache = Arc::clone(&sync_cache);
     let model_context_menu_controller = context_menu_controller.clone();
+    let model_loading_mask_controller = loading_mask_controller.clone();
     app.on_analysis_model_changed(move |value| {
         let Some(window) = app_weak.upgrade() else {
             return;
@@ -3656,7 +5152,8 @@ pub fn run() -> anyhow::Result<()> {
             &window,
             &model_bridge,
             &model_cache,
-            &model_context_menu_controller,
+            Some(&model_context_menu_controller),
+            &model_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -3668,7 +5165,6 @@ pub fn run() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn passive_mode_does_not_sync_editable_inputs() {
@@ -3746,32 +5242,20 @@ mod tests {
     }
 
     #[test]
-    fn loading_mask_watchdog_resets_on_phase_change() {
-        let mut watchdog = LoadingMaskWatchdog::default();
-        let now = Instant::now();
-        let started = watchdog
-            .tick(false, true, false, now)
-            .expect("first diff-loading projection should be emitted");
+    fn loading_mask_state_resets_timeout_on_phase_change() {
+        let mut state = LoadingMaskState::default();
+        let (started, generation) = state.advance(false, true, false);
+        let started = started.expect("first diff-loading projection should be emitted");
         assert_eq!(started.message, "Loading diff...");
+        let generation = generation.expect("diff-loading phase should schedule a timeout");
 
-        let timed_out = watchdog
-            .tick(
-                false,
-                true,
-                false,
-                now + LOADING_MASK_TIMEOUT + Duration::from_millis(1),
-            )
+        let timed_out = state
+            .trigger_timeout(generation)
             .expect("timeout transition should emit degraded copy");
         assert_eq!(timed_out.message, "Taking longer than expected...");
 
-        let analysis_reset = watchdog
-            .tick(
-                false,
-                false,
-                true,
-                now + LOADING_MASK_TIMEOUT + Duration::from_millis(2),
-            )
-            .expect("phase switch should reset timeout copy");
+        let (analysis_reset, _) = state.advance(false, false, true);
+        let analysis_reset = analysis_reset.expect("phase switch should reset timeout copy");
         assert_eq!(analysis_reset.message, "Running AI analysis...");
     }
 }

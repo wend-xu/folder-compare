@@ -8,12 +8,18 @@ const WARNING_WRAP_COLUMNS: usize = 96;
 const PATH_DISPLAY_MAX_CHARS: usize = 140;
 const PATH_DISPLAY_HEAD_CHARS: usize = 90;
 const PATH_DISPLAY_TAIL_CHARS: usize = 45;
+const NAVIGATOR_PARENT_PATH_MAX_CHARS: usize = 52;
+const NAVIGATOR_PARENT_PATH_HEAD_CHARS: usize = 18;
+const NAVIGATOR_PARENT_PATH_TAIL_CHARS: usize = 28;
+const NAVIGATOR_SECONDARY_MAX_CHARS: usize = 96;
 
 /// Diff tab shell state for unified status rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffShellState {
     /// No row selected in Results / Navigator.
     NoSelection,
+    /// A previous file path exists, but the row is no longer active in current results.
+    StaleSelection,
     /// Diff or preview loading is in progress.
     Loading,
     /// Detailed diff payload is ready.
@@ -31,14 +37,41 @@ pub enum DiffShellState {
 pub enum AnalysisPanelState {
     /// No row selected in Results / Navigator.
     NoSelection,
-    /// One row is selected, but no analysis result is available yet.
-    NotStarted,
+    /// A previous file path exists, but the row is no longer active in current results.
+    StaleSelection,
+    /// One row is selected and analysis is waiting for diff context.
+    WaitingForDiff,
+    /// One row is selected and analysis can start immediately.
+    Ready,
+    /// One row is selected, but analysis cannot start for this selection.
+    Unavailable,
     /// AI analysis is currently running.
     Loading,
     /// AI analysis failed in the current session.
     Error,
     /// Structured analysis result is ready.
     Success,
+}
+
+/// One filtered Results / Navigator row with presentation-friendly fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NavigatorRowProjection {
+    /// Source index in the unfiltered compare row vector.
+    pub source_index: usize,
+    /// Original compare row view model.
+    pub row: CompareEntryRowViewModel,
+    /// Primary label shown in the row (usually file name / leaf path segment).
+    pub display_name: String,
+    /// Weak path context used to disambiguate rows with the same display name.
+    pub parent_path: String,
+    /// Secondary summary explaining why this row is diff/equal/left/right.
+    pub secondary_text: String,
+    /// Row-level tooltip completion text (full filename + full parent path when present).
+    pub tooltip_text: String,
+    /// Whether current filter matched the display name.
+    pub display_name_matches_filter: bool,
+    /// Whether current filter matched the weak parent-path context.
+    pub parent_path_matches_filter: bool,
 }
 
 /// In-memory UI state for compare workflow.
@@ -100,8 +133,10 @@ pub struct AppState {
     pub analysis_openai_model: String,
     /// OpenAI-compatible request timeout input in seconds.
     pub analysis_request_timeout_secs: u64,
-    /// Provider settings dialog error message.
-    pub provider_settings_error_message: Option<String>,
+    /// Whether hidden files stay visible in Results / Navigator.
+    pub show_hidden_files: bool,
+    /// Settings dialog error message.
+    pub settings_error_message: Option<String>,
 }
 
 impl Default for AppState {
@@ -135,12 +170,24 @@ impl Default for AppState {
             analysis_openai_api_key: String::new(),
             analysis_openai_model: "gpt-4o-mini".to_string(),
             analysis_request_timeout_secs: 30,
-            provider_settings_error_message: None,
+            show_hidden_files: true,
+            settings_error_message: None,
         }
     }
 }
 
 impl AppState {
+    fn has_selection_path(&self) -> bool {
+        self.selected_relative_path
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    fn has_stale_selection(&self) -> bool {
+        self.selected_row.is_none() && self.has_selection_path()
+    }
+
     fn selected_entry_row(&self) -> Option<&CompareEntryRowViewModel> {
         self.selected_row.and_then(|idx| self.entry_rows.get(idx))
     }
@@ -172,6 +219,36 @@ impl AppState {
             Some(value) => Some(format!("type .{}", value.to_ascii_lowercase())),
             None => Some("type file".to_string()),
         }
+    }
+
+    fn selected_row_can_load_analysis(&self) -> bool {
+        self.selected_entry_row()
+            .map(|row| row.can_load_analysis)
+            .unwrap_or(false)
+    }
+
+    fn analysis_waiting_for_diff_context(&self) -> bool {
+        if self.selected_row.is_none() || !self.selected_row_can_load_analysis() {
+            return false;
+        }
+        if self
+            .diff_error_message
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
+        self.diff_loading || self.selected_diff.is_none()
+    }
+
+    fn analysis_selection_unavailable(&self) -> bool {
+        self.selected_row.is_some()
+            && !self.analysis_loading
+            && self.analysis_result.is_none()
+            && !self.analysis_waiting_for_diff_context()
+            && !self.analysis_can_start_now()
     }
 
     fn diff_payload_unavailable_message(&self) -> Option<String> {
@@ -270,7 +347,11 @@ impl AppState {
     /// Returns normalized Diff shell state for state panel and top header.
     pub fn diff_shell_state(&self) -> DiffShellState {
         if self.selected_row.is_none() {
-            return DiffShellState::NoSelection;
+            return if self.has_stale_selection() {
+                DiffShellState::StaleSelection
+            } else {
+                DiffShellState::NoSelection
+            };
         }
         if self.diff_loading {
             return DiffShellState::Loading;
@@ -299,6 +380,7 @@ impl AppState {
     pub fn diff_shell_state_label(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "No Selection".to_string(),
+            DiffShellState::StaleSelection => "Stale".to_string(),
             DiffShellState::Loading => "Loading".to_string(),
             DiffShellState::DetailedReady => "Detailed Ready".to_string(),
             DiffShellState::PreviewReady => "Preview Ready".to_string(),
@@ -311,6 +393,7 @@ impl AppState {
     pub fn diff_shell_state_token(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "no-selection".to_string(),
+            DiffShellState::StaleSelection => "stale-selection".to_string(),
             DiffShellState::Loading => "loading".to_string(),
             DiffShellState::DetailedReady => "detailed-ready".to_string(),
             DiffShellState::PreviewReady => "preview-ready".to_string(),
@@ -323,6 +406,7 @@ impl AppState {
     pub fn diff_shell_state_tone(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "neutral".to_string(),
+            DiffShellState::StaleSelection => "warn".to_string(),
             DiffShellState::Loading => "info".to_string(),
             DiffShellState::DetailedReady => "success".to_string(),
             DiffShellState::PreviewReady => "info".to_string(),
@@ -344,6 +428,7 @@ impl AppState {
 
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "Choose a row from Results / Navigator.".to_string(),
+            DiffShellState::StaleSelection => "Previous selection is no longer active.".to_string(),
             DiffShellState::Loading => {
                 if self.diff_is_preview_mode() {
                     "Preparing preview lines...".to_string()
@@ -396,6 +481,7 @@ impl AppState {
     pub fn diff_shell_title_text(&self) -> String {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => "No file selected".to_string(),
+            DiffShellState::StaleSelection => "Selection no longer active".to_string(),
             DiffShellState::Loading => {
                 if self.diff_is_preview_mode() {
                     "Loading preview".to_string()
@@ -439,6 +525,10 @@ impl AppState {
         match self.diff_shell_state() {
             DiffShellState::NoSelection => {
                 "Choose one row from Results / Navigator to open the file-level Diff view."
+                    .to_string()
+            }
+            DiffShellState::StaleSelection => {
+                "The previously opened file is not part of the current visible Results / Navigator set."
                     .to_string()
             }
             DiffShellState::Loading => {
@@ -487,6 +577,14 @@ impl AppState {
             DiffShellState::NoSelection => {
                 "Changed files open Detailed Diff. Left Only / Right Only / Equal entries open Preview."
                     .to_string()
+            }
+            DiffShellState::StaleSelection => {
+                if self.running {
+                    "Compare is still running. The previous path will be rechecked when results arrive."
+                        .to_string()
+                } else {
+                    "Adjust Search/Status filters or select a visible row to continue.".to_string()
+                }
             }
             DiffShellState::Loading => self.diff_context_hint_text(),
             DiffShellState::Unavailable | DiffShellState::Error => self
@@ -553,11 +651,47 @@ impl AppState {
         self.entry_rows
             .iter()
             .enumerate()
-            .filter(|(_, row)| {
-                row.matches_filter(&self.entry_filter)
-                    && status_filter_matches(&row.status, status_filter.as_str())
-            })
+            .filter(|(_, row)| self.row_visible_in_results(row, status_filter.as_str()))
             .map(|(index, row)| (index, row.clone()))
+            .collect()
+    }
+
+    /// Returns filtered navigator rows with UI-focused presentation fields.
+    pub fn navigator_row_projections(&self) -> Vec<NavigatorRowProjection> {
+        let needle = normalize_filter_needle(&self.entry_filter);
+        self.filtered_entry_rows_with_index()
+            .into_iter()
+            .map(|(source_index, row)| {
+                let (parent_path_raw, display_name) = split_relative_path_leaf(&row.relative_path);
+                let full_parent_path = normalize_navigator_parent_path(&parent_path_raw);
+                let parent_path = format_navigator_parent_path(&parent_path_raw);
+                let relative_path_lower = row.relative_path.to_lowercase();
+                let display_name_lower = display_name.to_lowercase();
+                let parent_path_lower = parent_path_raw.to_lowercase();
+                let has_match = !needle.is_empty() && relative_path_lower.contains(needle.as_str());
+                let mut display_name_matches_filter =
+                    !needle.is_empty() && display_name_lower.contains(needle.as_str());
+                let mut parent_path_matches_filter =
+                    !needle.is_empty() && parent_path_lower.contains(needle.as_str());
+                if has_match && !display_name_matches_filter && !parent_path_matches_filter {
+                    if parent_path.is_empty() {
+                        display_name_matches_filter = true;
+                    } else {
+                        parent_path_matches_filter = true;
+                    }
+                }
+
+                NavigatorRowProjection {
+                    source_index,
+                    secondary_text: navigator_secondary_text(&row),
+                    tooltip_text: navigator_row_tooltip_text(&display_name, &full_parent_path),
+                    row,
+                    display_name,
+                    parent_path,
+                    display_name_matches_filter,
+                    parent_path_matches_filter,
+                }
+            })
             .collect()
     }
 
@@ -571,82 +705,98 @@ impl AppState {
         let status_filter = normalize_status_filter_token(&self.entry_status_filter);
         self.entry_rows
             .get(index)
-            .map(|row| {
-                row.matches_filter(&self.entry_filter)
-                    && status_filter_matches(&row.status, status_filter.as_str())
-            })
+            .map(|row| self.row_visible_in_results(row, status_filter.as_str()))
             .unwrap_or(false)
     }
 
-    /// Returns filter stats text for UI header.
-    pub fn filter_stats_text(&self) -> String {
+    /// Returns collection summary text for Results / Navigator.
+    pub fn results_collection_text(&self) -> String {
         let status_filter = normalize_status_filter_token(&self.entry_status_filter);
         let visible = self
             .entry_rows
             .iter()
-            .filter(|row| {
-                row.matches_filter(&self.entry_filter)
-                    && status_filter_matches(&row.status, status_filter.as_str())
-            })
+            .filter(|row| self.row_visible_in_results(row, status_filter.as_str()))
             .count();
-        let total = self.entry_rows.len();
-        let query = self.entry_filter.trim();
-        let query_text = if query.is_empty() {
-            "—".to_string()
+        let hidden_by_settings = if self.show_hidden_files {
+            0
         } else {
-            abbreviate_middle(query, 28, 16, 8)
+            self.entry_rows
+                .iter()
+                .filter(|row| {
+                    self.row_matches_filter_controls(row, status_filter.as_str())
+                        && is_hidden_relative_path(&row.relative_path)
+                })
+                .count()
         };
-        let status_text = match status_filter.as_str() {
-            "all" => "All",
-            "different" => "Different",
-            "equal" => "Equal",
-            "left-only" => "Left-only",
-            "right-only" => "Right-only",
-            _ => "All",
-        };
-        format!("Visible {visible}/{total} | Search: {query_text} | Status: {status_text}")
+        let total =
+            summary_metric_usize(&self.summary_text, "total=").unwrap_or(self.entry_rows.len());
+        let query = self.entry_filter.trim();
+        let mut parts = vec![format!("Showing {visible} / {total}")];
+        if hidden_by_settings > 0 {
+            parts.push(format!("{hidden_by_settings} hidden by Settings"));
+        }
+        if !query.is_empty() {
+            parts.push(format!(
+                "Search: \"{}\"",
+                abbreviate_middle(&sanitize_inline_query(query), 30, 18, 8)
+            ));
+        }
+        if status_filter == "all" {
+            if query.is_empty() {
+                parts.push("All results".to_string());
+            }
+        } else {
+            parts.push(status_filter_label(status_filter.as_str()).to_string());
+        }
+        parts.join(" · ")
     }
 
     /// Returns compact compare summary text for sidebar status section.
     pub fn compact_summary_text(&self) -> String {
-        if self.summary_text.trim().is_empty() {
-            return "No compare summary yet.".to_string();
+        if !self.compare_status_has_detail() {
+            return String::new();
         }
         let mut parts = Vec::new();
-        if let Some(value) = summary_metric(&self.summary_text, "mode=") {
-            parts.push(format!("mode {value}"));
+        if let Some(value) = self.compare_mode_label() {
+            parts.push(value);
         }
         if let Some(value) = summary_metric(&self.summary_text, "total=") {
-            parts.push(format!("total {value}"));
+            parts.push(format!("Total {value}"));
         }
         if let Some(value) = summary_metric(&self.summary_text, "different=") {
-            parts.push(format!("diff {value}"));
+            parts.push(format!("Changed {value}"));
         }
         if let Some(value) = summary_metric(&self.summary_text, "left_only=") {
-            parts.push(format!("left {value}"));
+            parts.push(format!("Left {value}"));
         }
         if let Some(value) = summary_metric(&self.summary_text, "right_only=") {
-            parts.push(format!("right {value}"));
+            parts.push(format!("Right {value}"));
         }
-        if let Some(value) = summary_metric(&self.summary_text, "deferred=") {
-            parts.push(format!("deferred {value}"));
+        if let Some(value) = self.compare_deferred_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} deferred"));
         }
-        if let Some(value) = summary_metric(&self.summary_text, "oversized_text=") {
-            parts.push(format!("oversized {value}"));
+        if let Some(value) = self.compare_oversized_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} oversized"));
         }
         if self.truncated {
-            parts.push("truncated".to_string());
+            parts.push("Truncated".to_string());
         }
         if parts.is_empty() {
+            if self.error_message.is_some() {
+                return "Compare failed".to_string();
+            }
+            if !self.warning_lines.is_empty() {
+                return format_warning_count(self.warning_lines.len());
+            }
             return abbreviate_middle(&self.summary_text, 96, 56, 36);
         }
-        parts.join(" | ")
+        parts.join(" · ")
     }
 
     /// Returns key compare metrics in short desktop-friendly format.
     pub fn compare_metrics_text(&self) -> String {
         if self.summary_text.trim().is_empty() {
-            return "total 0 | changed 0 | left 0 | right 0".to_string();
+            return String::new();
         }
         let total = summary_metric(&self.summary_text, "total=").unwrap_or_else(|| "0".to_string());
         let changed =
@@ -655,7 +805,7 @@ impl AppState {
             summary_metric(&self.summary_text, "left_only=").unwrap_or_else(|| "0".to_string());
         let right =
             summary_metric(&self.summary_text, "right_only=").unwrap_or_else(|| "0".to_string());
-        format!("total {total} | changed {changed} | left {left} | right {right}")
+        format!("Total {total} · Changed {changed} · Left {left} · Right {right}")
     }
 
     /// Returns true when compare summary indicates deferred detail entries.
@@ -666,6 +816,127 @@ impl AppState {
     /// Returns true when compare summary indicates oversized text entries.
     pub fn compare_has_oversized(&self) -> bool {
         summary_metric_usize(&self.summary_text, "oversized_text=").unwrap_or(0) > 0
+    }
+
+    /// Returns true when Compare Status has any compare report detail to expose.
+    pub fn compare_status_has_detail(&self) -> bool {
+        !self.summary_text.trim().is_empty()
+            || !self.warning_lines.is_empty()
+            || self
+                .error_message
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty())
+    }
+
+    /// Returns one collapsed note line for Compare Status.
+    pub fn compare_status_note_text(&self) -> String {
+        if !self.compare_status_has_detail() {
+            return String::new();
+        }
+
+        let mut parts = Vec::new();
+        if let Some(value) = self.compare_mode_note_text() {
+            parts.push(value);
+        }
+        if let Some(value) = self.compare_deferred_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} deferred"));
+        }
+        if let Some(value) = self.compare_oversized_count().filter(|value| *value > 0) {
+            parts.push(format!("{value} oversized"));
+        }
+        if !self.warning_lines.is_empty() {
+            parts.push(format_warning_count(self.warning_lines.len()));
+        }
+        if self.truncated {
+            parts.push("Truncated output".to_string());
+        }
+
+        parts.join(" · ")
+    }
+
+    /// Returns concise copy-ready text for Compare Status.
+    pub fn compare_summary_copy_text(&self) -> String {
+        if !self.compare_status_has_detail() {
+            return String::new();
+        }
+
+        let mut lines = vec!["Compare Summary".to_string()];
+        if let Some(status) = normalize_optional_text(&self.status_text) {
+            lines.push(status);
+        }
+        if let Some(metrics) = normalize_optional_text(&self.compare_metrics_text()) {
+            lines.push(metrics);
+        }
+        if let Some(note) = normalize_optional_text(&self.compare_status_note_text()) {
+            lines.push(note);
+        }
+        if let Some(error) = self
+            .error_message
+            .as_deref()
+            .and_then(normalize_optional_text)
+        {
+            lines.push(format!("Error: {error}"));
+        }
+
+        lines.join("\n")
+    }
+
+    /// Returns structured copy-ready detail text for Compare Status.
+    pub fn compare_detail_copy_text(&self) -> String {
+        if !self.compare_status_has_detail() {
+            return String::new();
+        }
+
+        let mut blocks = Vec::new();
+        if let Some(status) = normalize_optional_text(&self.status_text) {
+            blocks.push(format!("Status\n{status}"));
+        }
+        if let Some(metrics) = normalize_optional_text(&self.compare_metrics_text()) {
+            blocks.push(format!("Results\n{metrics}"));
+        }
+
+        let mut diagnostics = Vec::new();
+        if let Some(mode) = self.compare_mode_label() {
+            diagnostics.push(mode);
+        }
+        if let Some(value) = self.compare_deferred_count().filter(|value| *value > 0) {
+            diagnostics.push(format!("{value} deferred detail entries"));
+        }
+        if let Some(value) = self.compare_oversized_count().filter(|value| *value > 0) {
+            diagnostics.push(format!("{value} oversized text entries"));
+        }
+        if self.truncated {
+            diagnostics.push("Truncated compare output".to_string());
+        }
+        if !diagnostics.is_empty() {
+            blocks.push(format!("Detail\n{}", diagnostics.join("\n")));
+        }
+
+        if let Some(summary) = normalize_optional_text(&self.compact_summary_text()) {
+            blocks.push(format!("Summary\n{summary}"));
+        }
+
+        if !self.warning_lines.is_empty() {
+            blocks.push(format!(
+                "Warnings\n{}",
+                self.warning_lines
+                    .iter()
+                    .map(|warning| format!("• {}", warning.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
+
+        if let Some(error) = self
+            .error_message
+            .as_deref()
+            .and_then(normalize_optional_text)
+        {
+            blocks.push(format!("Error\n{error}"));
+        }
+
+        format!("Compare Detail\n\n{}", blocks.join("\n\n"))
     }
 
     /// Returns selected relative path text for UI rendering.
@@ -753,7 +1024,11 @@ impl AppState {
     /// Returns normalized Analysis panel state for header and body rendering.
     pub fn analysis_panel_state(&self) -> AnalysisPanelState {
         if self.selected_row.is_none() {
-            return AnalysisPanelState::NoSelection;
+            return if self.has_stale_selection() {
+                AnalysisPanelState::StaleSelection
+            } else {
+                AnalysisPanelState::NoSelection
+            };
         }
         if self.analysis_loading {
             return AnalysisPanelState::Loading;
@@ -769,14 +1044,26 @@ impl AppState {
         if self.analysis_result.is_some() {
             return AnalysisPanelState::Success;
         }
-        AnalysisPanelState::NotStarted
+        if self.analysis_waiting_for_diff_context() {
+            return AnalysisPanelState::WaitingForDiff;
+        }
+        if self.analysis_can_start_now() {
+            return AnalysisPanelState::Ready;
+        }
+        if self.analysis_selection_unavailable() {
+            return AnalysisPanelState::Unavailable;
+        }
+        AnalysisPanelState::Ready
     }
 
     /// Returns short state badge text for Analysis shell.
     pub fn analysis_state_label(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "No Selection".to_string(),
-            AnalysisPanelState::NotStarted => "Not Started".to_string(),
+            AnalysisPanelState::StaleSelection => "Stale".to_string(),
+            AnalysisPanelState::WaitingForDiff => "Waiting".to_string(),
+            AnalysisPanelState::Ready => "Ready".to_string(),
+            AnalysisPanelState::Unavailable => "Unavailable".to_string(),
             AnalysisPanelState::Loading => "Analyzing".to_string(),
             AnalysisPanelState::Error => "Failed".to_string(),
             AnalysisPanelState::Success => "Ready".to_string(),
@@ -787,7 +1074,10 @@ impl AppState {
     pub fn analysis_state_token(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "no-selection".to_string(),
-            AnalysisPanelState::NotStarted => "not-started".to_string(),
+            AnalysisPanelState::StaleSelection => "stale-selection".to_string(),
+            AnalysisPanelState::WaitingForDiff => "waiting".to_string(),
+            AnalysisPanelState::Ready => "ready".to_string(),
+            AnalysisPanelState::Unavailable => "unavailable".to_string(),
             AnalysisPanelState::Loading => "loading".to_string(),
             AnalysisPanelState::Error => "error".to_string(),
             AnalysisPanelState::Success => "success".to_string(),
@@ -798,16 +1088,13 @@ impl AppState {
     pub fn analysis_state_tone(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "neutral".to_string(),
+            AnalysisPanelState::StaleSelection => "warn".to_string(),
+            AnalysisPanelState::WaitingForDiff => "info".to_string(),
+            AnalysisPanelState::Ready => "neutral".to_string(),
+            AnalysisPanelState::Unavailable => "warn".to_string(),
             AnalysisPanelState::Loading => "info".to_string(),
             AnalysisPanelState::Error => "error".to_string(),
             AnalysisPanelState::Success => "success".to_string(),
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "neutral".to_string()
-                } else {
-                    "warn".to_string()
-                }
-            }
         }
     }
 
@@ -817,14 +1104,25 @@ impl AppState {
             AnalysisPanelState::NoSelection => {
                 "Choose one changed text file from Results / Navigator.".to_string()
             }
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "Diff context is ready. Run Analyze to generate a review conclusion."
-                        .to_string()
-                } else if !self.analysis_hint_text().trim().is_empty() {
+            AnalysisPanelState::StaleSelection => {
+                "The previous selection is no longer part of the current Results / Navigator set."
+                    .to_string()
+            }
+            AnalysisPanelState::WaitingForDiff => {
+                if !self.analysis_hint_text().trim().is_empty() {
                     abbreviate_middle(&self.analysis_hint_text(), 116, 88, 22)
                 } else {
-                    "Analysis is not ready for this selection yet.".to_string()
+                    "Diff context is loading for the selected file.".to_string()
+                }
+            }
+            AnalysisPanelState::Ready => {
+                "Diff context is ready. Run Analyze to generate a review conclusion.".to_string()
+            }
+            AnalysisPanelState::Unavailable => {
+                if !self.analysis_hint_text().trim().is_empty() {
+                    abbreviate_middle(&self.analysis_hint_text(), 116, 88, 22)
+                } else {
+                    "Analysis is unavailable for this selection.".to_string()
                 }
             }
             AnalysisPanelState::Loading => {
@@ -899,13 +1197,16 @@ impl AppState {
     pub fn analysis_state_title_text(&self) -> String {
         match self.analysis_panel_state() {
             AnalysisPanelState::NoSelection => "No file selected".to_string(),
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "Analysis ready to start".to_string()
-                } else if self.analysis_available {
-                    "Analysis is waiting for diff context".to_string()
+            AnalysisPanelState::StaleSelection => "Selection no longer active".to_string(),
+            AnalysisPanelState::WaitingForDiff => {
+                "Analysis is waiting for diff context".to_string()
+            }
+            AnalysisPanelState::Ready => "Analysis ready to start".to_string(),
+            AnalysisPanelState::Unavailable => {
+                if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
+                    "Analysis requires provider configuration".to_string()
                 } else {
-                    "Analysis is not ready yet".to_string()
+                    "Analysis unavailable for this selection".to_string()
                 }
             }
             AnalysisPanelState::Loading => "Analysis in progress".to_string(),
@@ -921,14 +1222,26 @@ impl AppState {
                 "Select one row in Results / Navigator to open the file-level Analysis view."
                     .to_string()
             }
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    "The selected file already has reviewable diff context. Run Analyze when you want a structured risk review."
-                        .to_string()
-                } else if !self.analysis_hint_text().trim().is_empty() {
+            AnalysisPanelState::StaleSelection => {
+                "The previously focused file is not part of the current visible Results / Navigator set."
+                    .to_string()
+            }
+            AnalysisPanelState::WaitingForDiff => {
+                if self.diff_loading {
+                    "Detailed diff or preview is still loading for the selected file.".to_string()
+                } else {
+                    "Load detailed diff or preview context before requesting analysis.".to_string()
+                }
+            }
+            AnalysisPanelState::Ready => {
+                "The selected file already has reviewable diff context. Run Analyze when you want a structured risk review."
+                    .to_string()
+            }
+            AnalysisPanelState::Unavailable => {
+                if !self.analysis_hint_text().trim().is_empty() {
                     self.analysis_hint_text()
                 } else {
-                    "Prepare detailed diff context before requesting analysis.".to_string()
+                    "Analysis is unavailable for the current selection.".to_string()
                 }
             }
             AnalysisPanelState::Loading => {
@@ -952,11 +1265,19 @@ impl AppState {
             AnalysisPanelState::NoSelection => {
                 "Analysis only runs for changed text files with loadable diff context.".to_string()
             }
-            AnalysisPanelState::NotStarted => {
-                if self.analysis_can_start_now() {
-                    self.analysis_technical_context_text()
-                } else if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
-                    "Complete endpoint, API key, and model in Provider Settings before using the remote provider."
+            AnalysisPanelState::StaleSelection => {
+                if self.running {
+                    "Compare is still running. The previous path will be rechecked when results arrive."
+                        .to_string()
+                } else {
+                    "Adjust Search/Status filters or select a visible row to continue.".to_string()
+                }
+            }
+            AnalysisPanelState::WaitingForDiff => self.analysis_technical_context_text(),
+            AnalysisPanelState::Ready => self.analysis_technical_context_text(),
+            AnalysisPanelState::Unavailable => {
+                if self.analysis_remote_mode() && !self.analysis_remote_config_ready() {
+                    "Complete endpoint, API key, and model in Settings -> Provider before using the remote provider."
                         .to_string()
                 } else {
                     self.analysis_technical_context_text()
@@ -1215,11 +1536,9 @@ impl AppState {
         self.analysis_request_timeout_secs.to_string()
     }
 
-    /// Returns provider settings error text for UI rendering.
-    pub fn provider_settings_error_text(&self) -> String {
-        self.provider_settings_error_message
-            .clone()
-            .unwrap_or_default()
+    /// Returns settings error text for UI rendering.
+    pub fn settings_error_text(&self) -> String {
+        self.settings_error_message.clone().unwrap_or_default()
     }
 
     /// Builds one AI config snapshot from current UI state.
@@ -1239,6 +1558,50 @@ impl AppState {
             && !self.diff_loading
             && self.selected_diff.is_some()
             && (!self.analysis_remote_mode() || self.analysis_remote_config_ready())
+    }
+
+    fn row_matches_filter_controls(
+        &self,
+        row: &CompareEntryRowViewModel,
+        status_filter: &str,
+    ) -> bool {
+        row.matches_filter(&self.entry_filter) && status_filter_matches(&row.status, status_filter)
+    }
+
+    fn row_visible_in_results(&self, row: &CompareEntryRowViewModel, status_filter: &str) -> bool {
+        self.row_matches_filter_controls(row, status_filter)
+            && (self.show_hidden_files || !is_hidden_relative_path(&row.relative_path))
+    }
+
+    fn compare_mode_token(&self) -> Option<String> {
+        summary_metric(&self.summary_text, "mode=")
+            .and_then(|value| normalize_optional_text(&value))
+    }
+
+    fn compare_mode_label(&self) -> Option<String> {
+        match self.compare_mode_token()?.as_str() {
+            "summary-first" => Some("Summary-first mode".to_string()),
+            "large" => Some("Large mode".to_string()),
+            "normal" => None,
+            other => Some(title_case_token(other)),
+        }
+    }
+
+    fn compare_mode_note_text(&self) -> Option<String> {
+        match self.compare_mode_token()?.as_str() {
+            "summary-first" => Some("Summary-first mode".to_string()),
+            "large" => Some("Large-directory protection".to_string()),
+            "normal" => None,
+            other => Some(title_case_token(other)),
+        }
+    }
+
+    fn compare_deferred_count(&self) -> Option<usize> {
+        summary_metric_usize(&self.summary_text, "deferred=")
+    }
+
+    fn compare_oversized_count(&self) -> Option<usize> {
+        summary_metric_usize(&self.summary_text, "oversized_text=")
     }
 }
 
@@ -1357,8 +1720,306 @@ fn normalize_status_filter_token(raw: &str) -> String {
     }
 }
 
+fn normalize_filter_needle(raw: &str) -> String {
+    raw.trim().to_lowercase()
+}
+
 fn status_filter_matches(status: &str, filter: &str) -> bool {
     filter == "all" || status.eq_ignore_ascii_case(filter)
+}
+
+fn status_filter_label(filter: &str) -> &'static str {
+    match filter {
+        "different" => "Diff",
+        "equal" => "Equal",
+        "left-only" => "Left only",
+        "right-only" => "Right only",
+        _ => "All results",
+    }
+}
+
+fn sanitize_inline_query(query: &str) -> String {
+    query
+        .trim()
+        .replace('\n', " ")
+        .replace('\r', " ")
+        .replace('"', "'")
+}
+
+fn split_relative_path_leaf(relative_path: &str) -> (String, String) {
+    let trimmed = relative_path
+        .trim_matches(|ch| ch == '/' || ch == '\\')
+        .trim();
+    if trimmed.is_empty() {
+        return (String::new(), "compare root".to_string());
+    }
+
+    match trimmed
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| *ch == '/' || *ch == '\\')
+    {
+        Some((idx, _)) => (trimmed[..idx].to_string(), trimmed[idx + 1..].to_string()),
+        None => (String::new(), trimmed.to_string()),
+    }
+}
+
+fn is_hidden_relative_path(relative_path: &str) -> bool {
+    relative_path
+        .trim_matches(|ch| ch == '/' || ch == '\\')
+        .split(['/', '\\'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .any(|part| part.starts_with('.'))
+}
+
+fn normalize_navigator_parent_path(parent_path: &str) -> String {
+    parent_path
+        .trim_matches(|ch| ch == '/' || ch == '\\')
+        .replace('\\', "/")
+}
+
+fn format_navigator_parent_path(parent_path: &str) -> String {
+    let normalized = normalize_navigator_parent_path(parent_path);
+    if normalized.is_empty() {
+        String::new()
+    } else {
+        abbreviate_middle(
+            &normalized,
+            NAVIGATOR_PARENT_PATH_MAX_CHARS,
+            NAVIGATOR_PARENT_PATH_HEAD_CHARS,
+            NAVIGATOR_PARENT_PATH_TAIL_CHARS,
+        )
+    }
+}
+
+fn navigator_row_tooltip_text(display_name: &str, full_parent_path: &str) -> String {
+    if full_parent_path.is_empty() {
+        display_name.to_string()
+    } else {
+        format!("{display_name}\n{full_parent_path}")
+    }
+}
+
+fn navigator_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    let secondary = match row.status.as_str() {
+        "left-only" => match row.entry_kind.as_str() {
+            "directory" => "Directory only on left".to_string(),
+            "symlink" => "Symlink only on left".to_string(),
+            "other" => "Special entry only on left".to_string(),
+            _ => navigator_single_side_file_secondary_text("left", &row.relative_path),
+        },
+        "right-only" => match row.entry_kind.as_str() {
+            "directory" => "Directory only on right".to_string(),
+            "symlink" => "Symlink only on right".to_string(),
+            "other" => "Special entry only on right".to_string(),
+            _ => navigator_single_side_file_secondary_text("right", &row.relative_path),
+        },
+        "equal" => navigator_equal_secondary_text(row),
+        "different" => navigator_different_secondary_text(row),
+        "pending" => navigator_pending_secondary_text(row),
+        "skipped" => sentence_excerpt(
+            row.diff_blocked_reason
+                .as_deref()
+                .unwrap_or(row.detail.as_str()),
+            NAVIGATOR_SECONDARY_MAX_CHARS,
+        ),
+        _ => sentence_excerpt(
+            row.diff_blocked_reason
+                .as_deref()
+                .unwrap_or(row.detail.as_str()),
+            NAVIGATOR_SECONDARY_MAX_CHARS,
+        ),
+    };
+
+    if secondary.trim().is_empty() {
+        "Compare detail unavailable".to_string()
+    } else {
+        secondary
+    }
+}
+
+fn navigator_equal_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    match (row.entry_kind.as_str(), row.detail_kind.as_str()) {
+        ("directory", _) => "Directory on both sides".to_string(),
+        ("symlink", _) => "Symlink compare deferred".to_string(),
+        ("file", "text-diff") => "Text matched".to_string(),
+        ("file", "file-comparison") => {
+            let base = navigator_file_comparison_matched_text(&row.relative_path);
+            format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
+        }
+        ("file", "text-detail-deferred") => {
+            format!(
+                "Deferred text detail{}",
+                navigator_text_detail_reason_suffix(&row.detail)
+            )
+        }
+        ("file", "message") => "File matched".to_string(),
+        _ => format!("{} matched", navigator_entry_kind_label(&row.entry_kind)),
+    }
+}
+
+fn navigator_different_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    match row.detail_kind.as_str() {
+        "text-diff" => {
+            if let Some(summary) = navigator_text_diff_summary(&row.detail) {
+                format!("Text diff · {summary}")
+            } else {
+                "Text diff".to_string()
+            }
+        }
+        "type-mismatch" => format!(
+            "Type mismatch{}",
+            navigator_type_mismatch_suffix(&row.detail)
+        ),
+        "file-comparison" => {
+            let base = navigator_file_comparison_differs_text(&row.relative_path);
+            format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
+        }
+        "text-detail-deferred" => format!(
+            "Deferred text diff{}",
+            navigator_text_detail_reason_suffix(&row.detail)
+        ),
+        "message" => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
+        _ => sentence_excerpt(
+            row.diff_blocked_reason
+                .as_deref()
+                .unwrap_or(row.detail.as_str()),
+            NAVIGATOR_SECONDARY_MAX_CHARS,
+        ),
+    }
+}
+
+fn navigator_pending_secondary_text(row: &CompareEntryRowViewModel) -> String {
+    match row.entry_kind.as_str() {
+        "symlink" => "Symlink deferred".to_string(),
+        "directory" => "Directory deferred".to_string(),
+        _ => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
+    }
+}
+
+fn navigator_single_side_file_secondary_text(_side: &str, relative_path: &str) -> String {
+    if let Some(kind) = navigator_capability_file_kind(relative_path) {
+        return format!("{kind} · no text preview");
+    }
+
+    "Text-only preview".to_string()
+}
+
+fn navigator_file_comparison_matched_text(relative_path: &str) -> String {
+    if let Some(kind) = navigator_capability_file_kind(relative_path) {
+        return format!("{kind} · no text preview");
+    }
+
+    "Text-only preview".to_string()
+}
+
+fn navigator_file_comparison_differs_text(relative_path: &str) -> String {
+    if let Some(kind) = navigator_capability_file_kind(relative_path) {
+        return format!("{kind} · no text diff");
+    }
+
+    "No text diff".to_string()
+}
+
+fn navigator_capability_file_kind(relative_path: &str) -> Option<&'static str> {
+    let extension = Path::new(relative_path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.trim().to_ascii_lowercase());
+    match extension.as_deref() {
+        Some(
+            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "ico" | "tif" | "tiff" | "avif"
+            | "heic" | "heif" | "icns" | "psd",
+        ) => Some("Image"),
+        Some(
+            "pdf" | "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "jar" | "war" | "ear"
+            | "bin" | "dat" | "db" | "sqlite" | "sqlite3" | "mp3" | "wav" | "flac" | "ogg" | "m4a"
+            | "mp4" | "mov" | "avi" | "mkv" | "exe" | "dll" | "so" | "dylib" | "class" | "wasm"
+            | "ttf" | "otf" | "woff" | "woff2" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx",
+        ) => Some("Binary"),
+        _ => None,
+    }
+}
+
+fn navigator_entry_kind_label(kind: &str) -> &'static str {
+    match kind {
+        "directory" => "Directory",
+        "symlink" => "Symlink",
+        "other" => "Special entry",
+        _ => "File",
+    }
+}
+
+fn navigator_text_diff_summary(detail: &str) -> Option<String> {
+    let body = detail.strip_prefix("text summary:")?.trim();
+    let hunks = extract_prefixed_token(body, "hunks=").map(|value| format!("{value}h"));
+    let added = extract_prefixed_token(body, "+")
+        .filter(|value| value != "0")
+        .map(|value| format!("+{value}"));
+    let removed = extract_prefixed_token(body, "-")
+        .filter(|value| value != "0")
+        .map(|value| format!("-{value}"));
+    let context = extract_prefixed_token(body, "ctx=")
+        .filter(|value| value != "0")
+        .map(|value| format!("{value}ctx"));
+    let parts = [hunks, added, removed, context]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
+}
+
+fn navigator_file_compare_sizes_suffix(detail: &str) -> String {
+    let left = extract_prefixed_token(detail, "left=");
+    let right = extract_prefixed_token(detail, "right=");
+    match (left, right) {
+        (Some(left), Some(right)) => format!(" · {left} / {right}"),
+        _ => String::new(),
+    }
+}
+
+fn navigator_text_detail_reason_suffix(detail: &str) -> String {
+    let detail = detail.trim();
+    let Some(open_idx) = detail.find('(') else {
+        return String::new();
+    };
+    let Some(close_idx) = detail[open_idx + 1..].find(')') else {
+        return String::new();
+    };
+    let reason = detail[open_idx + 1..open_idx + 1 + close_idx].trim();
+    if reason.is_empty() {
+        String::new()
+    } else {
+        format!(" · {reason}")
+    }
+}
+
+fn navigator_type_mismatch_suffix(detail: &str) -> String {
+    let left = extract_prefixed_token(detail, "left=");
+    let right = extract_prefixed_token(detail, "right=");
+    match (left, right) {
+        (Some(left), Some(right)) => format!(" · {left} vs {right}"),
+        _ => String::new(),
+    }
+}
+
+fn extract_prefixed_token(text: &str, prefix: &str) -> Option<String> {
+    text.split_whitespace()
+        .find_map(|part| part.trim_matches('|').strip_prefix(prefix))
+        .map(|value| value.trim_matches(|ch| ch == ',' || ch == ';').to_string())
+}
+
+fn format_warning_count(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1 => "1 warning".to_string(),
+        value => format!("{value} warnings"),
+    }
 }
 
 fn summary_metric(summary_text: &str, key: &str) -> Option<String> {
@@ -1452,7 +2113,7 @@ mod tests {
     }
 
     #[test]
-    fn non_empty_filter_matches_path_or_detail() {
+    fn non_empty_filter_matches_path_or_name_only() {
         let state = AppState {
             entry_rows: sample_rows(),
             entry_filter: "logo".to_string(),
@@ -1464,12 +2125,20 @@ mod tests {
 
         let state = AppState {
             entry_rows: sample_rows(),
-            entry_filter: "text summary".to_string(),
+            entry_filter: "main.rs".to_string(),
             ..AppState::default()
         };
         let filtered = state.filtered_entry_rows_with_index();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].0, 0);
+
+        let state = AppState {
+            entry_rows: sample_rows(),
+            entry_filter: "text summary".to_string(),
+            ..AppState::default()
+        };
+        let filtered = state.filtered_entry_rows_with_index();
+        assert!(filtered.is_empty());
     }
 
     #[test]
@@ -1504,20 +2173,254 @@ mod tests {
     }
 
     #[test]
-    fn filter_stats_text_is_consistent_across_scopes() {
+    fn results_collection_text_tracks_search_and_scope() {
         let mut state = AppState {
             entry_rows: sample_rows(),
             ..AppState::default()
         };
         assert_eq!(
-            state.filter_stats_text(),
-            "Visible 2/2 | Search: — | Status: All"
+            state.results_collection_text(),
+            "Showing 2 / 2 · All results"
         );
 
         state.entry_filter = "logo".to_string();
         state.set_entry_status_filter("different");
-        let text = state.filter_stats_text();
-        assert!(text.starts_with("Visible 1/2 | Search: logo | Status: Different"));
+        let text = state.results_collection_text();
+        assert_eq!(text, "Showing 1 / 2 · Search: \"logo\" · Diff");
+    }
+
+    #[test]
+    fn hidden_files_preference_filters_dot_prefixed_entries() {
+        let rows = vec![
+            CompareEntryRowViewModel {
+                relative_path: ".gitignore".to_string(),
+                ..CompareEntryRowViewModel::default()
+            },
+            CompareEntryRowViewModel {
+                relative_path: "src/main.rs".to_string(),
+                ..CompareEntryRowViewModel::default()
+            },
+            CompareEntryRowViewModel {
+                relative_path: "assets/.cache/logo.png".to_string(),
+                ..CompareEntryRowViewModel::default()
+            },
+        ];
+
+        let hidden = AppState {
+            entry_rows: rows.clone(),
+            show_hidden_files: false,
+            ..AppState::default()
+        };
+        let visible = hidden.filtered_entry_rows_with_index();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].1.relative_path, "src/main.rs");
+
+        let shown = AppState {
+            entry_rows: rows,
+            show_hidden_files: true,
+            ..AppState::default()
+        };
+        assert_eq!(shown.filtered_entry_rows_with_index().len(), 3);
+    }
+
+    #[test]
+    fn results_collection_text_mentions_hidden_entries_filtered_by_settings() {
+        let state = AppState {
+            entry_rows: vec![
+                CompareEntryRowViewModel {
+                    relative_path: ".env".to_string(),
+                    status: "different".to_string(),
+                    ..CompareEntryRowViewModel::default()
+                },
+                CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    ..CompareEntryRowViewModel::default()
+                },
+            ],
+            summary_text: "mode=normal total=2 equal=0 different=2 left_only=0 right_only=0 pending=0 skipped=0 deferred=0 oversized_text=0".to_string(),
+            entry_status_filter: "different".to_string(),
+            show_hidden_files: false,
+            ..AppState::default()
+        };
+
+        assert_eq!(
+            state.results_collection_text(),
+            "Showing 1 / 2 · 1 hidden by Settings · Diff"
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_promotes_leaf_name_and_parent_context() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/js/runtime/fernetBrowser.js".to_string(),
+                status: "right-only".to_string(),
+                detail: "only on right: /tmp/right/assets/js/runtime/fernetBrowser.js".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "message".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(projected.len(), 1);
+        assert_eq!(projected[0].display_name, "fernetBrowser.js");
+        assert_eq!(projected[0].parent_path, "assets/js/runtime");
+        assert_eq!(projected[0].secondary_text, "Text-only preview");
+        assert_eq!(
+            projected[0].tooltip_text,
+            "fernetBrowser.js\nassets/js/runtime"
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_keeps_full_parent_path_for_tooltip_completion() {
+        let full_parent_path = "workspace/frontend/src/components/navigation/sidebar/results";
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: format!("{full_parent_path}/fernetBrowser.js"),
+                status: "right-only".to_string(),
+                detail: "only on right".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "message".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(projected.len(), 1);
+        assert!(projected[0].parent_path.contains('…'));
+        assert_eq!(
+            projected[0].tooltip_text,
+            format!("fernetBrowser.js\n{full_parent_path}")
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_marks_image_preview_as_unavailable() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/logo.jpg".to_string(),
+                status: "left-only".to_string(),
+                detail: "only on left".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "none".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some("not changed".to_string()),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(projected[0].secondary_text, "Image · no text preview");
+    }
+
+    #[test]
+    fn navigator_row_projection_marks_file_compare_diff_as_unavailable() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/logo.png".to_string(),
+                status: "different".to_string(),
+                detail: "file compare: left=1B right=2B content_checked=true".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "file-comparison".to_string(),
+                can_load_diff: false,
+                diff_blocked_reason: Some(
+                    "entry was compared as non-text/binary candidate, detailed text diff unavailable"
+                        .to_string(),
+                ),
+                can_load_analysis: false,
+                analysis_blocked_reason: Some(
+                    "entry was compared as non-text/binary candidate, detailed text diff unavailable"
+                        .to_string(),
+                ),
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(
+            projected[0].secondary_text,
+            "Image · no text diff · 1B / 2B"
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_tracks_name_and_path_hits() {
+        let row = CompareEntryRowViewModel {
+            relative_path: "assets/js/runtime/fernetBrowser.js".to_string(),
+            status: "different".to_string(),
+            detail: "text summary: hunks=2 +4 -1 ctx=8".to_string(),
+            entry_kind: "file".to_string(),
+            detail_kind: "text-diff".to_string(),
+            can_load_diff: true,
+            diff_blocked_reason: None,
+            can_load_analysis: true,
+            analysis_blocked_reason: None,
+        };
+
+        let state = AppState {
+            entry_rows: vec![row.clone()],
+            entry_filter: "fernet".to_string(),
+            ..AppState::default()
+        };
+        let projected = state.navigator_row_projections();
+        assert!(projected[0].display_name_matches_filter);
+        assert!(!projected[0].parent_path_matches_filter);
+
+        let state = AppState {
+            entry_rows: vec![row.clone()],
+            entry_filter: "js/runtime".to_string(),
+            ..AppState::default()
+        };
+        let projected = state.navigator_row_projections();
+        assert!(!projected[0].display_name_matches_filter);
+        assert!(projected[0].parent_path_matches_filter);
+
+        let state = AppState {
+            entry_rows: vec![row],
+            entry_filter: "runtime/fernet".to_string(),
+            ..AppState::default()
+        };
+        let projected = state.navigator_row_projections();
+        assert!(
+            projected[0].display_name_matches_filter || projected[0].parent_path_matches_filter
+        );
+    }
+
+    #[test]
+    fn navigator_row_projection_summarizes_text_diff_for_scanability() {
+        let state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "src/main.rs".to_string(),
+                status: "different".to_string(),
+                detail: "text summary: hunks=2 +4 -1 ctx=8".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "text-diff".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: true,
+                analysis_blocked_reason: None,
+            }],
+            ..AppState::default()
+        };
+
+        let projected = state.navigator_row_projections();
+        assert_eq!(
+            projected[0].secondary_text,
+            "Text diff · 2h · +4 · -1 · 8ctx"
+        );
     }
 
     #[test]
@@ -1528,14 +2431,13 @@ mod tests {
             ..AppState::default()
         };
         let text = state.compact_summary_text();
-        assert!(text.contains("mode normal"));
-        assert!(text.contains("total 120"));
-        assert!(text.contains("diff 8"));
-        assert!(text.contains("left 7"));
-        assert!(text.contains("right 5"));
-        assert!(text.contains("deferred 3"));
-        assert!(text.contains("oversized 2"));
-        assert!(text.contains("truncated"));
+        assert!(text.contains("Total 120"));
+        assert!(text.contains("Changed 8"));
+        assert!(text.contains("Left 7"));
+        assert!(text.contains("Right 5"));
+        assert!(text.contains("3 deferred"));
+        assert!(text.contains("2 oversized"));
+        assert!(text.contains("Truncated"));
     }
 
     #[test]
@@ -1546,8 +2448,35 @@ mod tests {
         };
         assert_eq!(
             state.compare_metrics_text(),
-            "total 42 | changed 4 | left 2 | right 1"
+            "Total 42 · Changed 4 · Left 2 · Right 1"
         );
+    }
+
+    #[test]
+    fn compare_copy_texts_are_summary_first_and_structured() {
+        let state = AppState {
+            status_text: "Compare finished: 42 entries".to_string(),
+            summary_text: "mode=summary-first total=42 equal=35 different=4 left_only=2 right_only=1 pending=0 skipped=0 deferred=3 oversized_text=1".to_string(),
+            warning_lines: vec!["large-directory guard applied".to_string()],
+            truncated: true,
+            ..AppState::default()
+        };
+
+        let summary = state.compare_summary_copy_text();
+        assert!(summary.contains("Compare Summary"));
+        assert!(summary.contains("Compare finished: 42 entries"));
+        assert!(summary.contains("Total 42 · Changed 4 · Left 2 · Right 1"));
+        assert!(summary.contains(
+            "Summary-first mode · 3 deferred · 1 oversized · 1 warning · Truncated output"
+        ));
+
+        let detail = state.compare_detail_copy_text();
+        assert!(detail.contains("Compare Detail"));
+        assert!(detail.contains("Status\nCompare finished: 42 entries"));
+        assert!(detail.contains("Results\nTotal 42 · Changed 4 · Left 2 · Right 1"));
+        assert!(detail.contains("Detail\nSummary-first mode"));
+        assert!(detail.contains("3 deferred detail entries"));
+        assert!(detail.contains("Warnings\n• large-directory guard applied"));
     }
 
     #[test]
@@ -1602,6 +2531,9 @@ mod tests {
     fn diff_shell_state_tracks_no_selection_loading_and_ready() {
         let mut state = AppState::default();
         assert_eq!(state.diff_shell_state(), DiffShellState::NoSelection);
+
+        state.selected_relative_path = Some("src/main.rs".to_string());
+        assert_eq!(state.diff_shell_state(), DiffShellState::StaleSelection);
 
         state.selected_row = Some(0);
         state.entry_rows = sample_rows();
@@ -1708,7 +2640,7 @@ mod tests {
     }
 
     #[test]
-    fn analysis_panel_state_distinguishes_no_selection_not_started_and_success() {
+    fn analysis_panel_state_distinguishes_no_selection_waiting_ready_and_success() {
         let mut state = AppState::default();
         assert_eq!(
             state.analysis_panel_state(),
@@ -1717,10 +2649,14 @@ mod tests {
 
         state.selected_row = Some(0);
         state.entry_rows = sample_rows();
-        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::NotStarted);
+        assert_eq!(
+            state.analysis_panel_state(),
+            AnalysisPanelState::WaitingForDiff
+        );
 
         state.analysis_available = true;
         state.selected_diff = Some(sample_preview_panel("preview", "line"));
+        assert_eq!(state.analysis_panel_state(), AnalysisPanelState::Ready);
         assert_eq!(state.analysis_state_title_text(), "Analysis ready to start");
 
         state.analysis_result = Some(AnalysisResultViewModel {
@@ -1732,6 +2668,52 @@ mod tests {
             review_suggestions: vec!["Add coverage".to_string()],
         });
         assert_eq!(state.analysis_panel_state(), AnalysisPanelState::Success);
+    }
+
+    #[test]
+    fn analysis_panel_state_marks_stale_and_unavailable_selection() {
+        let stale_state = AppState {
+            selected_relative_path: Some("assets/logo.jpg".to_string()),
+            ..AppState::default()
+        };
+        assert_eq!(
+            stale_state.analysis_panel_state(),
+            AnalysisPanelState::StaleSelection
+        );
+
+        let unavailable_state = AppState {
+            selected_row: Some(0),
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "assets/logo.jpg".to_string(),
+                status: "left-only".to_string(),
+                detail: "only on left".to_string(),
+                entry_kind: "file".to_string(),
+                detail_kind: "none".to_string(),
+                can_load_diff: true,
+                diff_blocked_reason: None,
+                can_load_analysis: false,
+                analysis_blocked_reason: Some(
+                    "AI analysis is only available for changed file entries".to_string(),
+                ),
+            }],
+            selected_relative_path: Some("assets/logo.jpg".to_string()),
+            selected_diff: Some(sample_preview_panel(
+                "single-side preview unavailable",
+                "[preview unavailable] binary content is not supported",
+            )),
+            analysis_hint: Some(
+                "AI analysis is only available for changed file entries".to_string(),
+            ),
+            ..AppState::default()
+        };
+        assert_eq!(
+            unavailable_state.analysis_panel_state(),
+            AnalysisPanelState::Unavailable
+        );
+        assert_eq!(
+            unavailable_state.analysis_state_title_text(),
+            "Analysis unavailable for this selection"
+        );
     }
 
     #[test]
@@ -1753,15 +2735,21 @@ mod tests {
         };
 
         assert_eq!(state.analysis_risk_tone(), "error");
-        assert!(state
-            .analysis_summary_text()
-            .starts_with("This change updates"));
-        assert!(state
-            .analysis_result_notes_text()
-            .contains("truncated diff context"));
-        assert!(state
-            .analysis_result_notes_text()
-            .contains("input excerpt trimmed"));
+        assert!(
+            state
+                .analysis_summary_text()
+                .starts_with("This change updates")
+        );
+        assert!(
+            state
+                .analysis_result_notes_text()
+                .contains("truncated diff context")
+        );
+        assert!(
+            state
+                .analysis_result_notes_text()
+                .contains("input excerpt trimmed")
+        );
     }
 
     #[test]
@@ -1785,19 +2773,27 @@ mod tests {
             ..AppState::default()
         };
 
-        assert!(state
-            .analysis_summary_copy_text()
-            .starts_with("Summary\nRegression risk"));
+        assert!(
+            state
+                .analysis_summary_copy_text()
+                .starts_with("Summary\nRegression risk")
+        );
         assert!(state.analysis_risk_copy_text().contains("High risk"));
-        assert!(state
-            .analysis_full_copy_text()
-            .contains("File\nsrc/main.rs"));
-        assert!(state
-            .analysis_full_copy_text()
-            .contains("Review Suggestions"));
-        assert!(state
-            .analysis_full_copy_text()
-            .contains("context excerpt trimmed"));
+        assert!(
+            state
+                .analysis_full_copy_text()
+                .contains("File\nsrc/main.rs")
+        );
+        assert!(
+            state
+                .analysis_full_copy_text()
+                .contains("Review Suggestions")
+        );
+        assert!(
+            state
+                .analysis_full_copy_text()
+                .contains("context excerpt trimmed")
+        );
     }
 
     #[test]

@@ -3,24 +3,40 @@
 use crate::bridge;
 use crate::commands::UiCommand;
 use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
-use crate::settings::{self, ProviderSettings};
+use crate::settings::{self, AppPreferences, BehaviorSettings, ProviderSettings};
 use crate::state::AppState;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 const BACKGROUND_START_DELAY: Duration = Duration::from_millis(4);
+type StateChangeNotifier = Arc<dyn Fn() + Send + Sync>;
+
+enum DiffLoadPlan {
+    Noop,
+    SyncOnly,
+    Background {
+        left_root: String,
+        right_root: String,
+        row: crate::view_models::CompareEntryRowViewModel,
+        state_ref: Arc<Mutex<AppState>>,
+    },
+}
 
 /// Presenter that manages compare-oriented UI state.
 #[derive(Clone)]
 pub struct Presenter {
     state: Arc<Mutex<AppState>>,
+    state_change_notifier: Arc<Mutex<Option<StateChangeNotifier>>>,
 }
 
 impl Presenter {
     /// Creates a presenter from state.
     pub fn new(state: Arc<Mutex<AppState>>) -> Self {
-        Self { state }
+        Self {
+            state,
+            state_change_notifier: Arc::new(Mutex::new(None)),
+        }
     }
 
     /// Returns a snapshot copy of current app state.
@@ -28,32 +44,42 @@ impl Presenter {
         self.state.lock().expect("state mutex poisoned").clone()
     }
 
-    /// Returns coarse busy flags used by UI polling loop to avoid heavy snapshots.
-    pub fn busy_flags(&self) -> (bool, bool, bool) {
-        let state = self.state.lock().expect("state mutex poisoned");
-        (state.running, state.diff_loading, state.analysis_loading)
+    /// Registers one optional notifier used to push async state completions back to the UI thread.
+    pub fn set_state_change_notifier(&self, notifier: StateChangeNotifier) {
+        let mut slot = self
+            .state_change_notifier
+            .lock()
+            .expect("state change notifier mutex poisoned");
+        *slot = Some(notifier);
     }
 
     /// Handles one UI command.
     pub fn handle_command(&self, command: UiCommand) {
         match command {
             UiCommand::Initialize => {
+                {
+                    let mut state = self.state.lock().expect("state mutex poisoned");
+                    state.status_text = "Ready".to_string();
+                }
+                // Keep settings I/O outside the state mutex so edition-2024
+                // temporary drop-order changes cannot extend the lock lifetime.
+                let loaded_settings = settings::load_app_preferences();
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.status_text = "Ready".to_string();
-                match settings::load_provider_settings() {
+                match loaded_settings {
                     Ok(Some(saved)) => {
-                        state.analysis_provider_kind = saved.provider_kind;
-                        state.analysis_openai_endpoint = saved.openai_endpoint;
-                        state.analysis_openai_api_key = saved.openai_api_key;
-                        state.analysis_openai_model = saved.openai_model;
-                        state.analysis_request_timeout_secs = saved.timeout_secs.max(1);
-                        state.provider_settings_error_message = None;
+                        state.analysis_provider_kind = saved.provider.provider_kind;
+                        state.analysis_openai_endpoint = saved.provider.openai_endpoint;
+                        state.analysis_openai_api_key = saved.provider.openai_api_key;
+                        state.analysis_openai_model = saved.provider.openai_model;
+                        state.analysis_request_timeout_secs = saved.provider.timeout_secs.max(1);
+                        state.show_hidden_files = saved.behavior.show_hidden_files;
+                        state.settings_error_message = None;
                     }
                     Ok(None) => {}
                     Err(err) => {
-                        state.provider_settings_error_message =
-                            Some(format!("Failed to load provider settings: {err}"));
-                        state.status_text = "Provider settings load failed".to_string();
+                        state.settings_error_message =
+                            Some(format!("Failed to load settings: {err}"));
+                        state.status_text = "Settings load failed".to_string();
                     }
                 }
             }
@@ -130,84 +156,258 @@ impl Presenter {
                 state.analysis_openai_model = value;
                 state.analysis_error_message = None;
             }
-            UiCommand::SaveProviderSettings {
+            UiCommand::SaveAppSettings {
                 provider_kind,
                 endpoint,
                 api_key,
                 model,
                 timeout_secs_text,
+                show_hidden_files,
             } => {
-                let mut state = self.state.lock().expect("state mutex poisoned");
                 let timeout_secs = match parse_timeout_secs(&timeout_secs_text) {
                     Ok(value) => value,
                     Err(err) => {
-                        state.provider_settings_error_message = Some(err);
+                        let mut state = self.state.lock().expect("state mutex poisoned");
+                        state.settings_error_message = Some(err);
                         return;
                     }
                 };
 
-                state.analysis_provider_kind = provider_kind;
-                state.analysis_openai_endpoint = endpoint.trim().to_string();
-                state.analysis_openai_api_key = api_key.trim().to_string();
-                state.analysis_openai_model = model.trim().to_string();
-                state.analysis_request_timeout_secs = timeout_secs;
-                state.clear_analysis_panel();
-                state.analysis_hint = Some(match provider_kind {
-                    fc_ai::AiProviderKind::Mock => {
-                        "Using mock provider. No remote request will be sent.".to_string()
-                    }
-                    fc_ai::AiProviderKind::OpenAiCompatible => {
-                        "Using remote provider. Configure endpoint/api key/model.".to_string()
-                    }
-                });
+                let endpoint = endpoint.trim().to_string();
+                let api_key = api_key.trim().to_string();
+                let model = model.trim().to_string();
+                let settings = {
+                    let mut state = self.state.lock().expect("state mutex poisoned");
+                    state.analysis_provider_kind = provider_kind;
+                    state.analysis_openai_endpoint = endpoint;
+                    state.analysis_openai_api_key = api_key;
+                    state.analysis_openai_model = model;
+                    state.analysis_request_timeout_secs = timeout_secs;
+                    state.show_hidden_files = show_hidden_files;
+                    state.clear_analysis_panel();
+                    Self::reconcile_selected_row_visibility(&mut state);
+                    state.analysis_hint = Some(match provider_kind {
+                        fc_ai::AiProviderKind::Mock => {
+                            "Using mock provider. No remote request will be sent.".to_string()
+                        }
+                        fc_ai::AiProviderKind::OpenAiCompatible => {
+                            "Using remote provider. Configure endpoint/api key/model.".to_string()
+                        }
+                    });
 
-                let settings = ProviderSettings {
-                    provider_kind,
-                    openai_endpoint: state.analysis_openai_endpoint.clone(),
-                    openai_api_key: state.analysis_openai_api_key.clone(),
-                    openai_model: state.analysis_openai_model.clone(),
-                    timeout_secs: state.analysis_request_timeout_secs,
+                    AppPreferences {
+                        provider: ProviderSettings {
+                            provider_kind,
+                            openai_endpoint: state.analysis_openai_endpoint.clone(),
+                            openai_api_key: state.analysis_openai_api_key.clone(),
+                            openai_model: state.analysis_openai_model.clone(),
+                            timeout_secs: state.analysis_request_timeout_secs,
+                        },
+                        behavior: BehaviorSettings {
+                            show_hidden_files: state.show_hidden_files,
+                        },
+                    }
                 };
-                match settings::save_provider_settings(&settings) {
+                // Keep settings I/O outside the state mutex so edition-2024
+                // temporary drop-order changes cannot extend the lock lifetime.
+                let save_result = settings::save_app_preferences(&settings);
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                match save_result {
                     Ok(_) => {
-                        state.provider_settings_error_message = None;
-                        state.status_text = "Provider settings saved".to_string();
+                        state.settings_error_message = None;
+                        state.status_text = "Settings saved".to_string();
                     }
                     Err(err) => {
-                        state.provider_settings_error_message =
-                            Some(format!("Failed to save provider settings: {err}"));
-                        state.status_text = "Provider settings save failed".to_string();
+                        state.settings_error_message =
+                            Some(format!("Failed to save settings: {err}"));
+                        state.status_text = "Settings save failed".to_string();
                     }
                 }
             }
-            UiCommand::ClearProviderSettingsError => {
+            UiCommand::ClearSettingsError => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.provider_settings_error_message = None;
+                state.settings_error_message = None;
             }
         }
     }
 
+    fn notify_state_changed(&self) {
+        Self::notify_state_changed_with(&self.state_change_notifier);
+    }
+
+    fn notify_state_changed_with(slot: &Arc<Mutex<Option<StateChangeNotifier>>>) {
+        let notifier = slot
+            .lock()
+            .expect("state change notifier mutex poisoned")
+            .clone();
+        if let Some(notifier) = notifier {
+            notifier();
+        }
+    }
+
+    fn clear_file_view_state(state: &mut AppState) {
+        state.clear_diff_panel();
+        state.analysis_available = false;
+        state.clear_analysis_panel();
+    }
+
+    fn set_analysis_no_selection_hint(state: &mut AppState) {
+        state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
+    }
+
+    fn set_analysis_stale_selection_hint(state: &mut AppState) {
+        state.analysis_hint = Some(
+            "Previous selection is no longer active in the current Results / Navigator set."
+                .to_string(),
+        );
+    }
+
+    fn set_analysis_compare_restore_hint(state: &mut AppState) {
+        state.analysis_hint =
+            Some("Previous selection will be rechecked after compare finishes.".to_string());
+    }
+
+    fn selection_path_at(state: &AppState, index: usize) -> Option<String> {
+        state
+            .entry_rows
+            .get(index)
+            .map(|row| row.relative_path.clone())
+    }
+
+    fn restore_selection_after_compare(
+        state: &mut AppState,
+        restore_relative_path: Option<&str>,
+    ) -> bool {
+        let Some(path) = restore_relative_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+        else {
+            return false;
+        };
+
+        let restore_index = state
+            .entry_rows
+            .iter()
+            .position(|row| row.relative_path == path);
+        match restore_index {
+            Some(index) if state.is_row_visible_in_filter(index) => {
+                state.selected_row = Some(index);
+                state.selected_relative_path = Some(path);
+                Self::clear_file_view_state(state);
+                true
+            }
+            Some(_) | None => {
+                state.selected_row = None;
+                state.selected_relative_path = Some(path);
+                Self::clear_file_view_state(state);
+                Self::set_analysis_stale_selection_hint(state);
+                false
+            }
+        }
+    }
+
+    fn prepare_selected_diff_load(&self) -> DiffLoadPlan {
+        let mut state = self.state.lock().expect("state mutex poisoned");
+        if state.diff_loading {
+            return DiffLoadPlan::Noop;
+        }
+
+        let selected_row = state
+            .selected_row
+            .and_then(|idx| state.entry_rows.get(idx).cloned());
+        let Some(row) = selected_row else {
+            state.diff_loading = false;
+            state.diff_error_message =
+                Some("select one compare row before loading detailed diff".to_string());
+            state.selected_diff = None;
+            state.diff_warning = None;
+            state.diff_truncated = false;
+            state.analysis_available = false;
+            state.clear_analysis_panel();
+            Self::set_analysis_no_selection_hint(&mut state);
+            state.status_text = "Detailed diff unavailable".to_string();
+            return DiffLoadPlan::SyncOnly;
+        };
+
+        state.selected_relative_path = Some(row.relative_path.clone());
+        state.diff_error_message = None;
+        state.selected_diff = None;
+        state.diff_warning = None;
+        state.diff_truncated = false;
+        state.analysis_available = false;
+        state.clear_analysis_panel();
+        let is_preview_mode =
+            row.status == "left-only" || row.status == "right-only" || row.status == "equal";
+        if !row.can_load_diff {
+            let reason = row
+                .diff_blocked_reason
+                .clone()
+                .unwrap_or_else(|| "selected row does not support detailed text diff".to_string());
+            state.diff_loading = false;
+            state.diff_warning = Some(reason);
+            state.analysis_hint =
+                Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
+            state.status_text = if is_preview_mode {
+                "File preview unavailable for selected row".to_string()
+            } else {
+                "Detailed diff unavailable for selected row".to_string()
+            };
+            return DiffLoadPlan::SyncOnly;
+        }
+
+        state.diff_loading = true;
+        state.analysis_hint = Some(if is_preview_mode {
+            "File preview is loading...".to_string()
+        } else {
+            "Detailed diff is loading...".to_string()
+        });
+        DiffLoadPlan::Background {
+            left_root: state.left_root.clone(),
+            right_root: state.right_root.clone(),
+            row,
+            state_ref: Arc::clone(&self.state),
+        }
+    }
+
     fn execute_compare(&self) {
-        let (left_root, right_root, state_ref) = {
+        let state_change_notifier = Arc::clone(&self.state_change_notifier);
+        let presenter_for_restore = self.clone();
+        let (left_root, right_root, restore_relative_path, state_ref) = {
             let mut state = self.state.lock().expect("state mutex poisoned");
             if state.running {
                 return;
             }
+            let restore_relative_path = state
+                .selected_row
+                .and_then(|index| Self::selection_path_at(&state, index));
             state.running = true;
             state.error_message = None;
             state.status_text = "Comparing...".to_string();
             state.selected_row = None;
-            state.selected_relative_path = None;
-            state.clear_diff_panel();
-            state.analysis_available = false;
-            state.clear_analysis_panel();
-            state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
+            if let Some(path) = restore_relative_path.clone() {
+                state.selected_relative_path = Some(path);
+                Self::set_analysis_compare_restore_hint(&mut state);
+            } else if state
+                .selected_relative_path
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty())
+            {
+                Self::set_analysis_stale_selection_hint(&mut state);
+            } else {
+                state.selected_relative_path = None;
+                Self::set_analysis_no_selection_hint(&mut state);
+            }
+            Self::clear_file_view_state(&mut state);
             (
                 state.left_root.clone(),
                 state.right_root.clone(),
+                restore_relative_path,
                 Arc::clone(&self.state),
             )
         };
+        self.notify_state_changed();
 
         thread::spawn(move || {
             // Give UI one short frame to render loading state before heavy work.
@@ -216,92 +416,83 @@ impl Presenter {
             let result = bridge::build_compare_request(&left_root, &right_root)
                 .and_then(run_compare)
                 .map(bridge::map_compare_report);
+            let mut should_reload_restored_selection = false;
 
-            let mut state = state_ref.lock().expect("state mutex poisoned");
-            state.running = false;
-            match result {
-                Ok(vm) => {
-                    let count = vm.entry_rows.len();
-                    state.summary_text = vm.summary_text;
-                    state.entry_rows = vm.entry_rows;
-                    state.warning_lines = vm.warnings;
-                    state.truncated = vm.truncated;
-                    state.error_message = None;
-                    state.status_text = format!("Compare finished: {} entries", count);
+            {
+                let mut state = state_ref.lock().expect("state mutex poisoned");
+                state.running = false;
+                match result {
+                    Ok(vm) => {
+                        let count = vm.entry_rows.len();
+                        state.summary_text = vm.summary_text;
+                        state.entry_rows = vm.entry_rows;
+                        state.warning_lines = vm.warnings;
+                        state.truncated = vm.truncated;
+                        state.error_message = None;
+                        state.status_text = format!("Compare finished: {} entries", count);
+                        should_reload_restored_selection = Self::restore_selection_after_compare(
+                            &mut state,
+                            restore_relative_path.as_deref(),
+                        );
+                        if !should_reload_restored_selection && restore_relative_path.is_none() {
+                            if state
+                                .selected_relative_path
+                                .as_deref()
+                                .map(str::trim)
+                                .is_some_and(|value| !value.is_empty())
+                            {
+                                Self::set_analysis_stale_selection_hint(&mut state);
+                            } else {
+                                Self::set_analysis_no_selection_hint(&mut state);
+                            }
+                        }
+                    }
+                    Err(message) => {
+                        state.summary_text.clear();
+                        state.entry_rows.clear();
+                        state.warning_lines.clear();
+                        state.truncated = false;
+                        state.error_message = Some(message);
+                        state.status_text = "Compare failed".to_string();
+                        if state
+                            .selected_relative_path
+                            .as_deref()
+                            .map(str::trim)
+                            .is_some_and(|value| !value.is_empty())
+                        {
+                            Self::set_analysis_stale_selection_hint(&mut state);
+                        } else {
+                            Self::set_analysis_no_selection_hint(&mut state);
+                        }
+                    }
                 }
-                Err(message) => {
-                    state.summary_text.clear();
-                    state.entry_rows.clear();
-                    state.warning_lines.clear();
-                    state.truncated = false;
-                    state.error_message = Some(message);
-                    state.status_text = "Compare failed".to_string();
-                }
+            }
+            if should_reload_restored_selection {
+                presenter_for_restore.execute_load_selected_diff();
+            } else {
+                Self::notify_state_changed_with(&state_change_notifier);
             }
         });
     }
 
     fn execute_load_selected_diff(&self) {
-        let (left_root, right_root, selected_row, state_ref) = {
-            let mut state = self.state.lock().expect("state mutex poisoned");
-            if state.diff_loading {
+        let state_change_notifier = Arc::clone(&self.state_change_notifier);
+        let plan = self.prepare_selected_diff_load();
+        let (left_root, right_root, selected_row, state_ref) = match plan {
+            DiffLoadPlan::Noop => return,
+            DiffLoadPlan::SyncOnly => {
+                self.notify_state_changed();
                 return;
             }
-
-            let selected_row = state
-                .selected_row
-                .and_then(|idx| state.entry_rows.get(idx).cloned());
-            let Some(row) = selected_row else {
-                state.diff_loading = false;
-                state.diff_error_message =
-                    Some("select one compare row before loading detailed diff".to_string());
-                state.selected_diff = None;
-                state.diff_warning = None;
-                state.diff_truncated = false;
-                state.analysis_available = false;
-                state.clear_analysis_panel();
-                state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
-                state.status_text = "Detailed diff unavailable".to_string();
-                return;
-            };
-
-            state.selected_relative_path = Some(row.relative_path.clone());
-            state.diff_error_message = None;
-            state.selected_diff = None;
-            state.diff_warning = None;
-            state.diff_truncated = false;
-            state.analysis_available = false;
-            state.clear_analysis_panel();
-            let is_preview_mode =
-                row.status == "left-only" || row.status == "right-only" || row.status == "equal";
-            if !row.can_load_diff {
-                let reason = row.diff_blocked_reason.clone().unwrap_or_else(|| {
-                    "selected row does not support detailed text diff".to_string()
-                });
-                state.diff_loading = false;
-                state.diff_warning = Some(reason);
-                state.analysis_hint =
-                    Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
-                state.status_text = if is_preview_mode {
-                    "File preview unavailable for selected row".to_string()
-                } else {
-                    "Detailed diff unavailable for selected row".to_string()
-                };
-                return;
+            DiffLoadPlan::Background {
+                left_root,
+                right_root,
+                row,
+                state_ref,
+            } => {
+                self.notify_state_changed();
+                (left_root, right_root, Some(row), state_ref)
             }
-
-            state.diff_loading = true;
-            state.analysis_hint = Some(if is_preview_mode {
-                "File preview is loading...".to_string()
-            } else {
-                "Detailed diff is loading...".to_string()
-            });
-            (
-                state.left_root.clone(),
-                state.right_root.clone(),
-                Some(row),
-                Arc::clone(&self.state),
-            )
         };
 
         thread::spawn(move || {
@@ -330,51 +521,56 @@ impl Presenter {
                         })
                 });
 
-            let mut state = state_ref.lock().expect("state mutex poisoned");
-            state.diff_loading = false;
-            match result {
-                Ok((row, diff_vm)) => {
-                    let is_preview_mode = row.status == "left-only"
-                        || row.status == "right-only"
-                        || row.status == "equal";
-                    state.selected_relative_path = Some(diff_vm.relative_path.clone());
-                    state.diff_warning = diff_vm.warning.clone();
-                    state.diff_truncated = diff_vm.truncated;
-                    state.diff_error_message = None;
-                    state.selected_diff = Some(diff_vm);
-                    state.analysis_available = row.can_load_analysis;
-                    state.analysis_error_message = None;
-                    state.analysis_result = None;
-                    state.analysis_loading = false;
-                    state.analysis_hint = Some(if row.can_load_analysis {
-                        "Click Analyze to run AI risk review.".to_string()
-                    } else {
-                        row.analysis_blocked_reason.unwrap_or_else(|| {
-                            "selected row does not support AI analysis".to_string()
-                        })
-                    });
-                    state.status_text = if is_preview_mode {
-                        "File preview loaded".to_string()
-                    } else {
-                        "Detailed diff loaded".to_string()
-                    };
-                }
-                Err(message) => {
-                    state.diff_error_message = Some(message);
-                    state.selected_diff = None;
-                    state.diff_warning = None;
-                    state.diff_truncated = false;
-                    state.analysis_available = false;
-                    state.clear_analysis_panel();
-                    state.analysis_hint =
-                        Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
-                    state.status_text = "Detailed diff unavailable".to_string();
+            {
+                let mut state = state_ref.lock().expect("state mutex poisoned");
+                state.diff_loading = false;
+                match result {
+                    Ok((row, diff_vm)) => {
+                        let is_preview_mode = row.status == "left-only"
+                            || row.status == "right-only"
+                            || row.status == "equal";
+                        state.selected_relative_path = Some(diff_vm.relative_path.clone());
+                        state.diff_warning = diff_vm.warning.clone();
+                        state.diff_truncated = diff_vm.truncated;
+                        state.diff_error_message = None;
+                        state.selected_diff = Some(diff_vm);
+                        state.analysis_available = row.can_load_analysis;
+                        state.analysis_error_message = None;
+                        state.analysis_result = None;
+                        state.analysis_loading = false;
+                        state.analysis_hint = Some(if row.can_load_analysis {
+                            "Click Analyze to run AI risk review.".to_string()
+                        } else {
+                            row.analysis_blocked_reason.unwrap_or_else(|| {
+                                "selected row does not support AI analysis".to_string()
+                            })
+                        });
+                        state.status_text = if is_preview_mode {
+                            "File preview loaded".to_string()
+                        } else {
+                            "Detailed diff loaded".to_string()
+                        };
+                    }
+                    Err(message) => {
+                        state.diff_error_message = Some(message);
+                        state.selected_diff = None;
+                        state.diff_warning = None;
+                        state.diff_truncated = false;
+                        state.analysis_available = false;
+                        state.clear_analysis_panel();
+                        state.analysis_hint = Some(
+                            "Detailed diff is unavailable; AI analysis is disabled.".to_string(),
+                        );
+                        state.status_text = "Detailed diff unavailable".to_string();
+                    }
                 }
             }
+            Self::notify_state_changed_with(&state_change_notifier);
         });
     }
 
     fn execute_load_ai_analysis(&self) {
+        let state_change_notifier = Arc::clone(&self.state_change_notifier);
         let (selected_row, selected_diff, diff_warning, diff_truncated, ai_config, state_ref) = {
             let mut state = self.state.lock().expect("state mutex poisoned");
             if state.analysis_loading {
@@ -430,6 +626,7 @@ impl Presenter {
                 Arc::clone(&self.state),
             )
         };
+        self.notify_state_changed();
 
         thread::spawn(move || {
             // Give UI one short frame to render loading state before heavy work.
@@ -454,36 +651,38 @@ impl Presenter {
                 .and_then(run_ai_analysis)
                 .map(bridge::map_analyze_diff_response);
 
-            let mut state = state_ref.lock().expect("state mutex poisoned");
-            state.analysis_loading = false;
-            match result {
-                Ok(analysis_vm) => {
-                    state.analysis_error_message = None;
-                    state.analysis_result = Some(analysis_vm);
-                    state.analysis_hint = Some(format!(
-                        "AI analysis loaded from {} provider.",
-                        state.analysis_provider_mode_text()
-                    ));
-                    state.status_text = "AI analysis loaded".to_string();
-                }
-                Err(message) => {
-                    state.analysis_error_message = Some(message);
-                    state.analysis_result = None;
-                    state.status_text = "AI analysis unavailable".to_string();
+            {
+                let mut state = state_ref.lock().expect("state mutex poisoned");
+                state.analysis_loading = false;
+                match result {
+                    Ok(analysis_vm) => {
+                        state.analysis_error_message = None;
+                        state.analysis_result = Some(analysis_vm);
+                        state.analysis_hint = Some(format!(
+                            "AI analysis loaded from {} provider.",
+                            state.analysis_provider_mode_text()
+                        ));
+                        state.status_text = "AI analysis loaded".to_string();
+                    }
+                    Err(message) => {
+                        state.analysis_error_message = Some(message);
+                        state.analysis_result = None;
+                        state.status_text = "AI analysis unavailable".to_string();
+                    }
                 }
             }
+            Self::notify_state_changed_with(&state_change_notifier);
         });
     }
 
     fn reconcile_selected_row_visibility(state: &mut AppState) {
         if let Some(selected_row) = state.selected_row {
             if !state.is_row_visible_in_filter(selected_row) {
+                let stale_path = Self::selection_path_at(state, selected_row);
                 state.selected_row = None;
-                state.selected_relative_path = None;
-                state.clear_diff_panel();
-                state.analysis_available = false;
-                state.clear_analysis_panel();
-                state.analysis_hint = Some("Select one changed text file to analyze.".to_string());
+                state.selected_relative_path = stale_path;
+                Self::clear_file_view_state(state);
+                Self::set_analysis_stale_selection_hint(state);
             }
         }
     }
@@ -507,11 +706,9 @@ fn parse_timeout_secs(raw: &str) -> Result<u64, String> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn wait_until<F>(presenter: &Presenter, predicate: F) -> AppState
     where
@@ -560,10 +757,12 @@ mod tests {
         assert!(!snapshot.summary_text.is_empty());
         assert!(!snapshot.entry_rows.is_empty());
         assert!(snapshot.status_text.contains("Compare finished"));
-        assert!(snapshot
-            .entry_rows
-            .iter()
-            .any(|row| row.relative_path.contains("a.txt")));
+        assert!(
+            snapshot
+                .entry_rows
+                .iter()
+                .any(|row| row.relative_path.contains("a.txt"))
+        );
     }
 
     #[test]
@@ -658,7 +857,19 @@ mod tests {
         let snapshot = presenter.state_snapshot();
         assert_eq!(snapshot.selected_row, None);
         assert!(snapshot.selected_diff.is_none());
-        assert!(snapshot.selected_relative_path.is_none());
+        assert_eq!(snapshot.selected_relative_path.as_deref(), Some("a.txt"));
+        assert_eq!(
+            snapshot.analysis_hint.as_deref(),
+            Some("Previous selection is no longer active in the current Results / Navigator set.")
+        );
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::StaleSelection
+        );
+        assert_eq!(
+            snapshot.analysis_panel_state(),
+            crate::state::AnalysisPanelState::StaleSelection
+        );
     }
 
     #[test]
@@ -692,9 +903,81 @@ mod tests {
         let snapshot = presenter.state_snapshot();
         assert_eq!(snapshot.selected_row, None);
         assert!(snapshot.selected_diff.is_none());
-        assert!(snapshot.selected_relative_path.is_none());
+        assert_eq!(snapshot.selected_relative_path.as_deref(), Some("a.txt"));
         assert_eq!(snapshot.entry_status_filter, "equal");
         assert_eq!(snapshot.filtered_entry_rows_with_index().len(), 1);
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::StaleSelection
+        );
+    }
+
+    #[test]
+    fn filter_keeps_selected_row_when_it_remains_visible() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("alpha.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("alpha.txt"), "right\n").expect("right file should be written");
+        fs::write(left.path().join("beta.txt"), "same\n").expect("left file should be written");
+        fs::write(right.path().join("beta.txt"), "same\n").expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        let selected_index = presenter
+            .state_snapshot()
+            .entry_rows
+            .iter()
+            .position(|row| row.relative_path == "alpha.txt")
+            .expect("alpha row should exist");
+        presenter.handle_command(UiCommand::SelectRow(selected_index as i32));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+
+        presenter.handle_command(UiCommand::UpdateEntryFilter("alpha".to_string()));
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, Some(selected_index));
+        assert_eq!(
+            snapshot.selected_relative_path.as_deref(),
+            Some("alpha.txt")
+        );
+        assert!(snapshot.selected_diff.is_some());
+    }
+
+    #[test]
+    fn status_filter_keeps_selected_row_when_it_remains_visible() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::write(left.path().join("alpha.txt"), "left\n").expect("left file should be written");
+        fs::write(right.path().join("alpha.txt"), "right\n").expect("right file should be written");
+        fs::write(left.path().join("beta.txt"), "same\n").expect("left file should be written");
+        fs::write(right.path().join("beta.txt"), "same\n").expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        let selected_index = presenter
+            .state_snapshot()
+            .entry_rows
+            .iter()
+            .position(|row| row.status == "different")
+            .expect("different row should exist");
+        presenter.handle_command(UiCommand::SelectRow(selected_index as i32));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+
+        presenter.handle_command(UiCommand::UpdateEntryStatusFilter("different".to_string()));
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, Some(selected_index));
+        assert!(snapshot.selected_diff.is_some());
     }
 
     #[test]
@@ -745,11 +1028,13 @@ mod tests {
 
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.selected_diff.is_some());
-        assert!(snapshot
-            .selected_diff
-            .as_ref()
-            .map(|value| value.summary_text.contains("left-only preview"))
-            .unwrap_or(false));
+        assert!(
+            snapshot
+                .selected_diff
+                .as_ref()
+                .map(|value| value.summary_text.contains("left-only preview"))
+                .unwrap_or(false)
+        );
         assert_eq!(snapshot.analysis_available, false);
     }
 
@@ -775,16 +1060,18 @@ mod tests {
 
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.selected_diff.is_some());
-        assert!(snapshot
-            .selected_diff
-            .as_ref()
-            .map(|value| value.summary_text.contains("equal preview"))
-            .unwrap_or(false));
+        assert!(
+            snapshot
+                .selected_diff
+                .as_ref()
+                .map(|value| value.summary_text.contains("equal preview"))
+                .unwrap_or(false)
+        );
         assert_eq!(snapshot.analysis_available, false);
     }
 
     #[test]
-    fn rerun_compare_clears_previous_diff_panel_state() {
+    fn rerun_compare_restores_previous_diff_selection_when_path_still_exists() {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
         fs::write(left.path().join("doc.txt"), "a\nleft\n").expect("left file should be written");
@@ -805,11 +1092,46 @@ mod tests {
         assert!(presenter.state_snapshot().selected_diff.is_some());
 
         presenter.handle_command(UiCommand::RunCompare);
-        let snapshot = wait_until(&presenter, |state| !state.running);
-        assert!(snapshot.selected_diff.is_none());
+        let snapshot = wait_until(&presenter, |state| !state.running && !state.diff_loading);
+        assert_eq!(snapshot.selected_relative_path.as_deref(), Some("doc.txt"));
+        assert!(snapshot.selected_row.is_some());
+        assert!(snapshot.selected_diff.is_some());
         assert!(snapshot.diff_error_message.is_none());
-        assert!(!snapshot.diff_loading);
         assert_eq!(snapshot.entry_filter, "doc");
+    }
+
+    #[test]
+    fn rerun_compare_keeps_stale_selection_when_path_no_longer_exists() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        let left_file = left.path().join("doc.txt");
+        let right_file = right.path().join("doc.txt");
+        fs::write(&left_file, "a\nleft\n").expect("left file should be written");
+        fs::write(&right_file, "a\nright\n").expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SelectRow(0));
+        presenter.handle_command(UiCommand::LoadSelectedDiff);
+        wait_until(&presenter, |state| !state.diff_loading);
+
+        fs::remove_file(&left_file).expect("left file should be removed");
+        fs::remove_file(&right_file).expect("right file should be removed");
+
+        presenter.handle_command(UiCommand::RunCompare);
+        let snapshot = wait_until(&presenter, |state| !state.running);
+        assert_eq!(snapshot.selected_row, None);
+        assert_eq!(snapshot.selected_relative_path.as_deref(), Some("doc.txt"));
+        assert!(snapshot.selected_diff.is_none());
+        assert_eq!(
+            snapshot.diff_shell_state(),
+            crate::state::DiffShellState::StaleSelection
+        );
     }
 
     #[test]
@@ -960,11 +1282,13 @@ mod tests {
         assert!(snapshot.error_message.is_none());
         assert!(snapshot.diff_error_message.is_none());
         assert!(snapshot.analysis_error_message.is_some());
-        assert!(snapshot
-            .analysis_error_message
-            .as_deref()
-            .unwrap_or_default()
-            .contains("incomplete"));
+        assert!(
+            snapshot
+                .analysis_error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("incomplete")
+        );
     }
 
     #[test]
@@ -1046,11 +1370,15 @@ mod tests {
         assert!(presenter.state_snapshot().analysis_result.is_some());
 
         presenter.handle_command(UiCommand::RunCompare);
-        let snapshot = wait_until(&presenter, |state| !state.running);
+        let snapshot = wait_until(&presenter, |state| !state.running && !state.diff_loading);
         assert!(snapshot.analysis_result.is_none());
         assert!(snapshot.analysis_error_message.is_none());
         assert!(!snapshot.analysis_loading);
-        assert!(!snapshot.analysis_available);
+        assert!(snapshot.analysis_available);
+        assert_eq!(
+            snapshot.analysis_panel_state(),
+            crate::state::AnalysisPanelState::Ready
+        );
     }
 
     #[test]
@@ -1100,33 +1428,76 @@ mod tests {
     }
 
     #[test]
-    fn save_provider_settings_with_invalid_timeout_sets_error() {
+    fn save_settings_with_invalid_timeout_sets_error() {
         let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
-        presenter.handle_command(UiCommand::SaveProviderSettings {
+        presenter.handle_command(UiCommand::SaveAppSettings {
             provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
             endpoint: "https://api.example.com/v1".to_string(),
             api_key: "sk-test".to_string(),
             model: "gpt-4o-mini".to_string(),
             timeout_secs_text: "0".to_string(),
+            show_hidden_files: true,
         });
         let snapshot = presenter.state_snapshot();
-        assert!(snapshot.provider_settings_error_message.is_some());
+        assert!(snapshot.settings_error_message.is_some());
     }
 
     #[test]
-    fn initialize_loads_provider_settings_from_disk() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("env lock should not be poisoned");
+    fn save_settings_hiding_selected_row_marks_it_stale() {
+        let state = Arc::new(Mutex::new(AppState {
+            entry_rows: vec![
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: ".env".to_string(),
+                    status: "different".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+            ],
+            selected_row: Some(0),
+            selected_relative_path: Some(".env".to_string()),
+            show_hidden_files: true,
+            ..AppState::default()
+        }));
+        let presenter = Presenter::new(state);
+
+        presenter.handle_command(UiCommand::SaveAppSettings {
+            provider_kind: fc_ai::AiProviderKind::Mock,
+            endpoint: String::new(),
+            api_key: String::new(),
+            model: "gpt-4o-mini".to_string(),
+            timeout_secs_text: "30".to_string(),
+            show_hidden_files: false,
+        });
+
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, None);
+        assert_eq!(snapshot.selected_relative_path.as_deref(), Some(".env"));
+        assert!(!snapshot.show_hidden_files);
+    }
+
+    #[test]
+    fn initialize_loads_settings_from_disk() {
         let temp = tempfile::tempdir().expect("temp dir should be created");
-        std::env::set_var("FOLDER_COMPARE_CONFIG_DIR", temp.path());
-        crate::settings::save_provider_settings(&ProviderSettings {
-            provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
-            openai_endpoint: "https://api.example.com/v1".to_string(),
-            openai_api_key: "sk-test".to_string(),
-            openai_model: "gpt-4o-mini".to_string(),
-            timeout_secs: 55,
+        let _settings_guard = crate::settings::TestSettingsDirGuard::new(temp.path());
+        crate::settings::save_app_preferences(&AppPreferences {
+            provider: ProviderSettings {
+                provider_kind: fc_ai::AiProviderKind::OpenAiCompatible,
+                openai_endpoint: "https://api.example.com/v1".to_string(),
+                openai_api_key: "sk-test".to_string(),
+                openai_model: "gpt-4o-mini".to_string(),
+                timeout_secs: 55,
+            },
+            behavior: BehaviorSettings {
+                show_hidden_files: false,
+            },
         })
         .expect("settings should be saved");
 
@@ -1144,7 +1515,6 @@ mod tests {
         assert_eq!(snapshot.analysis_openai_api_key, "sk-test");
         assert_eq!(snapshot.analysis_openai_model, "gpt-4o-mini");
         assert_eq!(snapshot.analysis_request_timeout_secs, 55);
-
-        std::env::remove_var("FOLDER_COMPARE_CONFIG_DIR");
+        assert!(!snapshot.show_hidden_files);
     }
 }

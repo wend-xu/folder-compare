@@ -1,4 +1,4 @@
-use fc_core::{compare_dirs, CompareOptions, CompareRequest, EntryDetail, EntryStatus};
+use fc_core::{CompareOptions, CompareRequest, EntryDetail, EntryStatus, compare_dirs};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;

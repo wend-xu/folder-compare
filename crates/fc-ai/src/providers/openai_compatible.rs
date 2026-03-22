@@ -3,7 +3,7 @@
 use crate::domain::error::{AiError, ProviderExecutionFailureKind, ResponseParseFailureKind};
 use crate::domain::provider::AiProvider;
 use crate::domain::types::{AnalyzeDiffRequest, AnalyzeDiffResponse, PromptPayload, RiskLevel};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Duration;
 
 const PROVIDER_NAME: &str = "openai-compatible";
