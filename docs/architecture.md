@@ -1,32 +1,23 @@
-# Folder Compare Architecture (Stable Baseline before Phase 18)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Activation)
 
 ## Purpose
 
-- This document summarizes the current stable product, UI, and platform baseline after:
-  - `Phase 16A`
-  - `Phase 16A fix-1`
-  - `Phase 16B`
-  - `Phase 16C`
-  - `Phase 16C fix-1`
-  - `Phase 17A`
-  - `Phase 17A fix-1`
-  - `Phase 17B`
-  - `Phase 17B fix-1`
-  - `Phase 17C`
-  - `Phase 17D`
-- It is a baseline summary for future work, not a phase diary or roadmap checklist.
-- Earlier `Phase 15.x` closeouts and the standalone workspace `edition = "2024"` milestone remain accepted background and are not reopened here.
+- This document records two layers at once:
+  - the current real stable baseline closed through `Phase 17D`
+  - the agreed architectural/product entry conditions for starting `Phase 18A`
+- It is a baseline and boundary document, not a phase diary and not an implementation checklist.
+- Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
 ## Stable Delivery Baseline
 
+- Stable evolution baseline: post-`0.2.18`
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
 - `rust-toolchain = 1.94.0`
 - workspace `rust-version = 1.94`
 - `slint = 1.15.1`
 - `slint-build = 1.15.1`
-- Release version ownership stays in the workspace manifest, and packaging derives bundle / DMG / ZIP version from that source.
-- `15.2E` is shipped on this baseline.
+- `15.2E` is already shipped on this baseline.
 - Accepted inherited contracts from earlier closeouts remain in force:
   - native editable-input context menus
   - `Analysis success` native text-surface right-click
@@ -35,106 +26,138 @@
   - event-driven UI synchronization
   - persistent `VecModel` row projection
 
+## Completed Stable Baseline Through Phase 17D
+
+- `Phase 16`
+  - Sidebar information architecture closeout
+  - `Results / Navigator` filtering and scanability closeout
+  - `Compare Status` summary-first static block closeout
+  - results-row hierarchy, stale-selection, unavailable, and no-selection semantics closeout
+  - capability-first secondary text and input-font TOFU fixes
+- `Phase 17A`
+  - shared tooltip infrastructure
+  - tooltip completion for results rows, compare inputs, and search
+  - long-text truncation and tooltip stability closeout
+- `Phase 17B`
+  - `Provider Settings` promoted to `Settings`
+  - first `Provider / Behavior` split
+  - `Hidden files` introduced as the first UI/presentation preference
+  - `settings.toml` established as the only active persistence baseline
+  - legacy provider settings reduced to migration input only
+  - settings container size stabilized
+  - `Hidden files` intentionally not pushed down into `fc-core`
+- `Phase 17C`
+  - historical UI bug A/B/C/D closeout
+  - compare-input action finishing pass
+  - Compare button tooltip
+  - full-width Compare action lane
+  - workspace geometry and embedded `DiffStateShell` closeout
+- `Phase 17D`
+  - macOS immersive title bar landed
+  - macOS uses immersive strip
+  - Windows/Linux keep legacy top bar
+  - no `no-frame`
+  - drag moved to explicit blank area inside immersive strip only
+  - regression fixes closed out
+
 ## Crate Responsibilities
 
 - `fc-core`: deterministic directory compare, text diff domain model, public API, and error contracts.
 - `fc-ai`: optional AI interpretation layer for diff outputs behind a provider abstraction.
-- `fc-ui-slint`: desktop entry, app-state orchestration, window/platform integration, and UI presentation.
+- `fc-ui-slint`: desktop entry, app-state orchestration, window/platform integration, presenter logic, and UI presentation.
 
 ## Hard Architectural Boundaries
 
 - `fc-core` stays deterministic and isolated from UI, runtime, and provider concerns.
 - `fc-ai` stays optional. Compare output must remain usable when AI is disabled or unavailable.
-- `fc-ui-slint` handles orchestration and presentation, not core business rules.
-- Workspace structure stays `Tabs -> Header -> Content`.
-- Connected workspace tabs plus the attached workbench surface remain part of the accepted visual contract.
+- `fc-ui-slint` handles orchestration and presentation, not core compare semantics.
+- Sidebar IA stays fixed as four blocks.
+- Workspace stays one continuous attached workbench surface rather than multiple competing shells.
 - `Compare Status` stays summary-first.
 
-## Stable Product Structure
+## Current Stable Product / UI / Platform Baseline
 
 ### Top-Level Shell
 
 - Top-level structure stays `Window -> Top Bar -> Main Split`.
 - The main split stays `Sidebar + Workspace`.
-- The right side remains one continuous workbench surface rather than multiple competing nested cards.
+- The right side remains one continuous workbench surface rather than nested competing cards.
 
 ### Sidebar: Four Stable Blocks
 
 - `Compare Inputs`
-  - Collects left/right roots and triggers compare.
-  - Owns input, browse, and the primary compare action only.
-  - Does not carry compare diagnostics beyond lightweight action gating.
+  - collects left/right roots and triggers compare
+  - owns input, browse, and the primary compare action only
+  - does not carry compare diagnostics beyond lightweight action gating
 - `Compare Status`
-  - Owns compare outcome summary, compact metrics, warnings/errors, and copy-ready detail exposure.
-  - Remains an inline summary-first block with an optional detail tray.
-  - Does not own row selection or file-level rendering.
+  - owns compare outcome summary, compact metrics, warnings/errors, and copy-ready detail exposure
+  - remains an inline summary-first block with optional detail tray
+  - does not own row selection or file-level rendering
 - `Filter / Scope`
-  - Owns path/name search and status scope (`All / Diff / Equal / Left / Right`).
-  - Narrows the visible navigator set only.
-  - Does not mutate source compare data or change compare-summary source counts.
+  - owns `path / name` search and status scope (`All / Diff / Equal / Left / Right`)
+  - narrows the visible results set only
+  - does not mutate source compare data or compare-summary source counts
 - `Results / Navigator`
-  - Owns the flat visible collection, row scanability, and selection dispatch into the workspace.
-  - Remains file-view-first rather than tree/group navigation.
+  - owns result browsing, row scanability, and selection dispatch into the workspace
+  - current stable code baseline is a flat visible collection
+  - `Phase 18` formally reopens hierarchical result navigation inside this same block rather than introducing new IA
 
 ### Workspace: Stable Structure
 
-- Workspace stays `Tabs -> Header -> Helper Strip -> Body`.
+- Workspace stays `Tabs -> Header -> Content`.
 - Tabs remain `Diff` and `Analysis`.
 - Only one main mode renders at a time, but both modes stay inside the same attached workbench shell.
-- The outer workspace wrapper is visually transparent, and the inner workbench host/panel is the one primary perceived surface on the right.
+- The outer workspace wrapper stays visually subordinate to the inner workbench host/panel.
 
 ### Diff / Analysis Shared File View Shell
 
 - `Diff` and `Analysis` share the same file-level shell rhythm in non-ready states:
   - title row
-  - metadata / badge row
-  - helper strip
+  - metadata/badge row
+  - helper strip where applicable
   - shell/content body
 - `DiffStateShell` remains the shared embedded state surface for non-ready rendering.
 - Embedded shell mode stays low-noise and subordinate to the workbench instead of reading as a second heavy card.
 - `Diff` keeps the ready-state diff table, and `Analysis` keeps the structured review-conclusion surface, but both reuse the same surrounding shell contract.
-- `Diff` ready-state ergonomics stay stable:
-  - explicit `ScrollView` viewport for horizontal scrolling
-  - mirrored header `viewport-x`
-  - content-end scrollbar-safe spacer
-  - one shared column-geometry contract between header and body separators
 
 ## Stable UI / Interaction Contract
 
 ### Compare, Status, Filter, Results Responsibilities
 
 - `Compare Inputs` keeps one dedicated full-width primary action lane.
-- The inline `Ready to compare / Running compare / Select left and right folders` text pattern is intentionally gone.
-- Compare action explanation now belongs to:
+- Inline `Ready to compare / Running compare / Select left and right folders` text next to the button remains intentionally removed.
+- Compare action explanation belongs to:
   - `Compare Status` for summary-first run state
   - one lightweight button tooltip only when Compare is disabled or already running
 - `Filter / Scope` owns visible-set narrowing.
 - `Results / Navigator` owns row scanability, selection, and stale-selection transitions.
 - Workspace owns file-level view and analysis only.
 
-### Results Row Information Hierarchy
+### Results Row and Search Contract
 
-- Primary information: status pill + filename / leaf path segment.
-- Secondary information: concise capability-first summary such as `Text diff`, `Text-only preview`, `No text diff`, or `No text preview`.
-- Weak information: parent-path context for disambiguation only.
-- The list stays flat. No tree, grouping, alternate navigator mode, or detail-heavy row explanation layer was added.
+- Results row hierarchy remains:
+  - primary: status pill + filename / leaf path segment
+  - secondary: capability-first summary such as `Text diff`, `Text-only preview`, `No text diff`, or `No text preview`
+  - weak: parent-path disambiguation only
+- Search contract remains `path / name only`.
 - Search highlighting remains lightweight and row-local on filename / parent-path labels only.
+- Tooltip for results rows remains truncated-text completion only, not a second explanation system.
 
 ### Selection and Availability Semantics
 
 - `no-selection`
-  - Nothing is actively selected.
+  - nothing is actively selected
 - `stale-selection`
-  - The previously focused relative path is no longer part of the current visible `Results / Navigator` set.
-  - The visible row highlight clears.
-  - The file view keeps explicit stale context.
-  - The UI does not auto-jump to another row.
+  - the previously focused relative path is no longer part of the current visible results set
+  - visible row highlight clears
+  - file view keeps explicit stale context
+  - UI does not auto-jump to another row
 - `unavailable`
-  - The selected row is valid, but the current viewer or analysis mode cannot produce supported output for it.
+  - the selected row is valid, but the current viewer or analysis mode cannot produce supported output for it
 - Compare rerun restoration stays conservative:
   - restore by the same relative path only when it still exists and is still visible under current filters/preferences
   - otherwise remain stale
-- Search, status-scope, and hidden-files preference changes reuse the same stale-selection contract when they remove the active row from the visible set.
+- Search, status scope, and hidden-files preference changes reuse the same stale-selection contract when they remove the active row from the visible set.
 
 ### Diff and Analysis Shell Semantics
 
@@ -161,8 +184,6 @@
   - a second explanation surface
   - a detail-panel replacement
   - a platform-native tooltip framework
-- Results row tooltip completes full filename + full parent path only when visible row text is truncated.
-- Input tooltip completes the full input value only when the field is not actively being edited and the visible value is truncated.
 
 ### Settings Boundary
 
@@ -179,14 +200,13 @@
 
 ### Hidden Files Boundary
 
-- `Hidden files` is a UI / presentation preference only.
-- It changes the default visible `Results / Navigator` set and its summary copy immediately.
+- `Hidden files` is a UI/presentation preference only.
+- It changes the default visible results set and its summary copy immediately.
 - It does not change:
   - compare request building
   - compare-summary source counts
   - `fc-core` API contracts
   - search semantics
-- The collection summary explicitly reports when entries are hidden by Settings so this preference does not blur into Search or Status filtering.
 
 ## Platform and Window Baseline
 
@@ -211,7 +231,6 @@
 - The macOS top bar is one immersive strip that visually merges with the window top edge and reserves a conservative leading safety inset for traffic lights.
 - Dragging is explicit and local to the immersive strip via `drag_window()`.
 - Whole-window background dragging is intentionally not reopened.
-- The immersive strip is full-bleed across the window width while the main content area keeps the existing `10px` content inset rhythm.
 
 ### non-macOS Legacy Top Bar
 
@@ -238,7 +257,7 @@
 - `SelectableDiffText` and `SelectableSectionText` keep `UiTypography.selectable_content_font_family`.
 - Ordinary inputs and `ApiKeyLineEdit` keep `UiTypography.editable_input_font_family`.
 - Loading feedback and toast feedback remain UI-local rather than global-controller based.
-- Background compare / diff / analysis work remains off the UI thread, and UI updates return through event-loop upgrade instead of broad polling.
+- Background compare/diff/analysis work remains off the UI thread, and UI updates return through event-loop upgrade instead of broad polling.
 - `Results / Navigator` and `Diff` row models stay on persistent `VecModel` instances.
 
 ### Persistence
@@ -247,70 +266,174 @@
 - `settings.toml` is the single active baseline.
 - `provider_settings.toml` is legacy migration input only when `settings.toml` is absent.
 
-## Deferred / Explicitly Not Doing
+## Historical Pre-Phase 18 Limitation Note
+
+- The pre-`Phase 18` stable baseline correctly treated `Results / Navigator` as a flat-only result browser.
+- Earlier wording such as:
+  - "do not mix tree / group navigation"
+  - "the list stays flat"
+  - "Phase 18 should not mix in hierarchy"
+  described the accepted pre-`18A` implementation boundary and should be read as historical baseline context.
+- Those statements must not be reused as a current prohibition, because `Phase 18` has now been formally reopened for hierarchical result-view evolution inside the existing Sidebar/Workspace/window contracts.
+
+## Why Phase 18 Does Not Rewrite Compare Core Semantics
+
+- The `Phase 18` tree is a presenter/UI navigation upgrade, not a compare-core semantic rewrite.
+- `fc-core` already provides deterministic compare entries over the union of left/right paths, including directory entries.
+- `Phase 18` does not change:
+  - compare request construction
+  - hidden-entry policy in `fc-core`
+  - source compare-summary counts
+  - base diff/analysis pipelines
+- What changes in `Phase 18` lives in `fc-ui-slint` presentation/state:
+  - merged tree construction from existing compare entries
+  - visible-row projection for tree rendering
+  - expanded/collapsed state
+  - mode switching between tree and flat views
+  - filtered display-status aggregation for directories
+
+## Phase 18 Definition
+
+- `Phase 18` introduces a hierarchical results view built from the union of left/right paths, using an independent tree component to carry directory structure, expansion, and status expression, while retaining flat results for search and concentrated scanning and establishing a reusable data expression for later Compare View work.
+
+## Phase 18 Product Positioning
+
+### Dual View Coexistence
+
+- `Results / Navigator` enters dual-view operation:
+  - tree view
+  - flat view
+- Tree view is the primary non-search navigation surface.
+- Flat view remains valuable for search results and concentrated scanning.
+- This is not a new IA and not a second workspace; it is an evolution inside the existing `Results / Navigator` block.
+
+### Search Flat Fallback
+
+- Search results do not map directly into the tree.
+- When search is non-empty, `Results / Navigator` must enter flat results mode.
+- Clearing search returns to the current non-search runtime mode.
+- Search contract remains `path / name only`; `Phase 18A` does not introduce tree search, content search, or deep tree highlight rules.
+
+### Independent Tree Component Boundary
+
+- The tree component must be independent; tree behavior must not be stacked directly into `app.rs`.
+- Rust side owns:
+  - merged tree construction
+  - filtered visible-tree-row flattening
+  - selection/stale-selection decisions
+  - expanded-path state
+  - runtime mode decisions
+- Slint side owns render-only tree-row presentation plus row-level event dispatch.
+- Slint must not become the owner of recursive tree data, directory aggregation rules, or long-lived expansion/selection state.
+
+## Phase 18A / 18B / 18C Split
+
+### `18A`: Correctness Baseline
+
+- merged tree builder from left/right union entries
+- independent tree component
+- flattened visible tree-row projection from Rust to Slint
+- hidden-files compatibility
+- status-filter pruning on tree
+- file-leaf select/open reuse of the existing file-view pipeline
+- non-search runtime tree/flat toggle in `Results / Navigator`
+- default expansion rule:
+  - synthetic root implicitly expanded
+  - depth-1 directories expanded by default
+
+### `18B`: Mode Linkage and Locate Flow
+
+- persisted default result-view setting in `Settings`
+- `Locate and Open` from flat search results back into tree mode
+- ancestor-chain reveal
+- tree/flat runtime-switch selection retention and mapping refinement
+- expanded-path pruning/restore refinement across compare reruns
+
+### `18C`: Stabilization and Polish
+
+- tooltip parity where needed
+- locate-scroll/reveal polish
+- presenter/state test coverage fill-in
+- large-directory performance review and visual polish
+
+## Phase 18A Scope Boundary
+
+### In Scope
+
+- introduce tree mode alongside flat mode inside `Results / Navigator`
+- keep tree data/state in Rust presenter/state rather than Slint local state
+- render flattened visible tree rows in Slint
+- reuse existing file-leaf open/diff/load pipeline
+- apply status filter as tree pruning with necessary ancestors retained
+- preserve current stale-selection semantics
+
+### Out of Scope
+
+- `Settings` persistence for default result view
+- `Locate and Open`
+- auto reveal / auto scroll / animated locate feedback
+- directory selection entering the right-side file view
+- descendant counts, subtree summary text, complex directory statistics
+- content search, tree-internal search highlighting, or match-span semantics
+- dual-tree layout, Compare View / File View workspace redesign, or compare-core widening
+
+## Phase 18A Confirmed Decisions
+
+### Decision 1: non-search defaults to tree mode; search forces flat mode
+
+- In non-search state, `Results / Navigator` defaults to tree mode.
+- When search text is non-empty, search results must not be projected into the tree and the UI must switch to flat results mode.
+- Clearing search returns to the current non-search runtime mode.
+- Persisted default result view belongs to `18B`, not `18A`.
+
+### Decision 2: directory nodes do not enter file-view selection in v1
+
+- Directory-node click only expands/collapses.
+- Directory nodes do not become the right-side file-view selection target.
+- Only file-leaf selection reuses the existing `selected_row -> open file -> load diff/analysis` path.
+
+### Decision 3: directory `display_status` must be recomputed from the filtered visible subtree
+
+- Canonical/base status may remain available for unfiltered semantics.
+- Displayed directory status must serve the currently filtered tree.
+- Unfiltered directory status must not be shown unchanged after status-filter pruning.
+
+### Decision 4: tree/flat runtime switching keeps the conservative selection contract
+
+- If the currently open file is visible in the target mode, map highlight and keep the file open.
+- If it is not visible in the target mode, reuse existing `stale-selection` semantics.
+- `18A` does not require auto reveal, auto scroll, or locate-and-open behavior.
+
+### Decision 5: directory nodes keep minimal information expression in v1
+
+- Directory nodes keep only the minimum first-pass expression:
+  - node name
+  - expand/collapse affordance
+  - status color/pill
+- `18A` does not add secondary text, descendant counts, complex summaries, or content-search highlight to directory rows.
+
+## Deferred / Explicitly Not Doing Yet
 
 - Secure secret storage integration:
-  - trigger: before a remote provider becomes the production-default path.
+  - trigger: before a remote provider becomes the production-default path
 - Provider profile management:
-  - trigger: when rapid provider switching becomes a real daily workflow.
-- Response caching and token / cost tracking:
-  - trigger: when remote analysis usage becomes an operational concern.
+  - trigger: when rapid provider switching becomes a real daily workflow
+- Response caching and token/cost tracking:
+  - trigger: when remote analysis usage becomes an operational concern
 - Multi-provider orchestration:
-  - trigger: when fallback or provider routing becomes a real reliability requirement.
+  - trigger: when fallback or provider routing becomes a real reliability requirement
 - Compare-level hidden-entry policy:
-  - trigger: only if compare requests, shared statistics, export, cache behavior, or future tree/navigation work all need the same policy source.
-  - boundary: do not mix this with the current `Settings -> Behavior` presentation preference.
-- Results match-span highlight:
-  - trigger: only if the current filename/path label-level highlight proves insufficient.
-  - boundary: match positions must come from a lower layer; Slint stays render-only.
-- Optional diff row context menu beyond the current copy hotspots:
-  - trigger: only if mouse-driven row copy becomes a demonstrated gap.
-- Search clear-affordance convergence:
-  - trigger: only if the native desktop style exposes a stable clear affordance or the product deliberately changes widget style.
-- Analysis shell-state selectable text:
-  - trigger: only if revisited as an isolated pass that does not destabilize the accepted success-body scrolling/menu contract.
-- Sticky left-side line numbers:
-  - trigger: only if the current diff viewer stops being sufficient for review ergonomics.
-- Global loading orchestration:
-  - trigger: only when broader multi-surface workflows require a shared loading model.
-- Global toast orchestration:
-  - trigger: only when broader save/export/report flows require a notification-center model.
-- macOS title bar fine-tuning:
-  - trigger: only if real smoke testing proves the fixed leading inset or current drag strip insufficient.
-  - boundary: keep the follow-up inside `fc-ui-slint` first; do not jump to raw AppKit or traffic-light repositioning without a separate design pass.
-- Tree explorer / dual-mode workspace:
-  - trigger: only if flat-list file-view-first navigation becomes a demonstrated bottleneck.
-
-## Phase 18 Entry Conditions
-
-### Stable Baseline Phase 18 Can Assume
-
-- Sidebar IA is stable as four cards with clear responsibility boundaries.
-- Workspace structure is stable as one attached `Diff / Analysis` file-view shell rather than multiple competing surfaces.
-- Results row hierarchy and selection-state semantics are stable.
-- Tooltip, Settings, and Hidden-files boundaries are stable.
-- The platform window-layer contract is stable:
-  - macOS immersive strip
-  - non-mac legacy top bar
-  - platform branching contained in `window_chrome`
-- Supporting copy/menu, typography, runtime-sync, and settings-persistence contracts are stable.
-
-### Therefore Phase 18 Can Focus On
-
-- File-view and analysis work inside the accepted `Diff / Analysis` shell.
-- Review-efficiency or content-quality improvements that reuse the current Sidebar / Workspace / window structure instead of redesigning it.
-- Narrow feature work that depends on the current selection, state-shell, and presentation-preference contracts as fixed inputs.
-
-### Phase 18 Should Not Mix In
-
-- New IA, tree/group navigation, or dual-mode workspace design.
-- Window-system rework, `no-frame`, raw AppKit, traffic-light repositioning, or non-macOS chrome changes.
-- Full settings framework work, compare-level hidden-entry policy, or other `fc-core` contract widening tied to visibility policy.
-- Global tooltip/loading/toast/controller systems.
-- Reopening shipped `Phase 15.x`, edition-2024, or the accepted `Phase 16A` to `Phase 17D` baseline contracts.
+  - trigger: only if compare requests, shared statistics, export, cache behavior, or future navigation work all need the same policy source
+  - boundary: do not mix this with the current `Settings -> Behavior` presentation preference
+- Match-span highlight:
+  - trigger: only if current filename/path label-level highlight proves insufficient
+- Window-system rework:
+  - trigger: only if the current framed-window contract becomes a demonstrated blocker
+- Compare View / File View workspace split:
+  - trigger: only if later work proves the current attached file-view shell insufficient
 
 ## Documentation Update Contract
 
-- Update this file whenever the stable baseline, boundary, deferred list, or Phase 18 entry conditions materially change.
-- Keep it as a baseline summary, not a phase-by-phase diary.
-- Keep terminology aligned with `docs/thread-context.md` and `docs/upgrade-plan-rust-1.94-slint-1.15.md`.
+- Update this file whenever the stable baseline, the `Phase 18` boundary, or the active deferred list materially changes.
+- Keep stable-baseline facts separate from future-phase scope so new threads do not confuse shipped behavior with planned behavior.
+- Keep terminology aligned with `docs/thread-context.md` and `README.md`.
