@@ -1,8 +1,8 @@
 # Folder Compare (Rust Workspace)
 
-一个面向本地目录对比的 Rust workspace 项目，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
+一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-03-19）：
+当前项目状态（2026-03-21）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -10,13 +10,12 @@
 - workspace `rust-version = 1.94`
 - `slint = 1.15.1`
 - `slint-build = 1.15.1`
-- `phase15 summary` 已完成
-- `Phase 16A` 已完成
-- `Phase 15.3A`、`Phase 15.3B`、`Phase 15.4`、`Phase 15.5`、`Phase 15.5 fix-1`、`Phase 15.5 fix-2`、`Phase 15.5 fix-3`、`Phase 15.6`、`Phase 15.7`、`Phase 15.8`、`Phase 15.8 fix-1`，以及独立 workspace `edition = "2024"` 里程碑均已完成
+- `Phase 16A` 到 `Phase 17D` 的当前稳定基线已收口完成
+- `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
-- 当前主线下一步是继续剩余 `Phase 16` 工作
+- 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
 
-![display](./docs/assets/display_0_2_15/display.gif)
+![display](./docs/assets/display_0_2_18/display.gif)
 
 ## 1. Workspace 结构
 
@@ -24,70 +23,124 @@
   - 核心比较引擎（纯本地、确定性）
   - `compare_dirs` / `diff_text_file`
 - `crates/fc-ai`
-  - AI 分析能力层
+  - 可选 AI 分析层
   - `Analyzer` + `AiProvider`
   - `MockAiProvider`
   - `OpenAiCompatibleProvider`
 - `crates/fc-ui-slint`
   - Slint 桌面 UI
-  - compare + detailed diff + analysis 闭环
+  - compare + diff + analysis 闭环
+  - 平台窗口层集成（含 macOS immersive title bar facade）
 
-## 2. 当前稳定基线
+## 2. 当前稳定产品基线
 
-- IA 保持 `App Bar + Sidebar + Workspace`
-- Workspace 保持 `Diff / Analysis` 共享壳层：`Tabs -> Header -> Content`
-- Compare Status 保持 summary-first
-- `Compare Status` 支持块内 `Show details / Hide details` tray 与 `Copy Summary` / `Copy Detail`
-- `Compare Status` 折叠区与展开 tray 区都支持同一套上下文菜单
-- `Compare Inputs`、`Filter / Scope -> Search`、`Settings -> Provider` 普通输入框使用 `slint 1.15.1` 原生 editable-input context menu
-- `Filter / Scope -> Search` 当前 contract 为 path/name 匹配
-- `Provider Settings -> API Key` 使用专用 `ApiKeyLineEdit`
+- 顶层 IA 保持 `Top Bar + Sidebar + Workspace`
+- Sidebar 当前稳定为四块：
+  - `Compare Inputs`
+  - `Compare Status`
+  - `Filter / Scope`
+  - `Results / Navigator`
+- Workspace 当前稳定为 attached `Diff / Analysis` file-view shell：
+  - `Tabs -> Header -> Helper Strip -> Body`
+- `Compare Status` 保持 summary-first，并支持块内 `Show details / Hide details` 与 `Copy Summary` / `Copy Detail`
+- `Results / Navigator` 保持 flat list，不引入 tree / grouping / alternate mode
+- Results row 信息层级当前稳定为：
+  - 主信息：status pill + filename
+  - 次信息：capability-first summary
+  - 弱信息：parent-path disambiguation
+- selection 语义当前稳定区分：
+  - `no-selection`
+  - `stale-selection`
+  - `unavailable`
+- Search / Status / Hidden-files 改变后，若当前 row 不再可见，则进入 explicit stale-selection，不自动跳到第一项
+- compare 重跑只按同一路径做保守恢复；无法恢复则继续 stale
+
+## 3. 当前 UI / 交互事实
+
+- `Compare Inputs`
+  - `Compare` 是 full-width primary action lane
+  - 不再保留按钮右侧说明文案
+  - disabled/running 说明由 restrained tooltip 承担
+- `Filter / Scope`
+  - 搜索 contract 当前为 `path / name`
+  - 保留显式 `Clear` 按钮
+- `Results / Navigator`
+  - 顶部摘要使用集合状态文案（`Showing visible / total ...`）
+  - 搜索高亮保持 label-level，不引入 match-span parsing
+  - row tooltip 只做完整 filename + parent path completion
+- `Diff`
+  - 状态机：`no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
+  - single-side preview 继续是一等路径
+  - detail 横向滚动使用显式 `ScrollView`
+  - header/body 共用列几何
+- `Analysis`
+  - 状态机：`no-selection | stale-selection -> waiting | ready | unavailable -> loading -> error | success`
+  - success 面板继续包含：
+    - `Summary`
+    - `Risk Level`
+    - `Core Judgment`
+    - `Key Points`
+    - `Review Suggestions`
+    - `Notes`
+
+## 4. Settings / Tooltip / Hidden Files
+
+- 配置入口：App Bar -> `Settings`
+- 当前 Settings 只保留两个 section：
+  - `Provider`
+  - `Behavior`
+- `Behavior` 当前只包含一个持久化偏好：`Hidden files`
+- `Hidden files` 当前只是 UI / presentation preference：
+  - 影响 `Results / Navigator` 默认可见集合
+  - 影响顶部摘要文案
+  - 不改 compare request
+  - 不改 compare-summary source counts
+  - 不改 `fc-core` contract
+- tooltip 当前是 shared window-local overlay，只承担：
+  - 截断文本 completion
+  - disabled/running `Compare` 的 restrained hint
+- tooltip 不是 explanation-heavy hover system
+
+## 5. 平台与窗口层
+
+- `fc-ui-slint` 当前通过 `window_chrome` 模块收口平台窗口层差异
+- macOS：
+  - 使用 immersive title bar strip
+  - 启动前显式安装 winit backend selector
+  - 通过 Slint winit hook 启用 transparent title bar / full-size content view / hidden title
+  - blank-area drag 只在顶部 strip 内显式触发
+- Windows / Linux：
+  - 保持 legacy `SectionCard` top bar
+  - 不进入新的窗口初始化路径
+- 当前窗口层 baseline 不包括：
+  - `no-frame`
+  - raw AppKit / `objc2`
+  - traffic lights reposition
+  - 非 macOS 标题栏统一方案
+
+## 6. 文本、菜单与运行时事实
+
+- `Compare Inputs`、`Filter / Scope -> Search`、`Settings -> Provider` 普通输入框继续使用 `slint 1.15.1` 原生 editable-input context menu
+- `Settings -> Provider -> API Key` 使用专用 `ApiKeyLineEdit`
   - hidden：`Paste` only
   - visible：`Select All`、`Copy`、`Paste`、`Cut`
-- non-input context-menu core 继续保持 window-local、safe-surface only
 - `Analysis success` 正文文本支持 native text-surface `Copy` / `Select All` right-click
-- `Analysis success` section header / chrome 继续使用 window-local `Copy` / `Copy Summary` 菜单
-- `Risk Level` 继续保持显式 `Copy` 按钮-only
-- `Diff` detail 长行横向滚动继续使用显式 `ScrollView` 视口
-- read-only selectable content 共用 `UiTypography.selectable_content_font_family`
+- `Risk Level` 保持显式 `Copy` 按钮-only
+- `SelectableDiffText` / `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
+- ordinary inputs / `ApiKeyLineEdit` 共用 `UiTypography.editable_input_font_family`
 - UI 主同步路径已切到 event-driven sync
-- `Results / Navigator` 与 `Diff` 行模型已切到 persistent `VecModel`
-- `Results / Navigator` 顶部摘要使用当前结果集合状态条（`Showing visible / total ...`）
-- `loading-mask` 与 `toast` 继续保持 UI-local boundary
+- `Results / Navigator` 与 `Diff` 行模型使用 persistent `VecModel`
+- `loading-mask` 与 `toast` 保持 UI-local boundary
+- settings persistence 当前以 `settings.toml` 为唯一活跃基线；若只存在旧版 `provider_settings.toml`，启动时会一次性迁移
 
-## 3. 当前能力总览
-
-- Compare 闭环：路径输入、Browse、校验反馈、summary-first 状态、块内 compare detail tray
-- Results / Navigator：搜索 + 状态过滤 + 集合状态摘要 + 选择驱动 Diff 上下文
-- Diff：`no-selection -> loading -> unavailable/error -> detailed-ready|preview-ready`
-- Analysis：`no-selection -> not-started -> loading -> error|success`
-- Analysis success：
-  - `Summary`
-  - `Risk Level`
-  - `Core Judgment`
-  - `Key Points`
-  - `Review Suggestions`
-  - `Notes`
-- Settings：全局 modal、`Provider / Behavior` section、Save/Cancel、持久化恢复
-- 版本号单一事实来源：workspace `Cargo.toml`
-- macOS bundle / DMG / ZIP 版本从 workspace manifest 派生
-
-## 4. 当前边界与 deferred 项
-
-- 不混入 `Phase 16` 以外的新 roadmap 叙事
-- 不回退现有 shell / menu / loading / toast contract
-- 不引入 tree mode 或 Compare View 双模式
-- `Search` 继续保留显式 `Clear` 按钮
-- `SelectableDiffText` 行级右键菜单继续 deferred
-- 大块内联 `slint::slint!` 继续保留；`.slint` 外置仍是 deferred decision
-
-## 5. 运行方式
+## 7. 运行方式
 
 ### 前置要求
 
 - Rust `1.94.0`
-- 推荐使用 `rustup`，仓库内已固定 `rust-toolchain.toml`
-- macOS arm64 是当前主验证平台
+- 推荐使用 `rustup`
+- 仓库内已固定 `rust-toolchain.toml`
+- macOS arm64 仍是当前主验证平台
 
 ### 启动 UI
 
@@ -97,19 +150,18 @@ cargo run -p fc-ui-slint
 
 ### 基础流程
 
-1. 输入或 Browse 选择 Left/Right 目录
-2. 点击 Compare
-3. 在 Results 选择文件查看 Diff
+1. 输入或 Browse 选择 Left / Right 目录
+2. 点击 `Compare`
+3. 在 `Results / Navigator` 中选择文件查看 `Diff`
 4. 如需配置 provider 或 behavior：App Bar -> `Settings`
-5. 切换到 Analysis 并点击 Analyze
+5. 切换到 `Analysis` 并点击 `Analyze`
 
-## 6. Settings / OpenAI-compatible
+## 8. Settings / OpenAI-compatible
 
-### 配置入口与持久化
+### 持久化位置
 
 - 配置入口：App Bar -> `Settings`
 - 持久化文件名：`settings.toml`
-- 若只存在旧版 `provider_settings.toml`，应用会在启动时一次性迁移到 `settings.toml`
 - 配置目录优先级：
   - `FOLDER_COMPARE_CONFIG_DIR`
   - macOS：`~/Library/Application Support/folder-compare`
@@ -127,47 +179,29 @@ cargo run -p fc-ui-slint
 - `API Key`
 - `Model`
 
-## 7. 验证命令
+## 9. 常用验证命令
 
 ```bash
 cargo check --workspace
 cargo test --workspace
 ```
 
-## 8. 架构与文档
+## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 短周期交接与下一线程入口
+  - 新线程交接、当前稳定事实、Phase 18 入口
 - `docs/architecture.md`
-  - 当前架构基线、deferred decisions、next priority
+  - 当前稳定架构基线、边界、deferred、Phase 18 entry conditions
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
-  - 依赖升级与独立 edition 里程碑归档背景
+  - 依赖升级与独立 edition 里程碑的归档背景
 
-## 9. 下一步
+## 11. 当前开发入口
 
-- 下一步是继续剩余 `Phase 16`：结果导航效率增强
-- 后续实现应建立在当前 `0.2.18 + edition 2024 + rust 1.94.0 + slint 1.15.1 + Phase 16A` 基线上
-- 继续保持现有产品行为、UI contract、shell / menu / loading / toast 边界不变
-
-## 10. 长期路线（参考）
-
-本节用于保留产品长期方向，便于快速理解项目后续可能演进到哪里。
-
-- 这是方向性 roadmap，不是当前线程 contract，也不覆盖 `docs/architecture.md` 中的当前架构事实。
-- 当前唯一明确的下一步仍然是继续剩余 `Phase 16`。
-- `Phase 17+` 之后的内容仅作为中长期参考，后续可以调整优先级、范围或拆分方式。
-
-- `Phase 16`
-  - 结果导航效率增强（sorting / quick jump / filter ergonomics）
-- `Phase 17`
-  - 目录树 / 层级视图
-- `Phase 18`
-  - Compare View / File View 双模式工作区
-- `Phase 19`
-  - AI 分析增强（多任务 / hunk 关联 / 缓存）
-- `Phase 20`
-  - Diff / Analysis 高级交互
-- `Phase 21`
-  - 后台任务与性能体系
-- `Phase 22`
-  - 产品化收尾
+- 当前默认入口是 Pre-Phase 18 稳定基线，而不是继续重开旧 phase closeout。
+- 新工作应优先复用当前：
+  - Sidebar 四块 IA
+  - attached `Diff / Analysis` shell
+  - explicit stale-selection / unavailable 语义
+  - tooltip / Settings / Hidden-files 边界
+  - macOS immersive title bar / non-mac legacy top bar contract
+- README 不维护长期 roadmap；如需判断下一阶段可做什么，直接参考 `docs/architecture.md`。

@@ -12,27 +12,38 @@ BUNDLE_ID="cn.wendx.foldercompare"
 MIN_SYSTEM_VERSION="12.0"
 TARGET_TRIPLE="${TARGET_TRIPLE:-aarch64-apple-darwin}"
 ARCHIVE_SUFFIX="macos-arm64"
-VERSION="$(cargo pkgid -p "$BIN_NAME" | sed 's/.*@//')"
-TARGET_DIR="target/$TARGET_TRIPLE/release"
-DIST_DIR="dist"
+VERSION="$(cargo pkgid -p "$BIN_NAME" | sed 's/.*[#@]//')"
+TARGET_DIR="$ROOT_DIR/target/$TARGET_TRIPLE/release"
+DIST_DIR="$ROOT_DIR/dist"
 APP_PATH="$DIST_DIR/$APP_NAME.app"
 DMG_NAME="$APP_NAME-$ARCHIVE_SUFFIX-$VERSION.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 ZIP_NAME="$APP_NAME-$ARCHIVE_SUFFIX-$VERSION.zip"
+ZIP_PATH="$DIST_DIR/$ZIP_NAME"
 VOL_NAME="$APP_NAME Installer"
+ICON_PATH="$ROOT_DIR/docs/assets/icon.icns"
+BIN_PATH="$TARGET_DIR/$BIN_NAME"
 # ======================
+
+STAGE_DIR=""
+cleanup() {
+  if [ -n "${STAGE_DIR:-}" ] && [ -d "$STAGE_DIR" ]; then
+    rm -rf "$STAGE_DIR"
+  fi
+}
+trap cleanup EXIT
 
 # 如需先编译（已编译可注释）
 cargo build -p "$BIN_NAME" --release --target "$TARGET_TRIPLE"
 
-test -f "$TARGET_DIR/$BIN_NAME"
+test -f "$BIN_PATH"
 
 mkdir -p "$DIST_DIR"
 
 # 1) 组装 .app
 rm -rf "$APP_PATH"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
-cp "$TARGET_DIR/$BIN_NAME" "$APP_PATH/Contents/MacOS/$BIN_NAME"
+cp "$BIN_PATH" "$APP_PATH/Contents/MacOS/$BIN_NAME"
 chmod +x "$APP_PATH/Contents/MacOS/$BIN_NAME"
 
 cat > "$APP_PATH/Contents/Info.plist" <<PLIST
@@ -54,8 +65,8 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
 PLIST
 
 # 可选图标
-if [ -f "docs/assets/icon.icns" ]; then
-  cp "docs/assets/icon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+if [ -f "$ICON_PATH" ]; then
+  cp "$ICON_PATH" "$APP_PATH/Contents/Resources/AppIcon.icns"
   /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon.icns" "$APP_PATH/Contents/Info.plist" \
     || /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon.icns" "$APP_PATH/Contents/Info.plist"
 fi
@@ -71,6 +82,8 @@ ln -s /Applications "$STAGE_DIR/Applications"
 
 # 3) 生成可分发 DMG（UDZO 压缩）
 rm -f "$DMG_PATH"
+test -d "$STAGE_DIR"
+test -d "$DIST_DIR"
 hdiutil create \
   -volname "$VOL_NAME" \
   -srcfolder "$STAGE_DIR" \
@@ -81,12 +94,10 @@ hdiutil create \
 # codesign --force --sign "Developer ID Application: YOUR NAME (TEAMID)" "$DMG_PATH"
 
 # 4) 额外打 zip（可选）
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$DIST_DIR/$ZIP_NAME"
-
-# 清理
-rm -rf "$STAGE_DIR"
+rm -f "$ZIP_PATH"
+ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
 
 echo "DONE:"
 echo "App: $APP_PATH"
 echo "DMG: $DMG_PATH"
-echo "ZIP: $DIST_DIR/$ZIP_NAME"
+echo "ZIP: $ZIP_PATH"
