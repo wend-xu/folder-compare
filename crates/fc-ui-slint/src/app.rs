@@ -1275,6 +1275,7 @@ slint::slint! {
         min-width: 900px;
         min-height: 620px;
         background: #f2f4f7;
+        default-font-family: UiTypography.default_ui_font_family;
         in property <bool> immersive_titlebar_enabled: false;
         in property <length> titlebar_visual_height: 36px;
         in property <length> titlebar_leading_inset: 0px;

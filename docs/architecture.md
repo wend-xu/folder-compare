@@ -72,6 +72,7 @@
   - flattened visible tree rows projected from Rust to Slint
   - directory expansion/collapse state owned outside Slint
 - Slint now uses one independent tree renderer component for tree rows; it does not own recursive tree state.
+- Tree rows now use a drawn disclosure chevron plus trailing lightweight status text rather than flat-row pill/card inheritance.
 - Directory-node click in tree mode only expands/collapses; directory nodes do not enter right-side file-view selection.
 - File-leaf click in tree mode reuses the existing `selected_row -> load diff -> load analysis` path.
 - Hidden-files preference remains a UI/presentation boundary and now also applies to tree-mode projection.
@@ -167,9 +168,9 @@
   - secondary: capability-first summary such as `Text diff`, `Text-only preview`, `No text diff`, or `No text preview`
   - weak: parent-path disambiguation only
 - Tree-mode first-pass row expression stays intentionally smaller:
-  - node label
-  - lightweight status text / tone
-  - disclosure affordance for directories where applicable
+  - node label first
+  - trailing lightweight status text / tone
+  - drawn disclosure chevron for directories where applicable
   - restrained list-style selection instead of flat-card inheritance
 - Search contract remains `path / name only`.
 - Search highlighting remains lightweight and row-local on filename / parent-path labels only.
@@ -288,8 +289,9 @@
 
 ### Typography, Feedback, and Runtime Sync
 
-- `SelectableDiffText` and `SelectableSectionText` keep `UiTypography.selectable_content_font_family`.
-- Ordinary inputs and `ApiKeyLineEdit` keep `UiTypography.editable_input_font_family`.
+- Window-local text surfaces inherit `UiTypography.default_ui_font_family`, a cross-platform CJK-safe fallback chain for Latin/CJK/full-width text.
+- `SelectableDiffText` and `SelectableSectionText` keep `UiTypography.selectable_content_font_family` on top of that shared fallback baseline.
+- Ordinary inputs and `ApiKeyLineEdit` keep `UiTypography.editable_input_font_family` on top of that same fallback baseline.
 - Loading feedback and toast feedback remain UI-local rather than global-controller based.
 - Background compare/diff/analysis work remains off the UI thread, and UI updates return through event-loop upgrade instead of broad polling.
 - `Results / Navigator` and `Diff` row models stay on persistent `VecModel` instances.

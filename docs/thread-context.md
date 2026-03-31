@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Post-Phase 18A Round 1)
+# Folder Compare Thread Context (Post-Phase 18A fix-2)
 
 ## 目的
 
@@ -6,26 +6,28 @@
 - 只记录当前真实事实、当前边界、下一线程入口。
 - 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
-## 本轮更新说明（2026-03-22）
+## 本轮更新说明（2026-03-31）
 
-- `Phase 18A` 第一轮实现已落地到代码，不再是纯文档启动状态。
-- `Results / Navigator` 已从 flat-only 稳定基线进入 `tree + flat` 双视图运行时基线。
-- `docs/architecture.md` 已同步到“stable baseline + implemented `Phase 18A` baseline”口径。
-- `README.md` 已做最小必要同步，避免继续写成“Phase 18A 启动前”状态。
+- `Phase 18A fix-2` 已落地，继续停留在 `18A` 收口范围，没有进入 `18B`。
+- 全窗口文本面已收口到 app-wide CJK-safe fallback font chain，用于覆盖 macOS 15.7 上中文与全角字符显示问题。
+- `Results / Navigator` tree row 样式已进一步收口：
+  - disclosure 从文本符号切到绘制型 chevron
+  - 状态退到 trailing lightweight text，不引入 pill / card 继承
+- `docs/architecture.md` 已同步到当前 typography / tree-row baseline；`README.md` 已复核，本轮无需更新。
 
 ## 快照（Snapshot）
 
-- 日期：`2026-03-22`（Asia/Shanghai）
+- 日期：`2026-03-31`（Asia/Shanghai）
 - 分支：`dev`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
-  - `Phase 18A` 第一轮 correctness baseline 已实现
+  - `Phase 18A` dual-view baseline + fix-2 compatibility/style closeout 已实现
 - 本轮已运行验证：
   - `cargo fmt --all`
   - `cargo check --workspace`
   - `cargo test --workspace`
 
-## 当前真实稳定基线（Through Phase 17D + Phase 18A Round 1）
+## 当前真实稳定基线（Through Phase 17D + Phase 18A fix-2）
 
 ### 工具链与版本
 
@@ -63,10 +65,12 @@
   - expansion state
   - selection/stale-selection 决策
 - Slint 侧只有独立 tree renderer，不持有递归 tree state。
+- 全窗口普通文本已继承 app-wide CJK-safe fallback font chain；selectable / editable text 继续保留专用 typography token。
 - 目录节点点击只负责展开/收起，不进入 file-view selection。
 - 文件 leaf 节点点击复用既有 `selected_row / load diff / load analysis` 链路。
 - status filter 对 tree 做剪枝，并保留必要祖先。
 - 目录 `display_status` 基于过滤后可见子树重算。
+- tree row disclosure 已切到绘制型 chevron，状态文案收口为 trailing lightweight text。
 - `Hidden files` 继续是 UI / presentation preference，不下沉到 `fc-core`，并已与 tree mode 正确兼容。
 - tree / flat 切换遵循保守 selection contract。
 - 折叠包含当前打开文件的目录不会触发 false stale-selection；只有 membership 真变化时才 stale。
@@ -75,7 +79,7 @@
 
 - 当前不再是“启动 `Phase 18A`”。
 - 当前真实焦点是：
-  - 以已落地的 `Phase 18A` round 1 baseline 为前提继续工作
+  - 以已落地的 `Phase 18A` dual-view + fix-2 baseline 为前提继续工作
   - 优先做 smoke、边界收口、必要的小修正
   - 或在确认边界后再进入 `18B`
 - 不要回退到“flat-only baseline”叙事，也不要把本轮已实现内容继续当 proposal。
@@ -104,7 +108,7 @@
 8. tooltip 继续是 completion-first / restrained-hint-first，不演化成说明系统。
 9. `Hidden files` 继续是 UI preference，不推进到 compare/core policy。
 10. 不回退 macOS immersive title bar / non-mac legacy top bar / `window_chrome` split。
-11. 不回退 event-driven sync、persistent `VecModel`、shared typography tokens 等 supporting baseline。
+11. 不回退 event-driven sync、persistent `VecModel`、shared typography tokens、app-wide CJK-safe fallback font baseline 等 supporting baseline。
 
 ## 当前关键文件（Key Files）
 
@@ -117,7 +121,8 @@
 7. `crates/fc-ui-slint/src/state.rs`
 8. `crates/fc-ui-slint/src/presenter.rs`
 9. `crates/fc-ui-slint/src/app.rs`
-10. `crates/fc-ui-slint/src/commands.rs`
+10. `crates/fc-ui-slint/src/ui_palette.slint`
+11. `crates/fc-ui-slint/src/commands.rs`
 
 ## 验证（Verification）
 
@@ -138,7 +143,7 @@
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > 把 `Phase 17D` 之前的 shell / settings / tooltip / file-view contract 视为稳定基线。  
-> 把 `Phase 18A` 第一轮实现视为已落地事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 tree；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view。  
+> 把 `Phase 18A` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 tree；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree row disclosure 已是绘制型 chevron；窗口文本已继承 app-wide CJK-safe fallback font chain。  
 > 不要顺手重开 `fc-core` contract、window system、Settings persistence、directory selection、tree search、Locate and Open，除非当前线程目标明确要求。  
 > 如果继续 `18A` 收口，优先检查 smoke 与小范围 contract 修正；如果进入 `18B`，保持 locate/persist/reveal 范围独立，不要和现有稳定 shell 混改。
 

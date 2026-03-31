@@ -154,10 +154,14 @@ export global UiPalette {
 }
 
 export global UiTypography {
+    // Shared app-wide fallback chain to keep mixed Latin/CJK text readable
+    // across platform font databases, including older macOS builds.
+    property <string> cjk_safe_font_family: "\"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", \"Noto Sans SC\", \"Source Han Sans SC\", \"WenQuanYi Micro Hei\", sans-serif";
+    out property <string> default_ui_font_family: cjk_safe_font_family;
     // Shared typography token for read-only selectable content that must keep
     // mixed Latin/CJK punctuation stable across Slint text-engine upgrades.
-    out property <string> selectable_content_font_family: "PingFang SC";
+    out property <string> selectable_content_font_family: cjk_safe_font_family;
     // Shared typography token for editable inputs so all text-entry surfaces
     // keep the same CJK-safe fallback chain.
-    out property <string> editable_input_font_family: "PingFang SC";
+    out property <string> editable_input_font_family: cjk_safe_font_family;
 }

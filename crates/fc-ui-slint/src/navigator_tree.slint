@@ -1,5 +1,43 @@
 import { ListView } from "std-widgets.slint";
-import { UiPalette } from "ui_palette.slint";
+import { UiPalette, UiTypography } from "ui_palette.slint";
+
+component NavigatorDisclosureChevron inherits Rectangle {
+    in property <bool> expanded: false;
+    in property <brush> stroke: UiPalette.results_row_tone_neutral_context_text;
+
+    width: 12px;
+    height: 12px;
+    background: transparent;
+
+    Path {
+        x: 2px;
+        y: 2px;
+        width: 8px;
+        height: 8px;
+        viewbox-width: 8;
+        viewbox-height: 8;
+        fill: transparent;
+        stroke: root.stroke;
+        stroke-width: 1.4px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+
+        MoveTo {
+            x: root.expanded ? 1 : 2;
+            y: root.expanded ? 2 : 1;
+        }
+
+        LineTo {
+            x: root.expanded ? 4 : 5;
+            y: root.expanded ? 5 : 4;
+        }
+
+        LineTo {
+            x: root.expanded ? 7 : 2;
+            y: root.expanded ? 2 : 7;
+        }
+    }
+}
 
 component NavigatorTreeRow inherits Rectangle {
     in property <string> row_key;
@@ -22,17 +60,17 @@ component NavigatorTreeRow inherits Rectangle {
     property <bool> row_selected: root.selectable && root.source_index == root.selected_row;
     property <bool> row_hovered: row_touch_area.has_hover;
     property <string> row_status_label: root.status == "different"
-        ? "diff"
+        ? "Diff"
         : (root.status == "equal"
-            ? "equal"
+            ? "Equal"
             : (root.status == "left-only"
-                ? "left"
+                ? "Left"
                 : (root.status == "right-only"
-                    ? "right"
+                    ? "Right"
                     : root.status)));
     property <brush> row_background_color: root.row_selected
-        ? UiPalette.results_row_selected_background
-        : (root.row_hovered ? #f4f7fb : transparent);
+        ? rgba(219, 233, 251, 0.62)
+        : (root.row_hovered ? rgba(244, 247, 251, 0.88) : transparent);
     property <brush> label_color: root.row_selected
         ? UiPalette.results_row_selected_path_text
         : UiPalette.results_row_tone_neutral_path_text;
@@ -50,8 +88,9 @@ component NavigatorTreeRow inherits Rectangle {
                     : UiPalette.status_pill_tone_neutral_text)));
     property <length> indent_width: 12px * root.depth;
     property <bool> label_truncated: label_text.preferred-width > label_clip.width + 1px;
+    property <bool> status_visible: root.row_status_label != "";
 
-    height: 28px;
+    height: 26px;
     border-width: 0px;
     border-radius: 4px;
     background: root.row_background_color;
@@ -69,8 +108,8 @@ component NavigatorTreeRow inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 6px;
+        padding-left: 6px;
+        padding-right: 8px;
         spacing: 6px;
 
         Rectangle {
@@ -78,21 +117,17 @@ component NavigatorTreeRow inherits Rectangle {
             background: transparent;
         }
 
-        Text {
+        Rectangle {
             width: 12px;
-            text: root.expandable ? (root.expanded ? "v" : ">") : "";
-            color: root.disclosure_color;
-            vertical-alignment: center;
-            horizontal-alignment: center;
-            font-size: 11px;
-        }
+            background: transparent;
 
-        Text {
-            text: root.row_status_label;
-            color: root.status_text_color;
-            vertical-alignment: center;
-            font-size: 11px;
-            font-weight: 600;
+            NavigatorDisclosureChevron {
+                visible: root.expandable;
+                expanded: root.expanded;
+                stroke: root.disclosure_color;
+                x: 0px;
+                y: (parent.height - self.height) / 2;
+            }
         }
 
         label_clip := Rectangle {
@@ -107,8 +142,21 @@ component NavigatorTreeRow inherits Rectangle {
                 vertical-alignment: center;
                 font-size: 13px;
                 font-weight: root.directory ? 600 : 500;
+                font-family: UiTypography.default_ui_font_family;
                 overflow: elide;
             }
+        }
+
+        Text {
+            visible: root.status_visible;
+            text: root.row_status_label;
+            color: root.row_selected ? root.disclosure_color : root.status_text_color;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+            font-size: 10px;
+            font-weight: 600;
+            font-family: UiTypography.default_ui_font_family;
+            opacity: root.status == "equal" ? 0.72 : 0.9;
         }
     }
 
