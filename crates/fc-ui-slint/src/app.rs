@@ -9,6 +9,7 @@ use crate::context_menu::{
     build_results_row_payload, build_workspace_header_payload, should_close_for_sync_transition,
 };
 use crate::folder_picker;
+use crate::font_resolver;
 use crate::presenter::Presenter;
 use crate::state::AppState;
 use crate::toast_controller::{
@@ -28,6 +29,7 @@ slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
     import { NavigatorTree } from "src/navigator_tree.slint";
     import { UiPalette, UiTypography } from "src/ui_palette.slint";
+    export { UiTypography } from "src/ui_palette.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
     // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
@@ -4848,10 +4850,18 @@ fn copy_text_with_feedback(toast_controller: &ToastController, text: &str, feedb
     );
 }
 
+fn apply_runtime_ui_typography(app: &MainWindow) {
+    if let Some(resolved_family) = font_resolver::resolve_runtime_text_font_family() {
+        app.global::<UiTypography>()
+            .set_runtime_text_font_family(SharedString::from(resolved_family));
+    }
+}
+
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
     window_chrome::install_platform_windowing()?;
     let app = MainWindow::new().map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    apply_runtime_ui_typography(&app);
     app.set_immersive_titlebar_enabled(window_chrome::immersive_titlebar_enabled());
     app.set_titlebar_visual_height(window_chrome::titlebar_visual_height().into());
     app.set_titlebar_leading_inset(window_chrome::titlebar_leading_inset().into());

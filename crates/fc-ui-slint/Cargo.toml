@@ -10,8 +10,10 @@ anyhow.workspace = true
 fc-core.workspace = true
 fc-ai.workspace = true
 slint = { workspace = true, features = ["unstable-winit-030"] }
+fontique = "=0.7.0"
 smol_str.workspace = true
 tracing.workspace = true
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "fmt"] }
 serde.workspace = true
 copypasta = "0.10.2"
 toml = "0.8"
