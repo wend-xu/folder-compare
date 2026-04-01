@@ -154,12 +154,7 @@ export global UiPalette {
 }
 
 export global UiTypography {
-    // Runtime override written from Rust after probing the active Slint/fontique
-    // backend. An empty family keeps Slint's existing generic fallback path.
-    in property <string> runtime_text_font_family: "";
-    out property <string> default_ui_font_family: runtime_text_font_family;
-    // Read-only selectable content and editable inputs share the same runtime
-    // resolved family so CJK/full-width text stays consistent across surfaces.
-    out property <string> selectable_content_font_family: runtime_text_font_family;
-    out property <string> editable_input_font_family: runtime_text_font_family;
+    out property <string> default_ui_font_family: "";
+    out property <string> selectable_content_font_family: "";
+    out property <string> editable_input_font_family: "";
 }

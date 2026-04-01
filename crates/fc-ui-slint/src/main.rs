@@ -5,7 +5,7 @@ mod bridge;
 mod commands;
 mod context_menu;
 mod folder_picker;
-mod font_resolver;
+mod macos_font_bootstrap;
 mod navigator_tree;
 mod presenter;
 mod settings;
@@ -27,5 +27,6 @@ fn init_tracing() {
 
 fn main() -> anyhow::Result<()> {
     init_tracing();
+    macos_font_bootstrap::configure_slint_font_collection();
     app::run()
 }
