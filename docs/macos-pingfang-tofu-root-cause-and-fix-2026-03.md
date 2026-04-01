@@ -8,11 +8,11 @@
 
 ## 问题摘要
 
-- 当前 UI typography token 在 Slint 侧把 read-only selectable content 和 editable input 都固定为 `PingFang SC`：
+- 当时 UI typography 中转层在 Slint 侧把 read-only selectable content 和 editable input 都固定为 `PingFang SC`：
   - `crates/fc-ui-slint/src/ui_palette.slint`
-- 相关 token 当前值：
-  - `selectable_content_font_family: "PingFang SC"`
-  - `editable_input_font_family: "PingFang SC"`
+- 当时这两个文本面都被写成：
+  - read-only selectable content: `PingFang SC`
+  - editable input: `PingFang SC`
 - 用户报告的现象是：
   - 操作系统从 `macOS 13.5` 升级到 `macOS 15.6` 后
   - 中文、全角字符全部显示为 TOFU
@@ -47,9 +47,9 @@
 
 - 文件：
   - `crates/fc-ui-slint/src/ui_palette.slint`
-- 当前定义：
-  - `selectable_content_font_family: "PingFang SC"`
-  - `editable_input_font_family: "PingFang SC"`
+- 当时定义：
+  - read-only selectable content: `PingFang SC`
+  - editable input: `PingFang SC`
 
 这一步说明问题不是“没有显式指定中文字体”，而是“显式指定了一个在当前 Slint 字体枚举链路里已不可解析的 family name”。
 
@@ -173,9 +173,7 @@
   - `Hiragino Sans GB`
   - `Heiti SC`
 - 选第一个 `fontique` 实际可命中的 family。
-- 通过 Slint exported global 在运行时写回：
-  - `UiTypography.selectable_content_font_family`
-  - `UiTypography.editable_input_font_family`
+- 当前实现改为在启动阶段通过现有 macOS bootstrap 把系统字体接回 Slint 默认 generic family 路径，不再写回额外 typography global。
 
 ### 优点
 
@@ -271,7 +269,7 @@
 ### 运行时写回点
 
 - `MainWindow::new()` 之后、`run()` 之前
-- 统一写回 `UiTypography` global
+- 统一执行 macOS bootstrap，让 Slint 默认 generic family 走到已接入的系统字体
 
 ### 日志建议
 

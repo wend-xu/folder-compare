@@ -27,8 +27,7 @@ use std::time::Duration;
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
     import { NavigatorTree } from "src/navigator_tree.slint";
-    import { UiPalette, UiTypography } from "src/ui_palette.slint";
-    export { UiTypography } from "src/ui_palette.slint";
+    import { UiPalette } from "src/ui_palette.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
     // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
@@ -417,7 +416,6 @@ slint::slint! {
             text: root.text;
             color: UiPalette.tooltip_text;
             font-size: 12px;
-            font-family: UiTypography.selectable_content_font_family;
             wrap: word-wrap;
         }
     }
@@ -735,7 +733,6 @@ slint::slint! {
             color: root.foreground;
             font-size: 13px;
             font-weight: root.font_weight;
-            font-family: UiTypography.selectable_content_font_family;
             horizontal-alignment: left;
             vertical-alignment: center;
             selection-background-color: #c9daec;
@@ -762,7 +759,6 @@ slint::slint! {
             color: transparent;
             font-size: root.font_size;
             font-weight: root.font_weight;
-            font-family: UiTypography.selectable_content_font_family;
             wrap: word-wrap;
         }
 
@@ -800,7 +796,6 @@ slint::slint! {
                 color: root.foreground;
                 font-size: root.font_size;
                 font-weight: root.font_weight;
-                font-family: UiTypography.selectable_content_font_family;
                 horizontal-alignment: left;
                 vertical-alignment: top;
                 selection-background-color: #c9daec;
@@ -893,7 +888,6 @@ slint::slint! {
                 input-type: root.revealed ? InputType.text : InputType.password;
                 color: #33485d;
                 font-size: 13px;
-                font-family: UiTypography.editable_input_font_family;
                 selection-background-color: #c9daec;
                 selection-foreground-color: #23384d;
                 accessible-role: none;
@@ -1136,7 +1130,6 @@ slint::slint! {
     }
 
     component AppLineEdit inherits LineEdit {
-        font-family: UiTypography.editable_input_font_family;
     }
 
     component TooltipLineEdit inherits Rectangle {
@@ -1228,7 +1221,6 @@ slint::slint! {
             visible: false;
             text: root.text;
             font-size: line_edit.font-size;
-            font-family: UiTypography.editable_input_font_family;
         }
     }
 
@@ -1276,7 +1268,6 @@ slint::slint! {
         min-width: 900px;
         min-height: 620px;
         background: #f2f4f7;
-        default-font-family: UiTypography.default_ui_font_family;
         in property <bool> immersive_titlebar_enabled: false;
         in property <length> titlebar_visual_height: 36px;
         in property <length> titlebar_leading_inset: 0px;

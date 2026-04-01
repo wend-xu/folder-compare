@@ -1,5 +1,5 @@
 import { ListView } from "std-widgets.slint";
-import { UiPalette, UiTypography } from "ui_palette.slint";
+import { UiPalette } from "ui_palette.slint";
 
 component NavigatorDisclosureChevron inherits Rectangle {
     in property <bool> expanded: false;
@@ -142,7 +142,6 @@ component NavigatorTreeRow inherits Rectangle {
                 vertical-alignment: center;
                 font-size: 13px;
                 font-weight: root.directory ? 600 : 500;
-                font-family: UiTypography.default_ui_font_family;
                 overflow: elide;
             }
         }
@@ -155,7 +154,6 @@ component NavigatorTreeRow inherits Rectangle {
             horizontal-alignment: right;
             font-size: 10px;
             font-weight: 600;
-            font-family: UiTypography.default_ui_font_family;
             opacity: root.status == "equal" ? 0.72 : 0.9;
         }
     }

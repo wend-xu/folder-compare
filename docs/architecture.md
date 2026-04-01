@@ -289,9 +289,9 @@
 
 ### Typography, Feedback, and Runtime Sync
 
-- Window-local text surfaces inherit `UiTypography.default_ui_font_family`, a cross-platform CJK-safe fallback chain for Latin/CJK/full-width text.
-- `SelectableDiffText` and `SelectableSectionText` keep `UiTypography.selectable_content_font_family` on top of that shared fallback baseline.
-- Ordinary inputs and `ApiKeyLineEdit` keep `UiTypography.editable_input_font_family` on top of that same fallback baseline.
+- Window-local text surfaces now rely on Slint's default generic family path, with the existing macOS bootstrap wiring system fonts back into that route for Latin/CJK/full-width text.
+- `SelectableDiffText` and `SelectableSectionText` no longer add a runtime font-family override on top of that shared baseline.
+- Ordinary inputs and `ApiKeyLineEdit` likewise stay on the default generic-family path without an extra runtime typography layer.
 - Loading feedback and toast feedback remain UI-local rather than global-controller based.
 - Background compare/diff/analysis work remains off the UI thread, and UI updates return through event-loop upgrade instead of broad polling.
 - `Results / Navigator` and `Diff` row models stay on persistent `VecModel` instances.

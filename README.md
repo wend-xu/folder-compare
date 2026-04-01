@@ -139,8 +139,8 @@
   - visible：`Select All`、`Copy`、`Paste`、`Cut`
 - `Analysis success` 正文文本支持 native text-surface `Copy` / `Select All` right-click
 - `Risk Level` 保持显式 `Copy` 按钮-only
-- `SelectableDiffText` / `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
-- ordinary inputs / `ApiKeyLineEdit` 共用 `UiTypography.editable_input_font_family`
+- `SelectableDiffText` / `SelectableSectionText` 继续走 Slint 默认 generic family，由现有 macOS bootstrap 负责把系统字体接进来
+- ordinary inputs / `ApiKeyLineEdit` 同样走 Slint 默认 generic family，由现有 macOS bootstrap 负责把系统字体接进来
 - UI 主同步路径已切到 event-driven sync
 - `Results / Navigator` 与 `Diff` 行模型使用 persistent `VecModel`
 - `loading-mask` 与 `toast` 保持 UI-local boundary
