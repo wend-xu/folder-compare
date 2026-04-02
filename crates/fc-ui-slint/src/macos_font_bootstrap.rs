@@ -1,3 +1,66 @@
+//! Temporary macOS font bootstrap workaround.
+//!
+//! Why this exists:
+//! - On macOS 15.x, the Slint 1.15.1 text stack used in this project still depends on
+//!   `fontique 0.7.0` for system font discovery.
+//! - We verified that `fontique 0.7.0` fails to discover `PingFang SC` correctly on
+//!   newer macOS releases, which causes Chinese and full-width characters to render as
+//!   TOFU unless we manually register a CJK-capable system font into Slint's shared
+//!   font collection.
+//! - Our investigation also showed that this is a dependency-layer issue rather than an
+//!   application UI issue.
+//!
+//! Timeline:
+//! - On macOS 13.5, the first user-visible problem was already a font
+//!   fallback/selection issue in the Slint 1.15.1 text stack. At that stage, explicitly
+//!   selecting `PingFang SC` was enough to keep Chinese and full-width text readable.
+//! - After upgrading to macOS 15.7, the system font layout/exposure changed enough that
+//!   `fontique 0.7.0` could no longer discover `PingFang SC` reliably, so the earlier
+//!   workaround stopped being sufficient on its own.
+//! - As a result, the current application workaround is compensating for two dependency
+//!   issues at once: an older fallback/selection problem, and a newer macOS font
+//!   discovery problem.
+//!
+//! What is already confirmed:
+//! - Confirmed: `fontique 0.7.0` has a macOS system-font discovery problem. This file
+//!   exists primarily to compensate for that specific issue in the current Slint stack.
+//! - Confirmed: the current `Slint + Parley + fontique (+ renderer)` stack also shows a
+//!   mixed-text font-selection/fallback problem for samples such as `中Ａ（`.
+//! - Confirmed: in fallback-only experiments, `中` can hit CJK fallback, but `Ａ` and `（`
+//!   still stay on the Latin generic path, and `zh-Hans` locale does not change that.
+//! - Confirmed: this means the mixed-text behavior is not fully explained by the
+//!   `fontique 0.7.0` discovery bug alone.
+//! - Not yet isolated to a single crate: the remaining fallback/selection issue should be
+//!   treated as a stack-level behavior until proven otherwise, not as a proven standalone
+//!   `fontique 0.7.0` fallback bug.
+//!
+//! Responsibility boundary:
+//! - Neither the fallback/selection issue nor the macOS discovery issue should ideally be
+//!   owned long-term by application code.
+//! - This file should therefore stay a narrowly scoped compatibility shim for the current
+//!   dependency stack, not become the application's permanent font policy layer.
+//!
+//! Removal guidance:
+//! - Treat this file as a temporary compatibility shim, not as long-term font policy.
+//! - We have already validated that the relevant discovery issue is fixed in
+//!   `fontique 0.8.0`, but Slint may not pick up that version immediately, so the real
+//!   removal timing depends on when the Slint version used by this project includes the
+//!   effective fix.
+//! - We also validated a more system-like direction: stop explicitly pinning `PingFang SC`
+//!   and instead let the text stack follow the system-resolved macOS UI font selection and
+//!   fallback behavior. In practice, that direction likely requires a dependency-layer fix
+//!   or upgrade (`fontique`/Parley/Slint), rather than further application-layer tweaks in
+//!   this file.
+//! - We are intentionally not patching third-party crates locally for now, because the
+//!   maintenance and upgrade cost of carrying a private dependency fork is currently judged
+//!   too high relative to this application's temporary compatibility need.
+//! - During future Slint upgrades, explicitly test macOS text rendering with and without
+//!   this bootstrap. If Chinese and full-width characters render correctly without this
+//!   file, prefer deleting this workaround instead of evolving it further.
+//! - Regression samples to verify before removal:
+//!   `中`, `Ａ`, `（`, `中Ａ（`, navigator tree file rows, navigator tree directory rows,
+//!   and diff body text.
+//!
 #[cfg(target_os = "macos")]
 use anyhow::Context;
 #[cfg(target_os = "macos")]
