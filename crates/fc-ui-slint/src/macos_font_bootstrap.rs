@@ -137,7 +137,9 @@ fn bootstrap_pingfang_sc() -> anyhow::Result<Option<PathBuf>> {
                 .map(|_| *family_id)
         })
         .or_else(|| collection.family_id(PINGFANG_SC_FAMILY))
-        .context("registered the CoreText-discovered font file but could not resolve PingFang SC")?;
+        .context(
+            "registered the CoreText-discovered font file but could not resolve PingFang SC",
+        )?;
 
     for generic in [
         GenericFamily::SansSerif,
@@ -187,7 +189,8 @@ fn prepend_fallback_family(
 fn find_family_font_path(family_name: &str) -> Option<PathBuf> {
     let family_name = CFString::from_str(family_name);
     let collection = unsafe { CTFontCollection::from_available_fonts(None) };
-    let descriptors = unsafe { collection.matching_font_descriptors_for_family(&family_name, None) }?;
+    let descriptors =
+        unsafe { collection.matching_font_descriptors_for_family(&family_name, None) }?;
     let descriptors: CFRetained<CFArray<CTFontDescriptor>> =
         unsafe { CFRetained::cast_unchecked(descriptors) };
 

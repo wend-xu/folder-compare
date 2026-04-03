@@ -21,8 +21,7 @@
 - Accepted inherited contracts from earlier closeouts remain in force:
   - native editable-input context menus
   - `Analysis success` native text-surface right-click
-  - shared readable-content typography token
-  - shared editable-input typography token
+  - default generic-family text path with the current centralized macOS bootstrap shim
   - event-driven UI synchronization
   - persistent `VecModel` row projection
 
@@ -290,6 +289,9 @@
 ### Typography, Feedback, and Runtime Sync
 
 - Window-local text surfaces now rely on Slint's default generic family path, with the existing macOS bootstrap wiring system fonts back into that route for Latin/CJK/full-width text.
+- On macOS, that bootstrap remains a temporary compatibility shim centralized in `crates/fc-ui-slint/src/macos_font_bootstrap.rs`:
+  - it compensates for the confirmed `fontique 0.7.0` discovery issue in the current `Slint 1.15.1` stack
+  - it should be revalidated on future Slint upgrades and removed once the upstream stack behaves correctly without it
 - `SelectableDiffText` and `SelectableSectionText` no longer add a runtime font-family override on top of that shared baseline.
 - Ordinary inputs and `ApiKeyLineEdit` likewise stay on the default generic-family path without an extra runtime typography layer.
 - Loading feedback and toast feedback remain UI-local rather than global-controller based.
