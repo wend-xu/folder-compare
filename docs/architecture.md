@@ -290,8 +290,11 @@
 
 - Window-local text surfaces now rely on Slint's default generic family path, with the existing macOS bootstrap wiring system fonts back into that route for Latin/CJK/full-width text.
 - On macOS, that bootstrap remains a temporary compatibility shim centralized in `crates/fc-ui-slint/src/macos_font_bootstrap.rs`:
-  - it compensates for the confirmed `fontique 0.7.0` discovery issue in the current `Slint 1.15.1` stack
-  - it should be revalidated on future Slint upgrades and removed once the upstream stack behaves correctly without it
+  - it currently compensates for two confirmed dependency-stack issues in the current `Slint 1.15.1` baseline:
+    - an older mixed-text fallback/selection problem that was already user-visible on `macOS 13.5`
+    - the later `fontique 0.7.0` macOS font-discovery problem that became visible after upgrading to `macOS 15.7`
+  - the discovery portion is already known to be fixed in `fontique 0.8.0`, but actual removal timing still depends on when the Slint version used by this project absorbs that fix and can be revalidated on real macOS rendering samples
+  - this shim should be removed once the upstream stack behaves correctly without it; it is not the application's long-term font-policy layer
 - `SelectableDiffText` and `SelectableSectionText` no longer add a runtime font-family override on top of that shared baseline.
 - Ordinary inputs and `ApiKeyLineEdit` likewise stay on the default generic-family path without an extra runtime typography layer.
 - Loading feedback and toast feedback remain UI-local rather than global-controller based.

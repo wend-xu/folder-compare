@@ -16,6 +16,7 @@
 - 已确认的依赖层事实：
   - `macOS 13.5` 时先暴露的是字体回退/选字问题，当时通过显式 `PingFang SC` 暂时规避
   - 升级到 `macOS 15.7` 后，`fontique 0.7.0` 的字体发现问题也被暴露出来，单纯指定字体不再可靠
+  - 当前 `Slint + Parley + fontique (+ renderer)` 栈仍存在 mixed-text fallback/selection 问题，但这部分暂不归因到单一 crate
   - `fontique 0.8.0` 已修复相关发现问题，但当前项目何时能随 Slint 升级拿到该修复仍不确定
 - `docs/architecture.md` 已同步到当前 tree/font baseline；`README.md` 已复核，本轮无需更新。
 
@@ -77,7 +78,7 @@
 - 文本面当前统一回到 Slint 默认 generic-family 路径；不再保留 `UiTypography` 或其他 runtime font-family 中转层。
 - macOS 文本兼容由启动期 bootstrap shim 集中处理：
   - CoreText 查找并注册 `PingFang SC`
-  - 将其接回 Slint shared font collection 的当前 generic/fallback 路径
+  - 将其接回 Slint shared font collection 的当前 generic/fallback 路径，以同时兜底已知 discovery 问题与 mixed-text 显示问题
   - 该 shim 是对当前依赖栈问题的临时兼容，不是长期应用字体策略
 - 目录节点点击只负责展开/收起，不进入 file-view selection。
 - 文件 leaf 节点点击复用既有 `selected_row / load diff / load analysis` 链路。
