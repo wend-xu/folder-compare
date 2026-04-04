@@ -1,10 +1,10 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Activation)
+# Folder Compare Architecture (Stable Baseline + Phase 18A Baseline)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the agreed architectural/product entry conditions for starting `Phase 18A`
+  - the currently implemented `Phase 18A` baseline inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
@@ -21,8 +21,7 @@
 - Accepted inherited contracts from earlier closeouts remain in force:
   - native editable-input context menus
   - `Analysis success` native text-surface right-click
-  - shared readable-content typography token
-  - shared editable-input typography token
+  - default generic-family text path with the current centralized macOS bootstrap shim
   - event-driven UI synchronization
   - persistent `VecModel` row projection
 
@@ -59,6 +58,32 @@
   - no `no-frame`
   - drag moved to explicit blank area inside immersive strip only
   - regression fixes closed out
+
+## Current Implemented Phase 18A Baseline
+
+- `Results / Navigator` now supports dual-view operation inside the existing sidebar block:
+  - non-search runtime tree view
+  - flat view
+- Non-search state defaults to tree mode.
+- Search text still follows the stable `path / name only` contract and forces flat results mode.
+- Tree data/state is Rust-owned inside `fc-ui-slint` presenter/state:
+  - canonical merged tree built from existing compare entries over the left/right path union
+  - flattened visible tree rows projected from Rust to Slint
+  - directory expansion/collapse state owned outside Slint
+- Slint now uses one independent tree renderer component for tree rows; it does not own recursive tree state.
+- Tree rows now use a drawn disclosure chevron plus trailing lightweight status text rather than flat-row pill/card inheritance.
+- Directory-node click in tree mode only expands/collapses; directory nodes do not enter right-side file-view selection.
+- File-leaf click in tree mode reuses the existing `selected_row -> load diff -> load analysis` path.
+- Hidden-files preference remains a UI/presentation boundary and now also applies to tree-mode projection.
+- Status filter now prunes tree visibility with necessary ancestors retained, and directory `display_status` is recomputed from the filtered visible subtree.
+- Selection remains conservative:
+  - tree/flat switching preserves the currently open file only when it remains a member of the target visible set
+  - collapsing an ancestor directory does not force `stale-selection` when file membership has not changed
+- The following items are still intentionally deferred beyond this baseline:
+  - persisted default result-view setting
+  - `Locate and Open`
+  - auto reveal / auto scroll
+  - directory summary/counts/secondary text
 
 ## Crate Responsibilities
 
@@ -99,8 +124,10 @@
   - does not mutate source compare data or compare-summary source counts
 - `Results / Navigator`
   - owns result browsing, row scanability, and selection dispatch into the workspace
-  - current stable code baseline is a flat visible collection
-  - `Phase 18` formally reopens hierarchical result navigation inside this same block rather than introducing new IA
+  - current code baseline is dual-view:
+    - tree mode for non-search navigation
+    - flat mode for search results and explicit flat browsing
+  - this remains an evolution inside the same block rather than a new IA
 
 ### Workspace: Stable Structure
 
@@ -135,10 +162,15 @@
 
 ### Results Row and Search Contract
 
-- Results row hierarchy remains:
+- Flat results row hierarchy remains:
   - primary: status pill + filename / leaf path segment
   - secondary: capability-first summary such as `Text diff`, `Text-only preview`, `No text diff`, or `No text preview`
   - weak: parent-path disambiguation only
+- Tree-mode first-pass row expression stays intentionally smaller:
+  - node label first
+  - trailing lightweight status text / tone
+  - drawn disclosure chevron for directories where applicable
+  - restrained list-style selection instead of flat-card inheritance
 - Search contract remains `path / name only`.
 - Search highlighting remains lightweight and row-local on filename / parent-path labels only.
 - Tooltip for results rows remains truncated-text completion only, not a second explanation system.
@@ -158,6 +190,8 @@
   - restore by the same relative path only when it still exists and is still visible under current filters/preferences
   - otherwise remain stale
 - Search, status scope, and hidden-files preference changes reuse the same stale-selection contract when they remove the active row from the visible set.
+- Tree-mode directory collapse does not by itself make the current file selection stale; stale-selection only follows actual visible-set membership change.
+- Tree/flat runtime switching reuses the same conservative contract.
 
 ### Diff and Analysis Shell Semantics
 
@@ -254,8 +288,15 @@
 
 ### Typography, Feedback, and Runtime Sync
 
-- `SelectableDiffText` and `SelectableSectionText` keep `UiTypography.selectable_content_font_family`.
-- Ordinary inputs and `ApiKeyLineEdit` keep `UiTypography.editable_input_font_family`.
+- Window-local text surfaces now rely on Slint's default generic family path, with the existing macOS bootstrap wiring system fonts back into that route for Latin/CJK/full-width text.
+- On macOS, that bootstrap remains a temporary compatibility shim centralized in `crates/fc-ui-slint/src/macos_font_bootstrap.rs`:
+  - it currently compensates for two confirmed dependency-stack issues in the current `Slint 1.15.1` baseline:
+    - an older mixed-text fallback/selection problem that was already user-visible on `macOS 13.5`
+    - the later `fontique 0.7.0` macOS font-discovery problem that became visible after upgrading to `macOS 15.7`
+  - the discovery portion is already known to be fixed in `fontique 0.8.0`, but actual removal timing still depends on when the Slint version used by this project absorbs that fix and can be revalidated on real macOS rendering samples
+  - this shim should be removed once the upstream stack behaves correctly without it; it is not the application's long-term font-policy layer
+- `SelectableDiffText` and `SelectableSectionText` no longer add a runtime font-family override on top of that shared baseline.
+- Ordinary inputs and `ApiKeyLineEdit` likewise stay on the default generic-family path without an extra runtime typography layer.
 - Loading feedback and toast feedback remain UI-local rather than global-controller based.
 - Background compare/diff/analysis work remains off the UI thread, and UI updates return through event-loop upgrade instead of broad polling.
 - `Results / Navigator` and `Diff` row models stay on persistent `VecModel` instances.
@@ -328,7 +369,7 @@
 
 ## Phase 18A / 18B / 18C Split
 
-### `18A`: Correctness Baseline
+### `18A`: Landed Correctness Baseline
 
 - merged tree builder from left/right union entries
 - independent tree component
@@ -340,13 +381,16 @@
 - default expansion rule:
   - synthetic root implicitly expanded
   - depth-1 directories expanded by default
+- conservative selection retention/stale handling for:
+  - filter/search/hidden-files changes
+  - tree/flat runtime switching
+  - ancestor collapse without false stale
 
 ### `18B`: Mode Linkage and Locate Flow
 
 - persisted default result-view setting in `Settings`
 - `Locate and Open` from flat search results back into tree mode
 - ancestor-chain reveal
-- tree/flat runtime-switch selection retention and mapping refinement
 - expanded-path pruning/restore refinement across compare reruns
 
 ### `18C`: Stabilization and Polish

@@ -29,7 +29,7 @@
 - `slint-build = 1.15.1`
 - release version、bundle version、DMG / ZIP version 统一从 workspace manifest 派生
 - `15.2E` 已在该基线上落地
-- event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、shared `UiTypography.selectable_content_font_family`、non-input context-menu visual polish、`Analysis success` native text-surface right-click、section header 左对齐修复均已是稳定事实
+- event-driven sync、persistent `VecModel`、`Diff` 显式 `ScrollView` 视口、read-only selectable content 继续走 Slint 默认 generic family（由现有 macOS bootstrap 接入系统字体）、non-input context-menu visual polish、`Analysis success` native text-surface right-click、section header 左对齐修复均已是稳定事实
 
 ## 3. Archived outcomes by phase
 
@@ -45,7 +45,7 @@
 - `Phase 15.5 fix-1`
   - 修复 `SelectableDiffText` / `SelectableSectionText` 在 mixed Latin/CJK 文本中的 glyph fallback 回归。
 - `Phase 15.5 fix-2`
-  - 把 glyph fallback 收敛为共享 `UiTypography.selectable_content_font_family`，不再通过多层 prop threading 传递。
+  - 曾把 glyph fallback 收敛为共享 typography 中转层，避免继续通过多层 prop threading 传递。
 - `Phase 15.5 fix-3`
   - `Diff` detail 横向滚动改到显式 `ScrollView` 视口，并保留 content-end scrollbar-safe spacer。
 - `Phase 15.6`
@@ -69,7 +69,7 @@
 - 版本号应继续以 workspace manifest 为单一事实来源。
 - editable-input 菜单优先走 Slint native surface，不回退到 overlay 拦截、私有事件链路或自写 caret / selection / editing。
 - `API Key` 应继续保持保守 secret contract，不把 masked 文本默认视为可复制内容。
-- read-only selectable content 的字体策略继续以 shared `UiTypography.selectable_content_font_family` 为准。
+- read-only selectable content 的字体策略继续走 Slint 默认 generic family，并由现有 macOS bootstrap 负责接入系统字体。
 - `Diff` detail 这类“宽表 + selectable 文本 + 变高行”场景，显式 `ScrollView` 比依赖升级后的 `ListView` 横向滚动路径更稳定。
 - event-driven sync 比 broad `50ms` polling 更符合当前 UI contract。
 - `.slint` 外置仍然是 deferred decision；只有收益明确超过 churn 时才值得重开。

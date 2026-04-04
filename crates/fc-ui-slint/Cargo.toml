@@ -9,12 +9,17 @@ rust-version.workspace = true
 anyhow.workspace = true
 fc-core.workspace = true
 fc-ai.workspace = true
-slint = { workspace = true, features = ["unstable-winit-030"] }
+slint = { workspace = true, features = ["unstable-fontique-07", "unstable-winit-030"] }
 smol_str.workspace = true
 tracing.workspace = true
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "fmt"] }
 serde.workspace = true
 copypasta = "0.10.2"
 toml = "0.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFArray", "CFString", "CFURL", "std"] }
+objc2-core-text = { version = "=0.3.2", default-features = false, features = ["CTFontCollection", "CTFontDescriptor", "std"] }
 
 [build-dependencies]
 slint-build.workspace = true

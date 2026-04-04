@@ -27,7 +27,7 @@ use std::time::Duration;
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
     import { NavigatorTree } from "src/navigator_tree.slint";
-    import { UiPalette, UiTypography } from "src/ui_palette.slint";
+    import { UiPalette } from "src/ui_palette.slint";
 
     // Contract: shared visual primitives used across sidebar/workspace/modal.
     // They define reusable look-and-feel only; business state stays in MainWindow + Rust bridge.
@@ -416,7 +416,6 @@ slint::slint! {
             text: root.text;
             color: UiPalette.tooltip_text;
             font-size: 12px;
-            font-family: UiTypography.selectable_content_font_family;
             wrap: word-wrap;
         }
     }
@@ -734,7 +733,6 @@ slint::slint! {
             color: root.foreground;
             font-size: 13px;
             font-weight: root.font_weight;
-            font-family: UiTypography.selectable_content_font_family;
             horizontal-alignment: left;
             vertical-alignment: center;
             selection-background-color: #c9daec;
@@ -761,7 +759,6 @@ slint::slint! {
             color: transparent;
             font-size: root.font_size;
             font-weight: root.font_weight;
-            font-family: UiTypography.selectable_content_font_family;
             wrap: word-wrap;
         }
 
@@ -799,7 +796,6 @@ slint::slint! {
                 color: root.foreground;
                 font-size: root.font_size;
                 font-weight: root.font_weight;
-                font-family: UiTypography.selectable_content_font_family;
                 horizontal-alignment: left;
                 vertical-alignment: top;
                 selection-background-color: #c9daec;
@@ -892,7 +888,6 @@ slint::slint! {
                 input-type: root.revealed ? InputType.text : InputType.password;
                 color: #33485d;
                 font-size: 13px;
-                font-family: UiTypography.editable_input_font_family;
                 selection-background-color: #c9daec;
                 selection-foreground-color: #23384d;
                 accessible-role: none;
@@ -1135,7 +1130,6 @@ slint::slint! {
     }
 
     component AppLineEdit inherits LineEdit {
-        font-family: UiTypography.editable_input_font_family;
     }
 
     component TooltipLineEdit inherits Rectangle {
@@ -1227,7 +1221,6 @@ slint::slint! {
             visible: false;
             text: root.text;
             font-size: line_edit.font-size;
-            font-family: UiTypography.editable_input_font_family;
         }
     }
 
@@ -2109,26 +2102,31 @@ slint::slint! {
                                     Rectangle {
                                         horizontal-stretch: 1;
                                     }
-                                    ToolButton {
-                                        label: "Tree";
-                                        button_min_width: 58px;
-                                        control_height: 24px;
-                                        active: root.navigator_effective_view_mode == "tree";
-                                        enabled: !root.navigator_search_forces_flat_mode
-                                            && root.navigator_runtime_view_mode != "tree";
-                                        tapped => {
-                                            root.navigator_view_mode_tree_requested();
-                                        }
-                                    }
-                                    ToolButton {
-                                        label: "Flat";
-                                        button_min_width: 58px;
-                                        control_height: 24px;
-                                        active: root.navigator_effective_view_mode == "flat";
-                                        enabled: !root.navigator_search_forces_flat_mode
-                                            && root.navigator_runtime_view_mode != "flat";
-                                        tapped => {
-                                            root.navigator_view_mode_flat_requested();
+                                    SegmentedRail {
+                                        width: 118px;
+                                        height: 24px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "Tree";
+                                                selected: root.navigator_effective_view_mode == "tree";
+                                                show_divider: false;
+                                                enabled: !root.navigator_search_forces_flat_mode
+                                                    && root.navigator_runtime_view_mode != "tree";
+                                                tapped => {
+                                                    root.navigator_view_mode_tree_requested();
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Flat";
+                                                selected: root.navigator_effective_view_mode == "flat";
+                                                show_divider: true;
+                                                enabled: !root.navigator_search_forces_flat_mode
+                                                    && root.navigator_runtime_view_mode != "flat";
+                                                tapped => {
+                                                    root.navigator_view_mode_flat_requested();
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -4184,18 +4182,24 @@ fn should_skip_sync(last_state: Option<&AppState>, next_state: &AppState) -> boo
     last_state == Some(next_state)
 }
 
-// Contract: navigator model refresh boundary.
-// Rebuild list models only when row/filter/status inputs changed.
-fn should_refresh_result_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
+// Contract: flat navigator refresh boundary.
+// Rebuild flat list models only when flat projection inputs changed.
+fn should_refresh_flat_result_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
     match last_state {
         None => true,
         Some(last) => {
-            last.entry_rows != next_state.entry_rows
-                || last.entry_filter != next_state.entry_filter
-                || last.entry_status_filter != next_state.entry_status_filter
-                || last.show_hidden_files != next_state.show_hidden_files
-                || last.navigator_tree_expansion_overrides
-                    != next_state.navigator_tree_expansion_overrides
+            last.navigator_flat_projection_revision != next_state.navigator_flat_projection_revision
+        }
+    }
+}
+
+// Contract: tree navigator refresh boundary.
+// Rebuild tree models only when tree projection inputs changed.
+fn should_refresh_tree_result_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
+    match last_state {
+        None => true,
+        Some(last) => {
+            last.navigator_tree_projection_revision != next_state.navigator_tree_projection_revision
         }
     }
 }
@@ -4368,7 +4372,7 @@ fn sync_window_state(
     window.set_diff_shell_body_text(state.diff_shell_body_text().into());
     window.set_diff_shell_note_text(state.diff_shell_note_text().into());
     window.set_diff_content_char_capacity(state.diff_content_char_capacity());
-    if should_refresh_result_models(last_state, state) {
+    if should_refresh_flat_result_models(last_state, state) {
         let projected_rows = state.navigator_row_projections();
         let row_statuses = projected_rows
             .iter()
@@ -4457,7 +4461,9 @@ fn sync_window_state(
             row_parent_path_matches,
             "row_parent_path_matches",
         );
+    }
 
+    if should_refresh_tree_result_models(last_state, state) {
         let projected_tree_rows = state.navigator_tree_row_projections();
         let tree_row_keys = projected_tree_rows
             .iter()

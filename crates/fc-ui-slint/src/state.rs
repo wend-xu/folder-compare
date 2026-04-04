@@ -2,7 +2,7 @@
 
 use crate::navigator_tree::{
     NavigatorTreeProjection, NavigatorTreeRowProjection, build_canonical_navigator_tree,
-    project_navigator_tree_rows,
+    navigator_tree_toggle_target, project_navigator_tree_rows,
 };
 use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
 use fc_ai::{AiConfig, AiProviderKind};
@@ -108,6 +108,10 @@ pub struct AppState {
     pub status_text: String,
     /// Summary text derived from compare result.
     pub summary_text: String,
+    /// Revision for flat navigator projection refreshes.
+    pub navigator_flat_projection_revision: u64,
+    /// Revision for tree navigator projection refreshes.
+    pub navigator_tree_projection_revision: u64,
     /// Result rows for list rendering.
     pub entry_rows: Vec<CompareEntryRowViewModel>,
     /// Filter text applied to compare rows.
@@ -172,6 +176,8 @@ impl Default for AppState {
             running: false,
             status_text: "Ready".to_string(),
             summary_text: String::new(),
+            navigator_flat_projection_revision: 0,
+            navigator_tree_projection_revision: 0,
             entry_rows: Vec::new(),
             entry_filter: String::new(),
             entry_status_filter: "all".to_string(),
@@ -751,6 +757,15 @@ impl AppState {
         self.navigator_runtime_view_mode = mode;
     }
 
+    /// Updates the flat-mode search filter and refresh revision.
+    pub fn set_entry_filter(&mut self, filter: String) {
+        if self.entry_filter == filter {
+            return;
+        }
+        self.entry_filter = filter;
+        self.bump_navigator_flat_projection_revision();
+    }
+
     /// Returns visible tree row projections for tree mode rendering.
     pub fn navigator_tree_row_projections(&self) -> Vec<NavigatorTreeRowProjection> {
         self.navigator_tree_projection().rows
@@ -758,38 +773,52 @@ impl AppState {
 
     /// Returns true when a directory node toggle was applied.
     pub fn toggle_navigator_tree_node(&mut self, key: &str) -> bool {
-        let trimmed_key = key.trim();
-        if trimmed_key.is_empty() {
-            return false;
-        }
-
-        let tree = build_canonical_navigator_tree(&self.entry_rows);
-        let Some(node) = tree.node(trimmed_key) else {
+        let Some((normalized_key, path_depth)) =
+            navigator_tree_toggle_target(&self.entry_rows, key)
+        else {
             return false;
         };
-        if !node.is_directory() || !node.has_children() {
-            return false;
-        }
 
-        let default_expanded = node.path_depth() <= 1;
+        let default_expanded = path_depth <= 1;
         let current = self
             .navigator_tree_expansion_overrides
-            .get(trimmed_key)
+            .get(normalized_key.as_str())
             .copied()
             .unwrap_or(default_expanded);
         let next = !current;
         if next == default_expanded {
-            self.navigator_tree_expansion_overrides.remove(trimmed_key);
+            self.navigator_tree_expansion_overrides
+                .remove(normalized_key.as_str());
         } else {
             self.navigator_tree_expansion_overrides
-                .insert(trimmed_key.to_string(), next);
+                .insert(normalized_key, next);
         }
+        self.bump_navigator_tree_projection_revision();
         true
     }
 
     /// Updates status filter scope in canonical form.
     pub fn set_entry_status_filter(&mut self, filter: &str) {
-        self.entry_status_filter = normalize_status_filter_token(filter);
+        let normalized = normalize_status_filter_token(filter);
+        if self.entry_status_filter == normalized {
+            return;
+        }
+        self.entry_status_filter = normalized;
+        self.bump_navigator_projection_revisions();
+    }
+
+    /// Updates the hidden-files preference and navigator revisions.
+    pub fn set_show_hidden_files(&mut self, show_hidden_files: bool) {
+        if self.show_hidden_files == show_hidden_files {
+            return;
+        }
+        self.show_hidden_files = show_hidden_files;
+        self.bump_navigator_projection_revisions();
+    }
+
+    /// Marks both flat/tree navigator projections dirty after compare data changes.
+    pub fn mark_navigator_projection_revisions(&mut self) {
+        self.bump_navigator_projection_revisions();
     }
 
     /// Returns true when one source row index is currently visible by filter.
@@ -1661,6 +1690,21 @@ impl AppState {
             && !self.diff_loading
             && self.selected_diff.is_some()
             && (!self.analysis_remote_mode() || self.analysis_remote_config_ready())
+    }
+
+    fn bump_navigator_flat_projection_revision(&mut self) {
+        self.navigator_flat_projection_revision =
+            self.navigator_flat_projection_revision.wrapping_add(1);
+    }
+
+    fn bump_navigator_tree_projection_revision(&mut self) {
+        self.navigator_tree_projection_revision =
+            self.navigator_tree_projection_revision.wrapping_add(1);
+    }
+
+    fn bump_navigator_projection_revisions(&mut self) {
+        self.bump_navigator_flat_projection_revision();
+        self.bump_navigator_tree_projection_revision();
     }
 
     fn navigator_tree_projection(&self) -> NavigatorTreeProjection {

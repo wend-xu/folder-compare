@@ -11,7 +11,10 @@
 - `slint = 1.15.1`
 - `slint-build = 1.15.1`
 - `Phase 16A` 到 `Phase 17D` 的当前稳定基线已收口完成
-- `Phase 18A` 启动前文档对齐已完成；层级结果视图方向已重新开启
+- `Phase 18A` 第一轮 correctness baseline 已落地：
+  - `Results / Navigator` 进入 `tree + flat` 双视图基线
+  - 非搜索默认 `tree mode`
+  - 搜索非空强制 `flat results mode`
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -44,8 +47,10 @@
 - Workspace 当前稳定为 attached `Diff / Analysis` file-view shell：
   - `Tabs -> Header -> Content`
 - `Compare Status` 保持 summary-first，并支持块内 `Show details / Hide details` 与 `Copy Summary` / `Copy Detail`
-- 当前稳定代码基线中的 `Results / Navigator` 仍以 flat results 为主
-- 但 `Phase 18` 已正式重新开启层级结果视图演进，目标是在同一 `Results / Navigator` 内形成 tree + flat 双视图；详细边界见 `docs/architecture.md`
+- 当前 `Results / Navigator` 代码基线已进入双视图：
+  - 非搜索默认 `tree mode`
+  - 搜索结果与集中扫描继续走 `flat mode`
+- 层级结果视图仍然严格局限在同一 `Results / Navigator` block 内，不引入新 IA；详细边界见 `docs/architecture.md`
 - Results row 信息层级当前稳定为：
   - 主信息：status pill + filename
   - 次信息：capability-first summary
@@ -68,9 +73,13 @@
   - 保留显式 `Clear` 按钮
 - `Results / Navigator`
   - 顶部摘要使用集合状态文案（`Showing visible / total ...`）
+  - 标题区提供 runtime `Tree / Flat` 切换
+  - 非搜索默认进入 tree mode
   - 搜索高亮保持 label-level，不引入 match-span parsing
   - 搜索 contract 仍为 `path / name only`
-  - `Phase 18A` 口径下，搜索非空时将继续走 flat results mode
+  - 搜索非空时强制走 flat results mode
+  - tree 中目录节点点击只负责展开/收起
+  - tree 中文件 leaf 节点点击复用既有 file-view 打开链路
   - row tooltip 只做完整 filename + parent path completion
 - `Diff`
   - 状态机：`no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
@@ -130,8 +139,8 @@
   - visible：`Select All`、`Copy`、`Paste`、`Cut`
 - `Analysis success` 正文文本支持 native text-surface `Copy` / `Select All` right-click
 - `Risk Level` 保持显式 `Copy` 按钮-only
-- `SelectableDiffText` / `SelectableSectionText` 共用 `UiTypography.selectable_content_font_family`
-- ordinary inputs / `ApiKeyLineEdit` 共用 `UiTypography.editable_input_font_family`
+- `SelectableDiffText` / `SelectableSectionText` 继续走 Slint 默认 generic family，由现有 macOS bootstrap 负责把系统字体接进来
+- ordinary inputs / `ApiKeyLineEdit` 同样走 Slint 默认 generic family，由现有 macOS bootstrap 负责把系统字体接进来
 - UI 主同步路径已切到 event-driven sync
 - `Results / Navigator` 与 `Diff` 行模型使用 persistent `VecModel`
 - `loading-mask` 与 `toast` 保持 UI-local boundary
