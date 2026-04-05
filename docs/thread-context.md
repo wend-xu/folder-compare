@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Post-Phase 18A + macOS font-bootstrap baseline)
+# Folder Compare Thread Context (Post-Phase 18B + macOS font-bootstrap baseline)
 
 ## 目的
 
@@ -6,9 +6,13 @@
 - 只记录当前真实事实、当前边界、下一线程入口。
 - 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
-## 本轮更新说明（2026-04-03）
+## 本轮更新说明（2026-04-04）
 
-- `Phase 18A` dual-view baseline 继续成立，当前仍停留在 `18A` 收口范围，没有进入 `18B`。
+- `Phase 18A` dual-view baseline 继续成立，并已推进到 `Phase 18B` mode-linkage baseline。
+- `Settings -> Behavior` 现已持久化默认结果视图（`Tree` / `Flat`），并写入 `settings.toml`。
+- tree / flat 切换现会在目标 mode 仍有效时保持当前文件 selection；切到 tree 时会展开祖先链以恢复可见高亮。
+- flat 搜索结果现已支持 `Locate and Open`，动作链路为：清搜索 -> 切 tree -> 展开祖先 -> 定位 file leaf -> 打开右侧 file-view。
+- compare rerun 不再清空 expanded-path overrides；当前会保留仍然有效的 expanded/collapsed 路径并 prune 无效项。
 - `UiTypography` 与 runtime font-family 中转层已删除；窗口文本面回到 Slint 默认 generic-family 路径。
 - macOS 文本兼容逻辑现集中在 `crates/fc-ui-slint/src/macos_font_bootstrap.rs`：
   - 启动时用 CoreText 找到并注册 `PingFang SC`
@@ -22,11 +26,11 @@
 
 ## 快照（Snapshot）
 
-- 日期：`2026-04-03`（Asia/Shanghai）
+- 日期：`2026-04-04`（Asia/Shanghai）
 - 分支：`dev`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
-  - `Phase 18A` dual-view baseline 已实现
+  - `Phase 18B` mode-linkage / locate / restore baseline 已实现
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 已知最近一次完整代码验证：
   - `cargo fmt --all`
@@ -37,7 +41,7 @@
   - `rg -n "UiTypography" crates/fc-ui-slint/src` 为 `0` 命中
   - macOS 15.x 已做人工验证，当前 bootstrap 基线可恢复中文与全角字符显示
 
-## 当前真实稳定基线（Through Phase 17D + Phase 18A）
+## 当前真实稳定基线（Through Phase 17D + Phase 18B）
 
 ### 工具链与版本
 
@@ -63,10 +67,10 @@
 - `Diff / Analysis` 继续共用稳定 file-view shell。
 - macOS immersive title bar / non-mac legacy App Bar / `window_chrome` contract 继续稳定。
 
-### 现已落地的 `Phase 18A` 事实
+### 现已落地的 `Phase 18A + 18B` 事实
 
 - `Results / Navigator` 现已支持双视图：
-  - 非搜索状态默认 `tree mode`
+  - 非搜索状态默认 mode 由 `Settings -> Behavior -> Default view` 决定
   - `flat mode` 继续存在
 - 搜索 contract 仍是 `path / name only`，搜索非空时强制 flat results mode。
 - Tree 相关逻辑在 Rust presenter/state：
@@ -86,16 +90,21 @@
 - 目录 `display_status` 基于过滤后可见子树重算。
 - tree row disclosure 已切到绘制型 chevron，状态文案收口为 trailing lightweight text。
 - `Hidden files` 继续是 UI / presentation preference，不下沉到 `fc-core`，并已与 tree mode 正确兼容。
-- tree / flat 切换遵循保守 selection contract。
+- `Settings -> Behavior` 当前持久化两项 presentation preference：
+  - `Hidden files`
+  - 默认结果视图 `Tree / Flat`
+- tree / flat 切换遵循保守 selection contract，并在切到 tree 时对当前文件做祖先链 reveal。
+- flat 搜索结果现支持 `Locate and Open`，只针对 file leaf 复用既有 `selected_row / load diff / load analysis` 链路。
+- compare rerun 会按新树 prune / restore expanded-path overrides；不再无条件清空。
 - 折叠包含当前打开文件的目录不会触发 false stale-selection；只有 membership 真变化时才 stale。
 
 ## 当前执行焦点（Execution Focus）
 
-- 当前不再是“启动 `Phase 18A`”。
+- 当前不再是“启动 `18B`”。
 - 当前真实焦点是：
-  - 以已落地的 `Phase 18A` dual-view baseline 为前提继续工作
-  - 优先做 smoke、边界收口、必要的小修正
-  - 或在确认边界后再进入 `18B`
+  - 把 `Phase 18B` 视为已实现基线
+  - 继续做 smoke、边界收口、必要的小修正
+  - 若进入下一阶段，应明确作为 `18C` 的 polish / parity / performance 线程处理
 - 字体方向上的当前焦点不是继续扩展应用层字体策略，而是：
   - 维持现有集中式 macOS bootstrap shim
   - 等待可验证的上游版本升级窗口
@@ -104,10 +113,7 @@
 
 ## 仍然明确未做（Out of Scope / Deferred）
 
-- `Settings` 持久化默认结果视图
-- `Locate and Open`
-- ancestor reveal / auto reveal / auto scroll
-- expanded-path restore / pruning 策略
+- tree locate auto scroll / animation polish
 - 目录进入右侧 file-view selection
 - tree 内搜索 / 内容搜索 / match-span 高亮
 - 目录 secondary text / descendant counts / summary
@@ -157,9 +163,13 @@
   - `rg -n "UiTypography" crates/fc-ui-slint/src` 为 `0`
 - 自动验证已覆盖 presenter/state/tree 的核心 contract。
 - UI 侧仍建议人工 smoke：
+  - Settings 中默认结果视图保存、重启恢复、搜索 fallback 不回退
   - tree / flat toggle
+  - tree / flat 切换时当前文件 selection 保持
+  - flat 搜索结果的 `Locate and Open`
   - 搜索强制 flat fallback
   - tree 中目录 toggle 与文件 leaf open
+  - compare rerun 后 expanded-path restore / pruning
   - status filter / hidden-files 在多层目录上的显示
   - macOS 15.x 下 `中`、`Ａ`、`（`、`中Ａ（`、左树文件行、左树目录行、diff 正文是否仍正确显示
 
@@ -169,10 +179,10 @@
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > 把 `Phase 17D` 之前的 shell / settings / tooltip / file-view contract 视为稳定基线。  
-> 把 `Phase 18A` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 tree；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree row disclosure 已是绘制型 chevron。  
+> 把 `Phase 18A + 18B` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 mode 来自 `Settings -> Behavior -> Default view`；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree / flat 切换会在 tree 中 reveal 当前文件；flat 搜索结果有 `Locate and Open`；compare rerun 会 prune / restore expanded-path overrides。  
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
-> 不要顺手重开 `fc-core` contract、window system、Settings persistence、directory selection、tree search、Locate and Open，也不要继续扩散应用层字体策略，除非当前线程目标明确要求。  
-> 如果继续 `18A` 收口，优先检查 smoke 与小范围 contract 修正；如果进入 `18B`，保持 locate/persist/reveal 范围独立，不要和现有稳定 shell 混改。
+> 不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。  
+> 如果继续 `18B` 收口，优先检查 smoke 与小范围 contract 修正；如果进入 `18C`，保持 tooltip parity / locate polish / visual tuning 与当前行为 contract 解耦，不要混成新一轮架构改写。
 
 ## 更新契约（Mandatory）
 

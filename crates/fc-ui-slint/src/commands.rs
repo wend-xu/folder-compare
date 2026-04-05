@@ -1,5 +1,6 @@
 //! UI command definitions.
 
+use crate::state::NavigatorViewMode;
 use fc_ai::providers::openai_compatible::OpenAiCompatibleProvider;
 use fc_ai::services::analyzer::Analyzer;
 use fc_ai::{AiProviderKind, AnalyzeDiffRequest, AnalyzeDiffResponse, MockAiProvider};
@@ -32,6 +33,8 @@ pub enum UiCommand {
     SelectRow(i32),
     /// Loads detailed diff for selected row.
     LoadSelectedDiff,
+    /// Reveals one flat-search result in tree mode and opens its file view.
+    LocateAndOpen(String),
     /// Loads AI analysis for selected detailed diff.
     LoadAiAnalysis,
     /// Switches AI provider mode to mock.
@@ -52,6 +55,7 @@ pub enum UiCommand {
         model: String,
         timeout_secs_text: String,
         show_hidden_files: bool,
+        default_results_view: NavigatorViewMode,
     },
     /// Clears settings validation/persistence error.
     ClearSettingsError,

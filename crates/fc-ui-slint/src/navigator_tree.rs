@@ -326,6 +326,26 @@ pub(crate) fn navigator_tree_toggle_target(
         })
 }
 
+pub(crate) fn navigator_tree_reveal_targets(
+    entry_rows: &[CompareEntryRowViewModel],
+    relative_path: &str,
+) -> Vec<(String, u16)> {
+    let normalized_path = normalize_relative_path(relative_path);
+    let components = path_components(normalized_path.as_str());
+    if components.len() < 2 {
+        return Vec::new();
+    }
+
+    let mut targets = Vec::new();
+    for index in 0..components.len().saturating_sub(1) {
+        let key = join_path_components(&components[..=index]);
+        if let Some(target) = navigator_tree_toggle_target(entry_rows, key.as_str()) {
+            targets.push(target);
+        }
+    }
+    targets
+}
+
 fn compute_base_status(key: &str, nodes: &mut BTreeMap<String, CanonicalNavigatorNode>) -> String {
     let child_keys = nodes
         .get(key)
@@ -575,5 +595,19 @@ mod tests {
             Some((String::from("src/app"), 2))
         );
         assert_eq!(navigator_tree_toggle_target(&rows, "src/app/main.rs"), None);
+    }
+
+    #[test]
+    fn reveal_targets_include_expandable_ancestors_only() {
+        let rows = vec![
+            row("src/app/main.rs", "different", "file", true),
+            row("src/app/lib.rs", "equal", "file", true),
+        ];
+
+        assert_eq!(
+            navigator_tree_reveal_targets(&rows, "src/app/main.rs"),
+            vec![("src".to_string(), 1), ("src/app".to_string(), 2)]
+        );
+        assert!(navigator_tree_reveal_targets(&rows, "src").is_empty());
     }
 }

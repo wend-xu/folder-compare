@@ -9,7 +9,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 const SETTINGS_FILE_NAME: &str = "settings.toml";
 const LEGACY_PROVIDER_SETTINGS_FILE_NAME: &str = "provider_settings.toml";
-const SETTINGS_VERSION: u32 = 2;
+const SETTINGS_VERSION: u32 = 3;
 
 #[cfg(test)]
 static TEST_SETTINGS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -48,12 +48,29 @@ impl Default for ProviderSettings {
 pub struct BehaviorSettings {
     /// Whether dot-prefixed files/folders remain visible in Results / Navigator.
     pub show_hidden_files: bool,
+    /// Default non-search Results / Navigator mode.
+    pub default_results_view: DefaultResultsView,
+}
+
+/// Persisted default Results / Navigator mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DefaultResultsView {
+    Tree,
+    Flat,
+}
+
+impl Default for DefaultResultsView {
+    fn default() -> Self {
+        Self::Tree
+    }
 }
 
 impl Default for BehaviorSettings {
     fn default() -> Self {
         Self {
             show_hidden_files: true,
+            default_results_view: DefaultResultsView::Tree,
         }
     }
 }
@@ -113,6 +130,8 @@ impl From<ProviderSettingsToml> for ProviderSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct BehaviorSettingsToml {
     show_hidden_files: bool,
+    #[serde(default)]
+    default_results_view: DefaultResultsView,
 }
 
 impl Default for BehaviorSettingsToml {
@@ -125,6 +144,7 @@ impl From<&BehaviorSettings> for BehaviorSettingsToml {
     fn from(value: &BehaviorSettings) -> Self {
         Self {
             show_hidden_files: value.show_hidden_files,
+            default_results_view: value.default_results_view,
         }
     }
 }
@@ -133,6 +153,7 @@ impl From<BehaviorSettingsToml> for BehaviorSettings {
     fn from(value: BehaviorSettingsToml) -> Self {
         Self {
             show_hidden_files: value.show_hidden_files,
+            default_results_view: value.default_results_view,
         }
     }
 }
@@ -338,6 +359,7 @@ mod tests {
             },
             behavior: BehaviorSettings {
                 show_hidden_files: false,
+                default_results_view: DefaultResultsView::Flat,
             },
         };
         let path = save_app_preferences(&settings).expect("save should succeed");
@@ -390,6 +412,7 @@ mod tests {
             },
             behavior: BehaviorSettings {
                 show_hidden_files: false,
+                default_results_view: DefaultResultsView::Flat,
             },
         };
         save_app_preferences(&settings).expect("settings should be saved");
@@ -409,5 +432,38 @@ mod tests {
             .expect("load should succeed")
             .expect("settings should exist");
         assert_eq!(loaded, settings);
+    }
+
+    #[test]
+    fn load_defaults_missing_default_results_view_to_tree() {
+        let dir = tempfile::tempdir().expect("temp dir should be created");
+        let _settings_guard = TestSettingsDirGuard::new(dir.path());
+
+        std::fs::write(
+            settings_file_path(),
+            r#"
+version = 2
+
+[provider]
+provider_kind = "Mock"
+openai_endpoint = ""
+openai_api_key = ""
+openai_model = "gpt-4o-mini"
+timeout_secs = 30
+
+[behavior]
+show_hidden_files = false
+"#,
+        )
+        .expect("settings file should be written");
+
+        let loaded = load_app_preferences()
+            .expect("load should succeed")
+            .expect("settings should exist");
+        assert_eq!(loaded.behavior.show_hidden_files, false);
+        assert_eq!(
+            loaded.behavior.default_results_view,
+            DefaultResultsView::Tree
+        );
     }
 }

@@ -1,10 +1,10 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18A Baseline)
+# Folder Compare Architecture (Stable Baseline + Phase 18B Baseline)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18A` baseline inside that shell
+  - the currently implemented `Phase 18B` baseline inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
@@ -59,12 +59,12 @@
   - drag moved to explicit blank area inside immersive strip only
   - regression fixes closed out
 
-## Current Implemented Phase 18A Baseline
+## Current Implemented Phase 18B Baseline
 
 - `Results / Navigator` now supports dual-view operation inside the existing sidebar block:
   - non-search runtime tree view
   - flat view
-- Non-search state defaults to tree mode.
+- Non-search state defaults to the persisted `Settings -> Behavior -> Default view` preference.
 - Search text still follows the stable `path / name only` contract and forces flat results mode.
 - Tree data/state is Rust-owned inside `fc-ui-slint` presenter/state:
   - canonical merged tree built from existing compare entries over the left/right path union
@@ -76,13 +76,24 @@
 - File-leaf click in tree mode reuses the existing `selected_row -> load diff -> load analysis` path.
 - Hidden-files preference remains a UI/presentation boundary and now also applies to tree-mode projection.
 - Status filter now prunes tree visibility with necessary ancestors retained, and directory `display_status` is recomputed from the filtered visible subtree.
+- `Settings -> Behavior` now persists:
+  - `Hidden files`
+  - default non-search result view (`Tree` / `Flat`)
 - Selection remains conservative:
   - tree/flat switching preserves the currently open file only when it remains a member of the target visible set
+  - switching into tree reveals the selected file by expanding its ancestor chain when that file is still valid
   - collapsing an ancestor directory does not force `stale-selection` when file membership has not changed
+- Flat search results now support `Locate and Open`:
+  - clear search-result mode
+  - switch back to tree mode
+  - expand the ancestor chain
+  - select the target file leaf
+  - reopen the right-side file view through the existing diff/load pipeline
+- Compare reruns now preserve expansion overrides conservatively:
+  - keep still-valid expanded/collapsed directory paths
+  - prune invalid paths
 - The following items are still intentionally deferred beyond this baseline:
-  - persisted default result-view setting
-  - `Locate and Open`
-  - auto reveal / auto scroll
+  - auto scroll / animated locate polish
   - directory summary/counts/secondary text
 
 ## Crate Responsibilities
@@ -226,7 +237,9 @@
   - `Provider`
   - `Behavior`
 - `Provider` owns AI provider configuration and retains the dedicated `API Key` secret-field contract.
-- `Behavior` currently owns one persisted presentation preference: `Hidden files`.
+- `Behavior` currently owns two persisted presentation preferences:
+  - `Hidden files`
+  - default non-search result view
 - Settings is not:
   - a second compare-status surface
   - a row-detail view
@@ -390,14 +403,13 @@
 
 - persisted default result-view setting in `Settings`
 - `Locate and Open` from flat search results back into tree mode
-- ancestor-chain reveal
+- ancestor-chain reveal for tree linkage and locate flow
 - expanded-path pruning/restore refinement across compare reruns
 
 ### `18C`: Stabilization and Polish
 
 - tooltip parity where needed
 - locate-scroll/reveal polish
-- presenter/state test coverage fill-in
 - large-directory performance review and visual polish
 
 ## Phase 18A Scope Boundary
@@ -425,10 +437,10 @@
 
 ### Decision 1: non-search defaults to tree mode; search forces flat mode
 
-- In non-search state, `Results / Navigator` defaults to tree mode.
+- In non-search state, `Results / Navigator` defaults to the persisted `Settings -> Behavior -> Default view`.
 - When search text is non-empty, search results must not be projected into the tree and the UI must switch to flat results mode.
 - Clearing search returns to the current non-search runtime mode.
-- Persisted default result view belongs to `18B`, not `18A`.
+- The persisted default result view changes only the non-search baseline; it must not override search fallback.
 
 ### Decision 2: directory nodes do not enter file-view selection in v1
 
@@ -445,8 +457,21 @@
 ### Decision 4: tree/flat runtime switching keeps the conservative selection contract
 
 - If the currently open file is visible in the target mode, map highlight and keep the file open.
+- If the target mode is tree, reveal the file by expanding its ancestor chain rather than forcing a stale transition just because the branch was collapsed.
 - If it is not visible in the target mode, reuse existing `stale-selection` semantics.
-- `18A` does not require auto reveal, auto scroll, or locate-and-open behavior.
+- This reveal behavior is scoped to mode linkage and locate flow; it is not a general auto-scroll or animation system.
+
+### Decision 6: `Locate and Open` is a search-result workflow, not a general tree action
+
+- `Locate and Open` starts from flat search results only.
+- It clears search, switches to tree mode, expands ancestors, and then reuses the existing file-leaf open pipeline.
+- It does not introduce directory selection, tree-internal search, or a second file-view mode.
+
+### Decision 7: compare rerun preserves expansion state conservatively
+
+- Expanded/collapsed overrides are restored only for directory paths that still map to expandable nodes in the new compare tree.
+- Invalid or default-equivalent overrides are pruned.
+- No additional "smart" expansion heuristics are introduced in `18B`.
 
 ### Decision 5: directory nodes keep minimal information expression in v1
 
@@ -471,6 +496,8 @@
   - boundary: do not mix this with the current `Settings -> Behavior` presentation preference
 - Match-span highlight:
   - trigger: only if current filename/path label-level highlight proves insufficient
+- Tree locate auto scroll / animated feedback:
+  - trigger: only if the current selection highlight is insufficient for real workflows
 - Window-system rework:
   - trigger: only if the current framed-window contract becomes a demonstrated blocker
 - Compare View / File View workspace split:

@@ -3,7 +3,9 @@
 use crate::bridge;
 use crate::commands::UiCommand;
 use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
-use crate::settings::{self, AppPreferences, BehaviorSettings, ProviderSettings};
+use crate::settings::{
+    self, AppPreferences, BehaviorSettings, DefaultResultsView, ProviderSettings,
+};
 use crate::state::{AppState, NavigatorViewMode};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -67,12 +69,16 @@ impl Presenter {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 match loaded_settings {
                     Ok(Some(saved)) => {
+                        let default_navigator_view_mode =
+                            navigator_view_mode_from_settings(saved.behavior.default_results_view);
                         state.analysis_provider_kind = saved.provider.provider_kind;
                         state.analysis_openai_endpoint = saved.provider.openai_endpoint;
                         state.analysis_openai_api_key = saved.provider.openai_api_key;
                         state.analysis_openai_model = saved.provider.openai_model;
                         state.analysis_request_timeout_secs = saved.provider.timeout_secs.max(1);
                         state.show_hidden_files = saved.behavior.show_hidden_files;
+                        state.set_default_navigator_view_mode(default_navigator_view_mode);
+                        state.set_navigator_runtime_view_mode(default_navigator_view_mode);
                         state.settings_error_message = None;
                     }
                     Ok(None) => {}
@@ -104,13 +110,11 @@ impl Presenter {
             }
             UiCommand::SetNavigatorViewModeTree => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.set_navigator_runtime_view_mode(NavigatorViewMode::Tree);
-                Self::reconcile_selected_row_membership(&mut state);
+                Self::apply_runtime_navigator_view_mode(&mut state, NavigatorViewMode::Tree);
             }
             UiCommand::SetNavigatorViewModeFlat => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.set_navigator_runtime_view_mode(NavigatorViewMode::Flat);
-                Self::reconcile_selected_row_membership(&mut state);
+                Self::apply_runtime_navigator_view_mode(&mut state, NavigatorViewMode::Flat);
             }
             UiCommand::ToggleNavigatorTreeNode(key) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -118,28 +122,15 @@ impl Presenter {
             }
             UiCommand::SelectRow(index) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.selected_row = usize::try_from(index)
+                let selected_index = usize::try_from(index)
                     .ok()
                     .filter(|value| *value < state.entry_rows.len());
-                let selected_row_vm = state
-                    .selected_row
-                    .and_then(|value| state.entry_rows.get(value))
-                    .cloned();
-                state.selected_relative_path = selected_row_vm
-                    .as_ref()
-                    .map(|row| row.relative_path.clone());
-                state.clear_diff_panel();
-                state.analysis_available = false;
-                state.clear_analysis_panel();
-                state.analysis_hint = Some(match selected_row_vm {
-                    Some(row) if !row.can_load_analysis => row
-                        .analysis_blocked_reason
-                        .unwrap_or_else(|| "selected row does not support AI analysis".to_string()),
-                    Some(_) => "Load detailed diff, then click Analyze.".to_string(),
-                    None => "Select one changed text file to analyze.".to_string(),
-                });
+                Self::apply_row_selection(&mut state, selected_index);
             }
             UiCommand::LoadSelectedDiff => self.execute_load_selected_diff(),
+            UiCommand::LocateAndOpen(relative_path) => {
+                self.execute_locate_and_open(relative_path);
+            }
             UiCommand::LoadAiAnalysis => self.execute_load_ai_analysis(),
             UiCommand::SetAiProviderModeMock => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -177,6 +168,7 @@ impl Presenter {
                 model,
                 timeout_secs_text,
                 show_hidden_files,
+                default_results_view,
             } => {
                 let timeout_secs = match parse_timeout_secs(&timeout_secs_text) {
                     Ok(value) => value,
@@ -198,8 +190,9 @@ impl Presenter {
                     state.analysis_openai_model = model;
                     state.analysis_request_timeout_secs = timeout_secs;
                     state.set_show_hidden_files(show_hidden_files);
+                    state.set_default_navigator_view_mode(default_results_view);
+                    Self::apply_runtime_navigator_view_mode(&mut state, default_results_view);
                     state.clear_analysis_panel();
-                    Self::reconcile_selected_row_membership(&mut state);
                     state.analysis_hint = Some(match provider_kind {
                         fc_ai::AiProviderKind::Mock => {
                             "Using mock provider. No remote request will be sent.".to_string()
@@ -219,6 +212,9 @@ impl Presenter {
                         },
                         behavior: BehaviorSettings {
                             show_hidden_files: state.show_hidden_files,
+                            default_results_view: settings_default_results_view(
+                                state.default_navigator_view_mode,
+                            ),
                         },
                     }
                 };
@@ -281,11 +277,51 @@ impl Presenter {
             Some("Previous selection will be rechecked after compare finishes.".to_string());
     }
 
+    fn apply_row_selection(state: &mut AppState, selected_index: Option<usize>) {
+        state.selected_row = selected_index;
+        let selected_row_vm = state
+            .selected_row
+            .and_then(|value| state.entry_rows.get(value))
+            .cloned();
+        state.selected_relative_path = selected_row_vm
+            .as_ref()
+            .map(|row| row.relative_path.clone());
+        Self::clear_file_view_state(state);
+        state.analysis_hint = Some(match selected_row_vm {
+            Some(row) if !row.can_load_analysis => row
+                .analysis_blocked_reason
+                .unwrap_or_else(|| "selected row does not support AI analysis".to_string()),
+            Some(_) => "Load detailed diff, then click Analyze.".to_string(),
+            None => "Select one changed text file to analyze.".to_string(),
+        });
+    }
+
     fn selection_path_at(state: &AppState, index: usize) -> Option<String> {
         state
             .entry_rows
             .get(index)
             .map(|row| row.relative_path.clone())
+    }
+
+    fn reveal_selected_path_in_tree(state: &mut AppState) {
+        let selected_path = state
+            .selected_row
+            .and_then(|index| Self::selection_path_at(state, index))
+            .or_else(|| state.selected_relative_path.clone());
+        if let Some(path) = selected_path {
+            state.reveal_navigator_tree_path(&path);
+        }
+    }
+
+    fn apply_runtime_navigator_view_mode(state: &mut AppState, mode: NavigatorViewMode) {
+        state.set_navigator_runtime_view_mode(mode);
+        if matches!(
+            state.effective_navigator_view_mode(),
+            NavigatorViewMode::Tree
+        ) {
+            Self::reveal_selected_path_in_tree(state);
+        }
+        Self::reconcile_selected_row_membership(state);
     }
 
     fn restore_selection_after_compare(
@@ -300,6 +336,12 @@ impl Presenter {
             return false;
         };
 
+        if matches!(
+            state.effective_navigator_view_mode(),
+            NavigatorViewMode::Tree
+        ) {
+            state.reveal_navigator_tree_path(&path);
+        }
         let restore_index = state
             .entry_rows
             .iter()
@@ -440,7 +482,7 @@ impl Presenter {
                         let count = vm.entry_rows.len();
                         state.summary_text = vm.summary_text;
                         state.entry_rows = vm.entry_rows;
-                        state.navigator_tree_expansion_overrides.clear();
+                        state.prune_navigator_tree_expansion_overrides();
                         state.mark_navigator_projection_revisions();
                         state.warning_lines = vm.warnings;
                         state.truncated = vm.truncated;
@@ -466,7 +508,7 @@ impl Presenter {
                     Err(message) => {
                         state.summary_text.clear();
                         state.entry_rows.clear();
-                        state.navigator_tree_expansion_overrides.clear();
+                        state.prune_navigator_tree_expansion_overrides();
                         state.mark_navigator_projection_revisions();
                         state.warning_lines.clear();
                         state.truncated = false;
@@ -585,6 +627,42 @@ impl Presenter {
             }
             Self::notify_state_changed_with(&state_change_notifier);
         });
+    }
+
+    fn execute_locate_and_open(&self, relative_path: String) {
+        let should_load_selected_diff = {
+            let mut state = self.state.lock().expect("state mutex poisoned");
+            let relative_path = relative_path.trim().to_string();
+            if relative_path.is_empty() {
+                return;
+            }
+
+            state.set_entry_filter(String::new());
+            state.set_navigator_runtime_view_mode(NavigatorViewMode::Tree);
+            state.reveal_navigator_tree_path(&relative_path);
+
+            match state
+                .row_index_for_relative_path(&relative_path)
+                .filter(|index| state.is_row_member_in_active_results(*index))
+            {
+                Some(index) => {
+                    Self::apply_row_selection(&mut state, Some(index));
+                    true
+                }
+                None => {
+                    state.selected_row = None;
+                    state.selected_relative_path = Some(relative_path);
+                    Self::clear_file_view_state(&mut state);
+                    Self::set_analysis_stale_selection_hint(&mut state);
+                    false
+                }
+            }
+        };
+        self.notify_state_changed();
+
+        if should_load_selected_diff {
+            self.execute_load_selected_diff();
+        }
     }
 
     fn execute_load_ai_analysis(&self) {
@@ -718,6 +796,20 @@ fn parse_timeout_secs(raw: &str) -> Result<u64, String> {
         return Err("Timeout must be greater than 0.".to_string());
     }
     Ok(parsed)
+}
+
+fn navigator_view_mode_from_settings(value: DefaultResultsView) -> NavigatorViewMode {
+    match value {
+        DefaultResultsView::Tree => NavigatorViewMode::Tree,
+        DefaultResultsView::Flat => NavigatorViewMode::Flat,
+    }
+}
+
+fn settings_default_results_view(value: NavigatorViewMode) -> DefaultResultsView {
+    match value {
+        NavigatorViewMode::Tree => DefaultResultsView::Tree,
+        NavigatorViewMode::Flat => DefaultResultsView::Flat,
+    }
 }
 
 #[cfg(test)]
@@ -1077,6 +1169,53 @@ mod tests {
     }
 
     #[test]
+    fn switching_to_tree_reveals_selected_file_and_keeps_file_view_open() {
+        let state = Arc::new(Mutex::new(AppState {
+            entry_rows: vec![crate::view_models::CompareEntryRowViewModel {
+                relative_path: "src/bin/main.rs".to_string(),
+                status: "different".to_string(),
+                entry_kind: "file".to_string(),
+                can_load_diff: true,
+                can_load_analysis: true,
+                ..crate::view_models::CompareEntryRowViewModel::default()
+            }],
+            selected_row: Some(0),
+            selected_relative_path: Some("src/bin/main.rs".to_string()),
+            selected_diff: Some(crate::view_models::DiffPanelViewModel::default()),
+            navigator_runtime_view_mode: NavigatorViewMode::Flat,
+            navigator_tree_expansion_overrides: std::collections::BTreeMap::from([(
+                "src/bin".to_string(),
+                false,
+            )]),
+            ..AppState::default()
+        }));
+        let presenter = Presenter::new(state);
+
+        presenter.handle_command(UiCommand::SetNavigatorViewModeTree);
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(snapshot.selected_row, Some(0));
+        assert_eq!(
+            snapshot.selected_relative_path.as_deref(),
+            Some("src/bin/main.rs")
+        );
+        assert!(snapshot.selected_diff.is_some());
+        assert_eq!(
+            snapshot.navigator_runtime_view_mode,
+            NavigatorViewMode::Tree
+        );
+        assert!(
+            snapshot
+                .navigator_tree_row_projections()
+                .iter()
+                .any(|row| row.key == "src/bin/main.rs")
+        );
+        assert_eq!(
+            snapshot.navigator_tree_expansion_overrides.get("src/bin"),
+            Some(&true)
+        );
+    }
+
+    #[test]
     fn load_selected_diff_for_non_diffable_row_sets_unavailable_state() {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
@@ -1227,6 +1366,60 @@ mod tests {
         assert_eq!(
             snapshot.diff_shell_state(),
             crate::state::DiffShellState::StaleSelection
+        );
+    }
+
+    #[test]
+    fn locate_and_open_from_search_restores_tree_context_and_opens_diff() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::create_dir_all(left.path().join("src/bin"))
+            .expect("left nested directory should be created");
+        fs::create_dir_all(right.path().join("src/bin"))
+            .expect("right nested directory should be created");
+        fs::write(left.path().join("src/bin/main.rs"), "fn old() {}\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("src/bin/main.rs"), "fn new() {}\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::UpdateEntryFilter("main".to_string()));
+
+        presenter.handle_command(UiCommand::LocateAndOpen("src/bin/main.rs".to_string()));
+        let snapshot = wait_until(&presenter, |state| {
+            !state.diff_loading
+                && state.entry_filter.is_empty()
+                && state.selected_relative_path.as_deref() == Some("src/bin/main.rs")
+                && state.selected_diff.is_some()
+        });
+
+        assert_eq!(
+            snapshot.navigator_runtime_view_mode,
+            NavigatorViewMode::Tree
+        );
+        assert_eq!(
+            snapshot.effective_navigator_view_mode(),
+            NavigatorViewMode::Tree
+        );
+        assert_eq!(
+            snapshot.selected_row,
+            snapshot.row_index_for_relative_path("src/bin/main.rs")
+        );
+        assert_eq!(
+            snapshot.navigator_tree_expansion_overrides.get("src/bin"),
+            Some(&true)
+        );
+        assert!(
+            snapshot
+                .navigator_tree_row_projections()
+                .iter()
+                .any(|row| row.key == "src/bin/main.rs")
         );
     }
 
@@ -1499,6 +1692,74 @@ mod tests {
     }
 
     #[test]
+    fn rerun_compare_prunes_invalid_expanded_paths_and_restores_valid_ones() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::create_dir_all(left.path().join("src/bin"))
+            .expect("left nested directory should be created");
+        fs::create_dir_all(right.path().join("src/bin"))
+            .expect("right nested directory should be created");
+        fs::create_dir_all(left.path().join("old")).expect("left old directory should be created");
+        fs::create_dir_all(right.path().join("old"))
+            .expect("right old directory should be created");
+        fs::write(left.path().join("src/bin/main.rs"), "fn old() {}\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("src/bin/main.rs"), "fn new() {}\n")
+            .expect("right file should be written");
+        fs::write(left.path().join("old/remove.txt"), "left\n")
+            .expect("left old file should be written");
+        fs::write(right.path().join("old/remove.txt"), "right\n")
+            .expect("right old file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+
+        presenter.handle_command(UiCommand::ToggleNavigatorTreeNode("src/bin".to_string()));
+        presenter.handle_command(UiCommand::ToggleNavigatorTreeNode("old".to_string()));
+        let before_rerun = presenter.state_snapshot();
+        assert_eq!(
+            before_rerun
+                .navigator_tree_expansion_overrides
+                .get("src/bin"),
+            Some(&true)
+        );
+        assert_eq!(
+            before_rerun.navigator_tree_expansion_overrides.get("old"),
+            Some(&false)
+        );
+
+        fs::remove_file(left.path().join("old/remove.txt"))
+            .expect("left old file should be removed");
+        fs::remove_file(right.path().join("old/remove.txt"))
+            .expect("right old file should be removed");
+        fs::remove_dir(left.path().join("old")).expect("left old dir should be removed");
+        fs::remove_dir(right.path().join("old")).expect("right old dir should be removed");
+
+        presenter.handle_command(UiCommand::RunCompare);
+        let snapshot = wait_until(&presenter, |state| !state.running);
+        assert_eq!(
+            snapshot.navigator_tree_expansion_overrides.get("src/bin"),
+            Some(&true)
+        );
+        assert!(
+            !snapshot
+                .navigator_tree_expansion_overrides
+                .contains_key("old")
+        );
+        assert!(
+            snapshot
+                .navigator_tree_row_projections()
+                .iter()
+                .any(|row| row.key == "src/bin/main.rs")
+        );
+    }
+
+    #[test]
     fn diff_completion_does_not_reset_new_input_value() {
         let left = tempfile::tempdir().expect("left tempdir should be created");
         let right = tempfile::tempdir().expect("right tempdir should be created");
@@ -1533,6 +1794,7 @@ mod tests {
             model: "gpt-4o-mini".to_string(),
             timeout_secs_text: "0".to_string(),
             show_hidden_files: true,
+            default_results_view: NavigatorViewMode::Tree,
         });
         let snapshot = presenter.state_snapshot();
         assert!(snapshot.settings_error_message.is_some());
@@ -1571,6 +1833,7 @@ mod tests {
             model: "gpt-4o-mini".to_string(),
             timeout_secs_text: "30".to_string(),
             show_hidden_files: false,
+            default_results_view: NavigatorViewMode::Tree,
         });
 
         let snapshot = presenter.state_snapshot();
@@ -1593,6 +1856,7 @@ mod tests {
             },
             behavior: BehaviorSettings {
                 show_hidden_files: false,
+                default_results_view: DefaultResultsView::Flat,
             },
         })
         .expect("settings should be saved");
@@ -1612,5 +1876,13 @@ mod tests {
         assert_eq!(snapshot.analysis_openai_model, "gpt-4o-mini");
         assert_eq!(snapshot.analysis_request_timeout_secs, 55);
         assert!(!snapshot.show_hidden_files);
+        assert_eq!(
+            snapshot.default_navigator_view_mode,
+            NavigatorViewMode::Flat
+        );
+        assert_eq!(
+            snapshot.navigator_runtime_view_mode,
+            NavigatorViewMode::Flat
+        );
     }
 }

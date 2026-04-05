@@ -4,13 +4,14 @@ use crate::bridge::UiBridge;
 use crate::commands::UiCommand;
 use crate::context_menu::{
     CONTEXT_MENU_COPY_ACTION_ID, CONTEXT_MENU_COPY_SUMMARY_ACTION_ID, ContextMenuBuildResult,
-    ContextMenuCustomAction, ContextMenuInvocation, ContextMenuSyncState, ContextMenuTextPayload,
-    build_action_specs, build_analysis_section_payload, build_compare_status_payload,
-    build_results_row_payload, build_workspace_header_payload, should_close_for_sync_transition,
+    ContextMenuCustomAction, ContextMenuCustomActionDescriptor, ContextMenuInvocation,
+    ContextMenuSyncState, ContextMenuTextPayload, build_action_specs,
+    build_analysis_section_payload, build_compare_status_payload, build_results_row_payload,
+    build_workspace_header_payload, should_close_for_sync_transition,
 };
 use crate::folder_picker;
 use crate::presenter::Presenter;
-use crate::state::AppState;
+use crate::state::{AppState, NavigatorViewMode};
 use crate::toast_controller::{
     ToastPlacement, ToastQueueState, ToastRequest, ToastStrategy, ToastTone,
 };
@@ -23,6 +24,8 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+const RESULTS_LOCATE_AND_OPEN_ACTION_ID: &str = "results-locate-and-open";
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
@@ -1372,6 +1375,7 @@ slint::slint! {
         in property <string> analysis_notes_copy_text;
         in property <string> analysis_full_copy_text;
         in property <bool> show_hidden_files;
+        in property <string> default_navigator_view_mode;
         in property <string> settings_error_text;
         in-out property <int> workspace_tab: 0;
         in-out property <bool> compare_status_details_expanded: false;
@@ -1383,6 +1387,7 @@ slint::slint! {
         in-out property <string> settings_provider_model;
         in-out property <string> settings_provider_timeout;
         in-out property <bool> settings_show_hidden_files: true;
+        in-out property <int> settings_default_result_view: 0;
         in-out property <bool> settings_provider_show_api_key: false;
         in-out property <int> selected_row: -1;
         in property <string> selected_row_status;
@@ -1484,6 +1489,7 @@ slint::slint! {
             root.settings_provider_model = root.analysis_model;
             root.settings_provider_timeout = root.analysis_timeout_text;
             root.settings_show_hidden_files = root.show_hidden_files;
+            root.settings_default_result_view = root.default_navigator_view_mode == "flat" ? 1 : 0;
             root.settings_provider_show_api_key = false;
             root.settings_open = true;
             root.settings_clicked();
@@ -1509,7 +1515,7 @@ slint::slint! {
         callback settings_save_clicked();
         callback settings_cancel_clicked();
         callback compare_status_context_menu_requested(string, string);
-        callback results_context_menu_requested(string, string, string, bool);
+        callback results_context_menu_requested(int, string, string, string, bool);
         callback workspace_header_context_menu_requested(string, string, string, string, string);
         callback analysis_section_context_menu_requested(string, string, string, string);
         callback context_menu_close_requested();
@@ -2347,6 +2353,7 @@ slint::slint! {
                                                     root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
                                                     root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
                                                     root.results_context_menu_requested(
+                                                        row_item.source_index,
                                                         row_path,
                                                         row_item.row_status,
                                                         root.row_details[index],
@@ -3662,6 +3669,48 @@ slint::slint! {
                                 HorizontalLayout {
                                     spacing: 6px;
                                     Text {
+                                        text: "Default view";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    SegmentedRail {
+                                        width: 220px;
+                                        height: 30px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "Tree";
+                                                selected: root.settings_default_result_view == 0;
+                                                show_divider: false;
+                                                tapped => {
+                                                    root.settings_default_result_view = 0;
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Flat";
+                                                selected: root.settings_default_result_view == 1;
+                                                show_divider: true;
+                                                tapped => {
+                                                    root.settings_default_result_view = 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Text {
+                                    text: "Applies when Search is empty. Search results still force Flat mode.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
                                         text: "Hidden files";
                                         width: 110px;
                                         color: #4f6074;
@@ -4354,6 +4403,7 @@ fn sync_window_state(
     window.set_analysis_notes_copy_text(state.analysis_notes_copy_text().into());
     window.set_analysis_full_copy_text(state.analysis_full_copy_text().into());
     window.set_show_hidden_files(state.show_hidden_files);
+    window.set_default_navigator_view_mode(state.default_navigator_view_mode_text().into());
     window.set_settings_error_text(state.settings_error_text().into());
     window.set_selected_row(state.selected_row.map(|value| value as i32).unwrap_or(-1));
     window.set_selected_row_status(state.selected_row_status_text().into());
@@ -4910,17 +4960,68 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let results_context_menu_bridge = bridge.clone();
+    let results_context_menu_cache = Arc::clone(&sync_cache);
     let results_context_menu_controller = context_menu_controller.clone();
-    app.on_results_context_menu_requested(move |path, status, detail, unavailable| {
-        if app_weak.upgrade().is_none() {
-            return;
-        }
-        let payload =
-            build_results_row_payload(path.as_str(), status.as_str(), detail.as_str(), unavailable);
-        let target_token = format!("results:{}", path.as_str().trim());
-        results_context_menu_controller
-            .open(ContextMenuOpenRequest::builtin_only(target_token, payload));
-    });
+    let results_context_menu_loading_mask_controller = loading_mask_controller.clone();
+    app.on_results_context_menu_requested(
+        move |source_index, path, status, detail, unavailable| {
+            let Some(window) = app_weak.upgrade() else {
+                return;
+            };
+            let payload = build_results_row_payload(
+                path.as_str(),
+                status.as_str(),
+                detail.as_str(),
+                unavailable,
+            );
+            let target_token = format!("results:{}", path.as_str().trim());
+            let source_index = usize::try_from(source_index).ok();
+            let relative_path = path.to_string();
+            let snapshot = results_context_menu_bridge.snapshot();
+            let can_locate_and_open = window.get_navigator_search_forces_flat_mode()
+                && source_index
+                    .and_then(|index| snapshot.entry_rows.get(index))
+                    .is_some_and(|row| row.entry_kind == "file");
+            let mut custom_actions = Vec::new();
+            if can_locate_and_open {
+                let action_app_weak = app_weak.clone();
+                let action_bridge = results_context_menu_bridge.clone();
+                let action_cache = Arc::clone(&results_context_menu_cache);
+                let action_context_menu_controller = results_context_menu_controller.clone();
+                let action_loading_mask_controller =
+                    results_context_menu_loading_mask_controller.clone();
+                custom_actions.push(ContextMenuCustomAction {
+                    descriptor: ContextMenuCustomActionDescriptor {
+                        label: "Locate and Open".to_string(),
+                        action_id: RESULTS_LOCATE_AND_OPEN_ACTION_ID.to_string(),
+                        enabled: true,
+                    },
+                    handler: Rc::new(move |_invocation| {
+                        let Some(window) = action_app_weak.upgrade() else {
+                            return;
+                        };
+
+                        window.set_workspace_tab(0);
+                        action_bridge.dispatch(UiCommand::LocateAndOpen(relative_path.clone()));
+                        sync_window_state_if_changed(
+                            &window,
+                            &action_bridge,
+                            &action_cache,
+                            Some(&action_context_menu_controller),
+                            &action_loading_mask_controller,
+                            SyncMode::Passive,
+                        );
+                    }),
+                });
+            }
+            results_context_menu_controller.open(ContextMenuOpenRequest {
+                target_token,
+                text_payload: payload,
+                custom_actions,
+            });
+        },
+    );
 
     let app_weak = app.as_weak();
     let header_context_menu_controller = context_menu_controller.clone();
@@ -5296,6 +5397,11 @@ pub fn run() -> anyhow::Result<()> {
             model: window.get_settings_provider_model().to_string(),
             timeout_secs_text: window.get_settings_provider_timeout().to_string(),
             show_hidden_files: window.get_settings_show_hidden_files(),
+            default_results_view: if window.get_settings_default_result_view() == 1 {
+                NavigatorViewMode::Flat
+            } else {
+                NavigatorViewMode::Tree
+            },
         });
         sync_window_state_if_changed(
             &window,

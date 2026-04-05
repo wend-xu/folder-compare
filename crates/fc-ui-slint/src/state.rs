@@ -2,7 +2,7 @@
 
 use crate::navigator_tree::{
     NavigatorTreeProjection, NavigatorTreeRowProjection, build_canonical_navigator_tree,
-    navigator_tree_toggle_target, project_navigator_tree_rows,
+    navigator_tree_reveal_targets, navigator_tree_toggle_target, project_navigator_tree_rows,
 };
 use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
 use fc_ai::{AiConfig, AiProviderKind};
@@ -120,6 +120,8 @@ pub struct AppState {
     pub entry_status_filter: String,
     /// Non-search runtime mode for Results / Navigator.
     pub navigator_runtime_view_mode: NavigatorViewMode,
+    /// Persisted default mode for non-search Results / Navigator.
+    pub default_navigator_view_mode: NavigatorViewMode,
     /// Expansion overrides for directory nodes in tree mode.
     pub navigator_tree_expansion_overrides: BTreeMap<String, bool>,
     /// Warning lines from compare report.
@@ -182,6 +184,7 @@ impl Default for AppState {
             entry_filter: String::new(),
             entry_status_filter: "all".to_string(),
             navigator_runtime_view_mode: NavigatorViewMode::Tree,
+            default_navigator_view_mode: NavigatorViewMode::Tree,
             navigator_tree_expansion_overrides: BTreeMap::new(),
             warning_lines: Vec::new(),
             error_message: None,
@@ -747,9 +750,19 @@ impl AppState {
         self.navigator_runtime_view_mode.as_str().to_string()
     }
 
+    /// Returns the persisted default non-search mode token for UI syncing.
+    pub fn default_navigator_view_mode_text(&self) -> String {
+        self.default_navigator_view_mode.as_str().to_string()
+    }
+
     /// Returns the effective mode token for UI syncing.
     pub fn navigator_effective_view_mode_text(&self) -> String {
         self.effective_navigator_view_mode().as_str().to_string()
+    }
+
+    /// Updates the persisted non-search default mode.
+    pub fn set_default_navigator_view_mode(&mut self, mode: NavigatorViewMode) {
+        self.default_navigator_view_mode = mode;
     }
 
     /// Updates the non-search runtime mode.
@@ -797,6 +810,46 @@ impl AppState {
         true
     }
 
+    /// Expands all ancestor directories required to reveal one file path in tree mode.
+    pub fn reveal_navigator_tree_path(&mut self, relative_path: &str) -> bool {
+        let mut changed = false;
+        for (key, path_depth) in navigator_tree_reveal_targets(&self.entry_rows, relative_path) {
+            let default_expanded = path_depth <= 1;
+            if default_expanded {
+                changed |= self
+                    .navigator_tree_expansion_overrides
+                    .remove(key.as_str())
+                    .is_some();
+            } else if self
+                .navigator_tree_expansion_overrides
+                .get(key.as_str())
+                .copied()
+                != Some(true)
+            {
+                self.navigator_tree_expansion_overrides.insert(key, true);
+                changed = true;
+            }
+        }
+
+        if changed {
+            self.bump_navigator_tree_projection_revision();
+        }
+        changed
+    }
+
+    /// Removes expansion overrides that no longer map to expandable directories.
+    pub fn prune_navigator_tree_expansion_overrides(&mut self) -> bool {
+        let previous = self.navigator_tree_expansion_overrides.clone();
+        self.navigator_tree_expansion_overrides
+            .retain(
+                |key, expanded| match navigator_tree_toggle_target(&self.entry_rows, key) {
+                    Some((_, path_depth)) => *expanded != (path_depth <= 1),
+                    None => false,
+                },
+            );
+        previous != self.navigator_tree_expansion_overrides
+    }
+
     /// Updates status filter scope in canonical form.
     pub fn set_entry_status_filter(&mut self, filter: &str) {
         let normalized = normalize_status_filter_token(filter);
@@ -839,6 +892,17 @@ impl AppState {
                 .selectable_source_indices
                 .contains(&index),
         }
+    }
+
+    /// Resolves one source row index by normalized relative path.
+    pub fn row_index_for_relative_path(&self, relative_path: &str) -> Option<usize> {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() {
+            return None;
+        }
+        self.entry_rows
+            .iter()
+            .position(|row| row.relative_path == normalized)
     }
 
     /// Returns collection summary text for Results / Navigator.
@@ -2489,6 +2553,60 @@ mod tests {
         assert_eq!(rows[0].key, "src");
         assert!(!rows[0].is_expanded);
         assert!(state.is_row_member_in_active_results(0));
+    }
+
+    #[test]
+    fn reveal_navigator_tree_path_expands_nested_ancestors() {
+        let mut state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "src/bin/main.rs".to_string(),
+                status: "different".to_string(),
+                entry_kind: "file".to_string(),
+                can_load_diff: true,
+                can_load_analysis: true,
+                ..CompareEntryRowViewModel::default()
+            }],
+            navigator_tree_expansion_overrides: BTreeMap::from([("src/bin".to_string(), false)]),
+            ..AppState::default()
+        };
+
+        assert!(state.reveal_navigator_tree_path("src/bin/main.rs"));
+        assert_eq!(
+            state.navigator_tree_expansion_overrides.get("src/bin"),
+            Some(&true)
+        );
+        assert!(
+            state
+                .navigator_tree_row_projections()
+                .iter()
+                .any(|row| row.key == "src/bin/main.rs")
+        );
+    }
+
+    #[test]
+    fn prune_expansion_overrides_removes_invalid_paths_and_default_states() {
+        let mut state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "src/bin/main.rs".to_string(),
+                status: "different".to_string(),
+                entry_kind: "file".to_string(),
+                can_load_diff: true,
+                can_load_analysis: true,
+                ..CompareEntryRowViewModel::default()
+            }],
+            navigator_tree_expansion_overrides: BTreeMap::from([
+                ("src/bin".to_string(), true),
+                ("src".to_string(), true),
+                ("old".to_string(), false),
+            ]),
+            ..AppState::default()
+        };
+
+        assert!(state.prune_navigator_tree_expansion_overrides());
+        assert_eq!(
+            state.navigator_tree_expansion_overrides,
+            BTreeMap::from([("src/bin".to_string(), true)])
+        );
     }
 
     #[test]
