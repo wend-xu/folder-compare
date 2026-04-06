@@ -3846,6 +3846,7 @@ slint::slint! {
 enum SyncMode {
     Full,
     Passive,
+    ProgrammaticInputs,
 }
 
 const LOADING_MASK_TIMEOUT: Duration = Duration::from_secs(12);
@@ -4262,9 +4263,10 @@ fn derive_context_menu_sync_state(state: &AppState) -> ContextMenuSyncState {
 }
 
 // Contract: sync mode gate for editable UI fields.
-// Full mode pulls editable inputs from state; Passive mode preserves in-flight user typing.
+// Full mode and ProgrammaticInputs mode pull editable inputs from state;
+// Passive mode preserves in-flight user typing.
 fn should_sync_editable_inputs(mode: SyncMode) -> bool {
-    matches!(mode, SyncMode::Full)
+    matches!(mode, SyncMode::Full | SyncMode::ProgrammaticInputs)
 }
 
 // Contract: state cache guard.
@@ -5100,7 +5102,7 @@ pub fn run() -> anyhow::Result<()> {
                             &action_cache,
                             Some(&action_context_menu_controller),
                             &action_loading_mask_controller,
-                            SyncMode::Passive,
+                            SyncMode::ProgrammaticInputs,
                         );
                     }),
                 });
@@ -5661,6 +5663,11 @@ mod tests {
     #[test]
     fn passive_mode_does_not_sync_editable_inputs() {
         assert!(!should_sync_editable_inputs(SyncMode::Passive));
+    }
+
+    #[test]
+    fn programmatic_inputs_mode_syncs_editable_inputs() {
+        assert!(should_sync_editable_inputs(SyncMode::ProgrammaticInputs));
     }
 
     #[test]

@@ -331,6 +331,8 @@ impl Presenter {
             state.effective_navigator_view_mode(),
             NavigatorViewMode::Tree
         ) {
+            // Non-search flat -> tree continuity intentionally reuses the same
+            // reveal/ensure-visible behavior as a surviving locate target.
             Self::reveal_selected_path_in_tree(state);
         }
         Self::reconcile_selected_row_membership(state);

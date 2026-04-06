@@ -33,7 +33,7 @@ pub enum UiCommand {
     SelectRow(i32),
     /// Loads detailed diff for selected row.
     LoadSelectedDiff,
-    /// Reveals one flat-search result in tree mode and opens its file view.
+    /// Reveals one flat result in tree mode, clearing search when needed, and opens its file view.
     LocateAndOpen(String),
     /// Loads AI analysis for selected detailed diff.
     LoadAiAnalysis,

@@ -72,14 +72,14 @@ component NavigatorTreeRow inherits Rectangle {
         ? rgba(219, 233, 251, 0.62)
         : (root.row_hovered ? rgba(244, 247, 251, 0.88) : transparent);
     property <brush> tone_label_color: root.status == "different"
-        ? #5f473f
+        ? UiPalette.navigator_tree_tone_different_text
         : (root.status == "equal"
-            ? #415748
+            ? UiPalette.navigator_tree_tone_equal_text
             : (root.status == "left-only"
-                ? #5a4c3b
+                ? UiPalette.navigator_tree_tone_left_text
                 : (root.status == "right-only"
-                    ? #45616b
-                    : UiPalette.results_row_tone_neutral_path_text)));
+                    ? UiPalette.navigator_tree_tone_right_text
+                    : UiPalette.navigator_tree_tone_neutral_text)));
     property <brush> label_color: root.row_selected
         ? UiPalette.results_row_selected_path_text
         : root.tone_label_color;
@@ -87,14 +87,14 @@ component NavigatorTreeRow inherits Rectangle {
         ? UiPalette.results_row_selected_context_text
         : UiPalette.results_row_tone_neutral_context_text;
     property <brush> status_text_color: root.status == "different"
-        ? UiPalette.status_pill_tone_different_text
+        ? UiPalette.navigator_tree_tone_different_text
         : (root.status == "equal"
-            ? UiPalette.status_pill_tone_equal_text
+            ? UiPalette.navigator_tree_tone_equal_text
             : (root.status == "left-only"
-                ? UiPalette.status_pill_tone_left_text
+                ? UiPalette.navigator_tree_tone_left_text
                 : (root.status == "right-only"
-                    ? UiPalette.status_pill_tone_right_text
-                    : UiPalette.status_pill_tone_neutral_text)));
+                    ? UiPalette.navigator_tree_tone_right_text
+                    : UiPalette.navigator_tree_tone_neutral_text)));
     property <length> indent_width: 12px * root.depth;
     property <bool> label_truncated: label_text.preferred-width > label_clip.width + 1px;
     property <bool> status_visible: root.row_status_label != "";
@@ -163,7 +163,7 @@ component NavigatorTreeRow inherits Rectangle {
             horizontal-alignment: right;
             font-size: 10px;
             font-weight: 600;
-            opacity: root.status == "equal" ? 0.72 : 0.9;
+            opacity: root.row_selected ? 1 : 0.84;
         }
     }
 

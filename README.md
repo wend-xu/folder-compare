@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-05）：
+当前项目状态（2026-04-06）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -208,7 +208,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 18C` 之后的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 18` 收口后的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` activation、边界与 deferred
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -216,18 +216,19 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 18C`，而不是继续重开旧 phase closeout。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的已收口 `Phase 18`，而不是继续重开旧 phase closeout。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - attached `Diff / Analysis` shell
   - explicit stale-selection / unavailable 语义
   - tooltip / Settings / Hidden-files 边界
   - macOS immersive title bar / non-mac legacy top bar contract
-- `Phase 18C` 当前额外约束：
+- `Phase 18` 当前额外约束：
   - tree 与 flat 双视图并存
   - 搜索非空时强制 flat mode
   - tree logic 放在 Rust presenter/state，Slint 只渲染 visible rows
   - tree / flat 与 locate 的可视区域连续性已是当前基线，不再视为 deferred
+- 后续若无明确 regression，默认下一入口应转到 `Phase 19` 讨论，而不是继续滚动 `18C fix-*`
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

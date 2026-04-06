@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Post-Phase 18C + macOS font-bootstrap baseline)
+# Folder Compare Thread Context (Post-Phase 18 Closeout + macOS font-bootstrap baseline)
 
 ## 目的
 
@@ -6,7 +6,7 @@
 - 只记录当前真实事实、当前边界、下一线程入口。
 - 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
-## 本轮更新说明（2026-04-05）
+## 本轮更新说明（2026-04-06）
 
 - `Phase 18A` dual-view baseline 与 `Phase 18B` mode-linkage baseline 继续成立，并已推进到 `Phase 18C` visible-region / polish baseline。
 - `Settings -> Behavior` 现已持久化默认结果视图（`Tree` / `Flat`），并写入 `settings.toml`。
@@ -14,6 +14,10 @@
 - flat results 现已统一支持 `Locate and Open`：
   - 搜索态 flat 与显式 flat mode 都可用
   - 动作链路为：必要时清搜索 -> 切 tree -> 展开祖先 -> 定位并滚动到 file leaf -> 打开右侧 file-view
+- `Phase 18C fix-1` 已完成：
+  - 搜索态 `Locate and Open` 回 tree 时会同步清空 `Filter / Scope` 中的 search 文本，不再残留 UI / state 错位
+  - 非搜索 `flat -> tree` 连续性继续成立；当前文件会按既有 locate 语义展开祖先链并回到 tree 可见区域
+  - tree 名称/状态色已再收一轮减法，改为更轻、更亮、更克制的 navigator tone
 - compare rerun 不再清空 expanded-path overrides；当前会保留仍然有效的 expanded/collapsed 路径并 prune 无效项。
 - tree row 保持 lightweight navigator 语言，同时把 restrained status tone 轻量延伸到文件/目录名。
 - `UiTypography` 与 runtime font-family 中转层已删除；窗口文本面回到 Slint 默认 generic-family 路径。
@@ -25,15 +29,15 @@
   - 升级到 `macOS 15.7` 后，`fontique 0.7.0` 的字体发现问题也被暴露出来，单纯指定字体不再可靠
   - 当前 `Slint + Parley + fontique (+ renderer)` 栈仍存在 mixed-text fallback/selection 问题，但这部分暂不归因到单一 crate
   - `fontique 0.8.0` 已修复相关发现问题，但当前项目何时能随 Slint 升级拿到该修复仍不确定
-- `docs/architecture.md`、`docs/thread-context.md`、`README.md` 已同步到当前 `18C` 基线，避免 handoff 仍停留在 “auto scroll deferred / search-only locate” 叙事。
+- `docs/thread-context.md` 与 `README.md` 已同步到当前 `18` 收口后的 handoff 入口，避免后续线程仍把 `18C fix-*` 当成默认主线。
 
 ## 快照（Snapshot）
 
-- 日期：`2026-04-05`（Asia/Shanghai）
+- 日期：`2026-04-06`（Asia/Shanghai）
 - 分支：`dev`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
-  - `Phase 18C` visible-region / locate / polish baseline 已实现
+  - `Phase 18` navigator baseline 已收口完成（含 `18C fix-1`）
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 已知最近一次完整代码验证：
   - `cargo fmt --all`
@@ -44,7 +48,7 @@
   - `rg -n "UiTypography" crates/fc-ui-slint/src` 为 `0` 命中
   - macOS 15.x 已做人工验证，当前 bootstrap 基线可恢复中文与全角字符显示
 
-## 当前真实稳定基线（Through Phase 17D + Phase 18C）
+## 当前真实稳定基线（Through Phase 17D + Phase 18 Closeout）
 
 ### 工具链与版本
 
@@ -102,6 +106,7 @@
   - 非搜索显式 flat
   - 只针对 file leaf，继续复用既有 `selected_row / load diff / load analysis` 链路
 - locate 完成后，tree 中目标 leaf 会被展开祖先链并滚动到当前可见区域。
+- 搜索态 locate 完成后，`Filter / Scope` 中的 search 文本会被同步清空；不会再出现 tree 已切回但 search 仍残留的状态错位。
 - compare rerun 会按新树 prune / restore expanded-path overrides；不再无条件清空。
 - 折叠包含当前打开文件的目录不会触发 false stale-selection；只有 membership 真变化时才 stale。
 
@@ -109,8 +114,9 @@
 
 - 当前不再是“启动 `18B`”或“准备 `18C`”。
 - 当前真实焦点是：
-  - 把 `Phase 18C` 视为已实现基线
-  - 后续如有新线程，优先做 smoke、边界修正、或非常小的 `18C fix-*`
+  - 把 `Phase 18` 视为已收口完成的 navigator 基线
+  - 后续如有新线程，默认入口改为 `Phase 19` 草案讨论或新的明确目标
+  - 除非遇到新回归，否则不要继续把 `18C fix-*` 当作默认主线
   - 不要回退到 “可视区域/locate 仍 deferred” 的旧叙事
 - 字体方向上的当前焦点不是继续扩展应用层字体策略，而是：
   - 维持现有集中式 macOS bootstrap shim
@@ -191,7 +197,7 @@
 > 把 `Phase 18A + 18B + 18C` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 mode 来自 `Settings -> Behavior -> Default view`；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree / flat 切换会在目标视图 ensure-scroll 当前文件；flat results（搜索态或显式 flat）都有 `Locate and Open`；compare rerun 会 prune / restore expanded-path overrides。  
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
 > 不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。  
-> 如果后续继续这个方向，优先做 `18C` smoke 与小范围 contract 修正，不要把当前已落地的 visible-region / locate baseline 再写回 proposal，也不要混成新一轮架构改写。
+> 如果后续继续这个方向，默认可进入 `Phase 19` 草案讨论；只有出现明确 regression 时，才回到 `18C fix-*` 做小范围修正。不要把当前已落地的 visible-region / locate baseline 再写回 proposal，也不要混成新一轮架构改写。
 
 ## 更新契约（Mandatory）
 
