@@ -1482,6 +1482,18 @@ slint::slint! {
             root.tooltip_visible = false;
             root.tooltip_text = "";
         }
+        public function ensure_flat_row_visible(target_row: int) {
+            if root.navigator_effective_view_mode != "flat" {
+                return;
+            }
+            flat_results_list.ensure_row_visible(target_row);
+        }
+        public function ensure_tree_row_visible(target_row: int) {
+            if root.navigator_effective_view_mode != "tree" {
+                return;
+            }
+            navigator_tree_view.ensure_visible_row(target_row);
+        }
         function open_settings() {
             root.settings_provider_mode = root.analysis_remote_mode ? 1 : 0;
             root.settings_provider_endpoint = root.analysis_endpoint;
@@ -2141,8 +2153,11 @@ slint::slint! {
                                     color: #6f7e8d;
                                     overflow: elide;
                                 }
-                                if root.navigator_effective_view_mode == "tree" : NavigatorTree {
-                                    vertical-stretch: 1;
+                                navigator_tree_view := NavigatorTree {
+                                    visible: root.navigator_effective_view_mode == "tree";
+                                    min-height: 0px;
+                                    max-height: self.visible ? 12000px : 0px;
+                                    vertical-stretch: self.visible ? 1 : 0;
                                     row_keys: root.tree_row_keys;
                                     row_display_names: root.tree_row_display_names;
                                     row_statuses: root.tree_row_statuses;
@@ -2175,8 +2190,35 @@ slint::slint! {
                                         root.hide_tooltip();
                                     }
                                 }
-                                if root.navigator_effective_view_mode == "flat" : ListView {
-                                    vertical-stretch: 1;
+                                flat_results_list := ListView {
+                                    visible: root.navigator_effective_view_mode == "flat";
+                                    min-height: 0px;
+                                    max-height: self.visible ? 12000px : 0px;
+                                    vertical-stretch: self.visible ? 1 : 0;
+                                    property <length> row_height: 50px;
+                                    property <length> ensure_visible_padding: 16px;
+                                    function ensure_row_visible(target_row: int) {
+                                        if target_row < 0 || target_row >= root.row_paths.length {
+                                            return;
+                                        }
+
+                                        let top_limit = min(
+                                            self.ensure_visible_padding,
+                                            max(0px, self.visible-height - self.row_height),
+                                        );
+                                        let bottom_limit = max(
+                                            self.row_height,
+                                            self.visible-height - self.ensure_visible_padding,
+                                        );
+                                        let target_top = self.viewport-y + target_row * self.row_height;
+                                        let target_bottom = target_top + self.row_height;
+                                        if target_top < top_limit {
+                                            self.viewport-y += top_limit - target_top;
+                                        }
+                                        if target_bottom > bottom_limit {
+                                            self.viewport-y -= target_bottom - bottom_limit;
+                                        }
+                                    }
                                     for row_path[index] in root.row_paths: row_item := Rectangle {
                                         property <length> tooltip_x_inset: 8px;
                                         property <int> source_index: root.row_source_indices[index];
@@ -2262,7 +2304,7 @@ slint::slint! {
                                             }
                                         }
 
-                                        height: 50px;
+                                        height: flat_results_list.row_height;
                                         border-width: 1px;
                                         border-color: row_item.item_border_color;
                                         border-radius: 3px;
@@ -4253,6 +4295,26 @@ fn should_refresh_tree_result_models(last_state: Option<&AppState>, next_state: 
     }
 }
 
+fn should_apply_flat_scroll_request(last_state: Option<&AppState>, next_state: &AppState) -> bool {
+    match last_state {
+        None => next_state.navigator_flat_scroll_request_revision != 0,
+        Some(last) => {
+            last.navigator_flat_scroll_request_revision
+                != next_state.navigator_flat_scroll_request_revision
+        }
+    }
+}
+
+fn should_apply_tree_scroll_request(last_state: Option<&AppState>, next_state: &AppState) -> bool {
+    match last_state {
+        None => next_state.navigator_tree_scroll_request_revision != 0,
+        Some(last) => {
+            last.navigator_tree_scroll_request_revision
+                != next_state.navigator_tree_scroll_request_revision
+        }
+    }
+}
+
 // Contract: diff model refresh boundary.
 // Rebuild diff row models only when selected diff payload changes.
 fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
@@ -4297,6 +4359,36 @@ fn replace_model_contents<T: Clone + 'static>(model: ModelRc<T>, next_rows: Vec<
         .downcast_ref::<VecModel<T>>()
         .unwrap_or_else(|| panic!("{name} must be initialized as VecModel"));
     vec_model.set_vec(next_rows);
+}
+
+fn sync_navigator_scroll_requests(
+    window: &MainWindow,
+    state: &AppState,
+    last_state: Option<&AppState>,
+) {
+    if should_apply_flat_scroll_request(last_state, state) {
+        if let Some(visual_index) = state
+            .navigator_flat_scroll_target_source_index
+            .and_then(|source_index| {
+                state.navigator_flat_visual_row_index_for_source_index(source_index)
+            })
+            .and_then(|index| i32::try_from(index).ok())
+        {
+            window.invoke_ensure_flat_row_visible(visual_index);
+        }
+    }
+
+    if should_apply_tree_scroll_request(last_state, state) {
+        if let Some(visual_index) = state
+            .navigator_tree_scroll_target_source_index
+            .and_then(|source_index| {
+                state.navigator_tree_visual_row_index_for_source_index(source_index)
+            })
+            .and_then(|index| i32::try_from(index).ok())
+        {
+            window.invoke_ensure_tree_row_visible(visual_index);
+        }
+    }
 }
 
 // Contract: state -> window projection.
@@ -4607,6 +4699,8 @@ fn sync_window_state(
             "tree_row_source_indices",
         );
     }
+
+    sync_navigator_scroll_requests(window, state, last_state);
 
     if should_refresh_diff_models(last_state, state) {
         let diff_rows = state.diff_viewer_rows();
@@ -4966,9 +5060,6 @@ pub fn run() -> anyhow::Result<()> {
     let results_context_menu_loading_mask_controller = loading_mask_controller.clone();
     app.on_results_context_menu_requested(
         move |source_index, path, status, detail, unavailable| {
-            let Some(window) = app_weak.upgrade() else {
-                return;
-            };
             let payload = build_results_row_payload(
                 path.as_str(),
                 status.as_str(),
@@ -4979,10 +5070,9 @@ pub fn run() -> anyhow::Result<()> {
             let source_index = usize::try_from(source_index).ok();
             let relative_path = path.to_string();
             let snapshot = results_context_menu_bridge.snapshot();
-            let can_locate_and_open = window.get_navigator_search_forces_flat_mode()
-                && source_index
-                    .and_then(|index| snapshot.entry_rows.get(index))
-                    .is_some_and(|row| row.entry_kind == "file");
+            let can_locate_and_open = source_index
+                .and_then(|index| snapshot.entry_rows.get(index))
+                .is_some_and(|row| row.entry_kind == "file");
             let mut custom_actions = Vec::new();
             if can_locate_and_open {
                 let action_app_weak = app_weak.clone();

@@ -71,9 +71,18 @@ component NavigatorTreeRow inherits Rectangle {
     property <brush> row_background_color: root.row_selected
         ? rgba(219, 233, 251, 0.62)
         : (root.row_hovered ? rgba(244, 247, 251, 0.88) : transparent);
+    property <brush> tone_label_color: root.status == "different"
+        ? #5f473f
+        : (root.status == "equal"
+            ? #415748
+            : (root.status == "left-only"
+                ? #5a4c3b
+                : (root.status == "right-only"
+                    ? #45616b
+                    : UiPalette.results_row_tone_neutral_path_text)));
     property <brush> label_color: root.row_selected
         ? UiPalette.results_row_selected_path_text
-        : UiPalette.results_row_tone_neutral_path_text;
+        : root.tone_label_color;
     property <brush> disclosure_color: root.row_selected
         ? UiPalette.results_row_selected_context_text
         : UiPalette.results_row_tone_neutral_context_text;
@@ -219,9 +228,37 @@ export component NavigatorTree inherits Rectangle {
     callback tooltip_requested(string, length, length, length);
     callback tooltip_closed();
 
-    ListView {
+    public function ensure_visible_row(target_row: int) {
+        tree_list.ensure_row_visible(target_row);
+    }
+
+    tree_list := ListView {
         width: parent.width;
         height: parent.height;
+        property <length> row_height: 26px;
+        property <length> ensure_visible_padding: 10px;
+        function ensure_row_visible(target_row: int) {
+            if target_row < 0 || target_row >= root.row_keys.length {
+                return;
+            }
+
+            let top_limit = min(
+                self.ensure_visible_padding,
+                max(0px, self.visible-height - self.row_height),
+            );
+            let bottom_limit = max(
+                self.row_height,
+                self.visible-height - self.ensure_visible_padding,
+            );
+            let target_top = self.viewport-y + target_row * self.row_height;
+            let target_bottom = target_top + self.row_height;
+            if target_top < top_limit {
+                self.viewport-y += top_limit - target_top;
+            }
+            if target_bottom > bottom_limit {
+                self.viewport-y -= target_bottom - bottom_limit;
+            }
+        }
 
         for row_key[index] in root.row_keys: row_item := NavigatorTreeRow {
             row_key: row_key;

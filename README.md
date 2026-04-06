@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-03-22）：
+当前项目状态（2026-04-05）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -11,10 +11,12 @@
 - `slint = 1.15.1`
 - `slint-build = 1.15.1`
 - `Phase 16A` 到 `Phase 17D` 的当前稳定基线已收口完成
-- `Phase 18A` 第一轮 correctness baseline 已落地：
+- `Phase 18A` 到 `Phase 18C` 的 navigator 稳定化基线已落地：
   - `Results / Navigator` 进入 `tree + flat` 双视图基线
-  - 非搜索默认 `tree mode`
+  - 非搜索默认 mode 可由 `Settings -> Behavior -> Default view` 决定
   - 搜索非空强制 `flat results mode`
+  - tree / flat 切换会把当前文件滚动回可见区域
+  - flat results（搜索态与显式 flat）均支持 `Locate and Open`
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -78,8 +80,10 @@
   - 搜索高亮保持 label-level，不引入 match-span parsing
   - 搜索 contract 仍为 `path / name only`
   - 搜索非空时强制走 flat results mode
+  - tree / flat 切换时，当前文件若仍有效，会自动滚动回目标视图可见区域
   - tree 中目录节点点击只负责展开/收起
   - tree 中文件 leaf 节点点击复用既有 file-view 打开链路
+  - flat results 中 file leaf 支持 `Locate and Open` 回 tree
   - row tooltip 只做完整 filename + parent path completion
 - `Diff`
   - 状态机：`no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
@@ -102,7 +106,9 @@
 - 当前 Settings 只保留两个 section：
   - `Provider`
   - `Behavior`
-- `Behavior` 当前只包含一个持久化偏好：`Hidden files`
+- `Behavior` 当前包含两个持久化偏好：
+  - `Hidden files`
+  - 默认结果视图 `Tree / Flat`
 - `Hidden files` 当前只是 UI / presentation preference：
   - 影响 `Results / Navigator` 默认可见集合
   - 影响顶部摘要文案
@@ -202,7 +208,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 18A` 启动入口
+  - 新线程交接、当前稳定事实、`Phase 18C` 之后的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` activation、边界与 deferred
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -210,17 +216,18 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 18A`，而不是继续重开旧 phase closeout。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 18C`，而不是继续重开旧 phase closeout。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - attached `Diff / Analysis` shell
   - explicit stale-selection / unavailable 语义
   - tooltip / Settings / Hidden-files 边界
   - macOS immersive title bar / non-mac legacy top bar contract
-- `Phase 18A` 当前额外约束：
+- `Phase 18C` 当前额外约束：
   - tree 与 flat 双视图并存
   - 搜索非空时强制 flat mode
   - tree logic 放在 Rust presenter/state，Slint 只渲染 visible rows
+  - tree / flat 与 locate 的可视区域连续性已是当前基线，不再视为 deferred
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

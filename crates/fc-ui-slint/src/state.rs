@@ -112,6 +112,14 @@ pub struct AppState {
     pub navigator_flat_projection_revision: u64,
     /// Revision for tree navigator projection refreshes.
     pub navigator_tree_projection_revision: u64,
+    /// Revision for one-shot flat ensure-visible requests.
+    pub navigator_flat_scroll_request_revision: u64,
+    /// Source index requested for flat ensure-visible.
+    pub navigator_flat_scroll_target_source_index: Option<usize>,
+    /// Revision for one-shot tree ensure-visible requests.
+    pub navigator_tree_scroll_request_revision: u64,
+    /// Source index requested for tree ensure-visible.
+    pub navigator_tree_scroll_target_source_index: Option<usize>,
     /// Result rows for list rendering.
     pub entry_rows: Vec<CompareEntryRowViewModel>,
     /// Filter text applied to compare rows.
@@ -180,6 +188,10 @@ impl Default for AppState {
             summary_text: String::new(),
             navigator_flat_projection_revision: 0,
             navigator_tree_projection_revision: 0,
+            navigator_flat_scroll_request_revision: 0,
+            navigator_flat_scroll_target_source_index: None,
+            navigator_tree_scroll_request_revision: 0,
+            navigator_tree_scroll_target_source_index: None,
             entry_rows: Vec::new(),
             entry_filter: String::new(),
             entry_status_filter: "all".to_string(),
@@ -731,6 +743,16 @@ impl AppState {
             .collect()
     }
 
+    /// Resolves one flat visible-row index from one source row index.
+    pub fn navigator_flat_visual_row_index_for_source_index(
+        &self,
+        source_index: usize,
+    ) -> Option<usize> {
+        self.navigator_row_projections()
+            .iter()
+            .position(|projection| projection.source_index == source_index)
+    }
+
     /// Returns true when search text currently forces flat results mode.
     pub fn navigator_search_forces_flat_mode(&self) -> bool {
         !normalize_filter_needle(&self.entry_filter).is_empty()
@@ -782,6 +804,44 @@ impl AppState {
     /// Returns visible tree row projections for tree mode rendering.
     pub fn navigator_tree_row_projections(&self) -> Vec<NavigatorTreeRowProjection> {
         self.navigator_tree_projection().rows
+    }
+
+    /// Resolves one tree visible-row index from one source row index.
+    pub fn navigator_tree_visual_row_index_for_source_index(
+        &self,
+        source_index: usize,
+    ) -> Option<usize> {
+        self.navigator_tree_row_projections()
+            .iter()
+            .position(|projection| projection.source_index == Some(source_index))
+    }
+
+    /// Queues one flat ensure-visible request when the source row is visible.
+    pub fn request_navigator_flat_scroll_to_source_index(&mut self, source_index: usize) -> bool {
+        if self
+            .navigator_flat_visual_row_index_for_source_index(source_index)
+            .is_none()
+        {
+            return false;
+        }
+        self.navigator_flat_scroll_target_source_index = Some(source_index);
+        self.navigator_flat_scroll_request_revision =
+            self.navigator_flat_scroll_request_revision.wrapping_add(1);
+        true
+    }
+
+    /// Queues one tree ensure-visible request when the source row is visible.
+    pub fn request_navigator_tree_scroll_to_source_index(&mut self, source_index: usize) -> bool {
+        if self
+            .navigator_tree_visual_row_index_for_source_index(source_index)
+            .is_none()
+        {
+            return false;
+        }
+        self.navigator_tree_scroll_target_source_index = Some(source_index);
+        self.navigator_tree_scroll_request_revision =
+            self.navigator_tree_scroll_request_revision.wrapping_add(1);
+        true
     }
 
     /// Returns true when a directory node toggle was applied.
@@ -2581,6 +2641,76 @@ mod tests {
                 .iter()
                 .any(|row| row.key == "src/bin/main.rs")
         );
+    }
+
+    #[test]
+    fn flat_scroll_request_requires_visible_source_row() {
+        let mut state = AppState {
+            entry_rows: vec![
+                CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    entry_kind: "file".to_string(),
+                    ..CompareEntryRowViewModel::default()
+                },
+                CompareEntryRowViewModel {
+                    relative_path: "docs/readme.md".to_string(),
+                    status: "equal".to_string(),
+                    entry_kind: "file".to_string(),
+                    ..CompareEntryRowViewModel::default()
+                },
+            ],
+            entry_status_filter: "different".to_string(),
+            ..AppState::default()
+        };
+
+        assert_eq!(
+            state.navigator_flat_visual_row_index_for_source_index(0),
+            Some(0)
+        );
+        assert!(state.request_navigator_flat_scroll_to_source_index(0));
+        assert_eq!(state.navigator_flat_scroll_request_revision, 1);
+        assert_eq!(state.navigator_flat_scroll_target_source_index, Some(0));
+
+        assert_eq!(
+            state.navigator_flat_visual_row_index_for_source_index(1),
+            None
+        );
+        assert!(!state.request_navigator_flat_scroll_to_source_index(1));
+        assert_eq!(state.navigator_flat_scroll_request_revision, 1);
+        assert_eq!(state.navigator_flat_scroll_target_source_index, Some(0));
+    }
+
+    #[test]
+    fn tree_scroll_request_requires_visible_revealed_source_row() {
+        let mut state = AppState {
+            entry_rows: vec![CompareEntryRowViewModel {
+                relative_path: "src/bin/main.rs".to_string(),
+                status: "different".to_string(),
+                entry_kind: "file".to_string(),
+                can_load_diff: true,
+                can_load_analysis: true,
+                ..CompareEntryRowViewModel::default()
+            }],
+            navigator_tree_expansion_overrides: BTreeMap::from([("src/bin".to_string(), false)]),
+            ..AppState::default()
+        };
+
+        assert_eq!(
+            state.navigator_tree_visual_row_index_for_source_index(0),
+            None
+        );
+        assert!(!state.request_navigator_tree_scroll_to_source_index(0));
+        assert_eq!(state.navigator_tree_scroll_request_revision, 0);
+
+        assert!(state.reveal_navigator_tree_path("src/bin/main.rs"));
+        assert_eq!(
+            state.navigator_tree_visual_row_index_for_source_index(0),
+            Some(2)
+        );
+        assert!(state.request_navigator_tree_scroll_to_source_index(0));
+        assert_eq!(state.navigator_tree_scroll_request_revision, 1);
+        assert_eq!(state.navigator_tree_scroll_target_source_index, Some(0));
     }
 
     #[test]

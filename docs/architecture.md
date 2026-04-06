@@ -1,10 +1,10 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18B Baseline)
+# Folder Compare Architecture (Stable Baseline + Phase 18C Baseline)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18B` baseline inside that shell
+  - the currently implemented `Phase 18C` stabilization baseline inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
@@ -59,7 +59,7 @@
   - drag moved to explicit blank area inside immersive strip only
   - regression fixes closed out
 
-## Current Implemented Phase 18B Baseline
+## Current Implemented Phase 18C Baseline
 
 - `Results / Navigator` now supports dual-view operation inside the existing sidebar block:
   - non-search runtime tree view
@@ -72,6 +72,7 @@
   - directory expansion/collapse state owned outside Slint
 - Slint now uses one independent tree renderer component for tree rows; it does not own recursive tree state.
 - Tree rows now use a drawn disclosure chevron plus trailing lightweight status text rather than flat-row pill/card inheritance.
+- Tree row label color now carries a restrained status tone so files/directories stay scannable without reintroducing heavy card/pill language.
 - Directory-node click in tree mode only expands/collapses; directory nodes do not enter right-side file-view selection.
 - File-leaf click in tree mode reuses the existing `selected_row -> load diff -> load analysis` path.
 - Hidden-files preference remains a UI/presentation boundary and now also applies to tree-mode projection.
@@ -82,18 +83,20 @@
 - Selection remains conservative:
   - tree/flat switching preserves the currently open file only when it remains a member of the target visible set
   - switching into tree reveals the selected file by expanding its ancestor chain when that file is still valid
+  - when one file survives a tree/flat mode switch, the active navigator view now ensure-scrolls that file back into the visible viewport
   - collapsing an ancestor directory does not force `stale-selection` when file membership has not changed
-- Flat search results now support `Locate and Open`:
-  - clear search-result mode
+- Flat results now support `Locate and Open` from both search results and explicit flat browsing:
+  - clear search-result mode when present
   - switch back to tree mode
   - expand the ancestor chain
+  - ensure the target file leaf is visible inside the tree viewport
   - select the target file leaf
   - reopen the right-side file view through the existing diff/load pipeline
 - Compare reruns now preserve expansion overrides conservatively:
   - keep still-valid expanded/collapsed directory paths
   - prune invalid paths
 - The following items are still intentionally deferred beyond this baseline:
-  - auto scroll / animated locate polish
+  - animated locate feedback beyond the current ensure-visible baseline
   - directory summary/counts/secondary text
 
 ## Crate Responsibilities
@@ -202,7 +205,7 @@
   - otherwise remain stale
 - Search, status scope, and hidden-files preference changes reuse the same stale-selection contract when they remove the active row from the visible set.
 - Tree-mode directory collapse does not by itself make the current file selection stale; stale-selection only follows actual visible-set membership change.
-- Tree/flat runtime switching reuses the same conservative contract.
+- Tree/flat runtime switching reuses the same conservative contract, and surviving file selections are ensure-scrolled back into the active viewport.
 
 ### Diff and Analysis Shell Semantics
 
@@ -408,9 +411,11 @@
 
 ### `18C`: Stabilization and Polish
 
-- tooltip parity where needed
-- locate-scroll/reveal polish
-- large-directory performance review and visual polish
+- visible-region continuity for tree/flat switching
+- locate visible-region closure for tree leaf reveal
+- `Locate and Open` parity for explicit flat browsing
+- lightweight tree visual polish
+- presenter/state contract tests for scroll/locate continuity
 
 ## Phase 18A Scope Boundary
 
@@ -459,12 +464,12 @@
 - If the currently open file is visible in the target mode, map highlight and keep the file open.
 - If the target mode is tree, reveal the file by expanding its ancestor chain rather than forcing a stale transition just because the branch was collapsed.
 - If it is not visible in the target mode, reuse existing `stale-selection` semantics.
-- This reveal behavior is scoped to mode linkage and locate flow; it is not a general auto-scroll or animation system.
+- If it survives the mode change, ensure-scroll it back into the active viewport; this is scoped to mode linkage and locate flow rather than a general animation system.
 
-### Decision 6: `Locate and Open` is a search-result workflow, not a general tree action
+### Decision 6: `Locate and Open` is a flat-results workflow, not a general tree action
 
-- `Locate and Open` starts from flat search results only.
-- It clears search, switches to tree mode, expands ancestors, and then reuses the existing file-leaf open pipeline.
+- `Locate and Open` starts from flat results only, whether the flat surface comes from search fallback or explicit flat browsing.
+- It clears search when needed, switches to tree mode, expands ancestors, ensure-scrolls the target leaf into view, and then reuses the existing file-leaf open pipeline.
 - It does not introduce directory selection, tree-internal search, or a second file-view mode.
 
 ### Decision 7: compare rerun preserves expansion state conservatively
@@ -478,7 +483,7 @@
 - Directory nodes keep only the minimum first-pass expression:
   - node name
   - expand/collapse affordance
-  - status color/pill
+  - restrained status tone / status label
 - `18A` does not add secondary text, descendant counts, complex summaries, or content-search highlight to directory rows.
 
 ## Deferred / Explicitly Not Doing Yet
@@ -496,8 +501,8 @@
   - boundary: do not mix this with the current `Settings -> Behavior` presentation preference
 - Match-span highlight:
   - trigger: only if current filename/path label-level highlight proves insufficient
-- Tree locate auto scroll / animated feedback:
-  - trigger: only if the current selection highlight is insufficient for real workflows
+- Tree locate animation / extra emphasis beyond ensure-visible:
+  - trigger: only if the current selection highlight plus ensure-visible scroll is insufficient for real workflows
 - Window-system rework:
   - trigger: only if the current framed-window contract becomes a demonstrated blocker
 - Compare View / File View workspace split:

@@ -313,6 +313,18 @@ impl Presenter {
         }
     }
 
+    fn request_selected_row_scroll_in_flat(state: &mut AppState) {
+        if let Some(index) = state.selected_row {
+            state.request_navigator_flat_scroll_to_source_index(index);
+        }
+    }
+
+    fn request_selected_row_scroll_in_tree(state: &mut AppState) {
+        if let Some(index) = state.selected_row {
+            state.request_navigator_tree_scroll_to_source_index(index);
+        }
+    }
+
     fn apply_runtime_navigator_view_mode(state: &mut AppState, mode: NavigatorViewMode) {
         state.set_navigator_runtime_view_mode(mode);
         if matches!(
@@ -322,6 +334,10 @@ impl Presenter {
             Self::reveal_selected_path_in_tree(state);
         }
         Self::reconcile_selected_row_membership(state);
+        match state.effective_navigator_view_mode() {
+            NavigatorViewMode::Flat => Self::request_selected_row_scroll_in_flat(state),
+            NavigatorViewMode::Tree => Self::request_selected_row_scroll_in_tree(state),
+        }
     }
 
     fn restore_selection_after_compare(
@@ -647,6 +663,7 @@ impl Presenter {
             {
                 Some(index) => {
                     Self::apply_row_selection(&mut state, Some(index));
+                    state.request_navigator_tree_scroll_to_source_index(index);
                     true
                 }
                 None => {
@@ -1213,6 +1230,47 @@ mod tests {
             snapshot.navigator_tree_expansion_overrides.get("src/bin"),
             Some(&true)
         );
+        assert_eq!(snapshot.navigator_tree_scroll_request_revision, 1);
+        assert_eq!(snapshot.navigator_tree_scroll_target_source_index, Some(0));
+    }
+
+    #[test]
+    fn switching_to_flat_requests_scroll_for_visible_selected_row() {
+        let state = Arc::new(Mutex::new(AppState {
+            entry_rows: vec![
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: "src/lib.rs".to_string(),
+                    status: "equal".to_string(),
+                    entry_kind: "file".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+                crate::view_models::CompareEntryRowViewModel {
+                    relative_path: "src/main.rs".to_string(),
+                    status: "different".to_string(),
+                    entry_kind: "file".to_string(),
+                    can_load_diff: true,
+                    can_load_analysis: true,
+                    ..crate::view_models::CompareEntryRowViewModel::default()
+                },
+            ],
+            selected_row: Some(1),
+            selected_relative_path: Some("src/main.rs".to_string()),
+            navigator_runtime_view_mode: NavigatorViewMode::Tree,
+            ..AppState::default()
+        }));
+        let presenter = Presenter::new(state);
+
+        presenter.handle_command(UiCommand::SetNavigatorViewModeFlat);
+        let snapshot = presenter.state_snapshot();
+        assert_eq!(
+            snapshot.navigator_runtime_view_mode,
+            NavigatorViewMode::Flat
+        );
+        assert_eq!(snapshot.selected_row, Some(1));
+        assert_eq!(snapshot.navigator_flat_scroll_request_revision, 1);
+        assert_eq!(snapshot.navigator_flat_scroll_target_source_index, Some(1));
     }
 
     #[test]
@@ -1420,6 +1478,63 @@ mod tests {
                 .navigator_tree_row_projections()
                 .iter()
                 .any(|row| row.key == "src/bin/main.rs")
+        );
+        assert_eq!(snapshot.navigator_tree_scroll_request_revision, 1);
+        assert_eq!(
+            snapshot.navigator_tree_scroll_target_source_index,
+            snapshot.row_index_for_relative_path("src/bin/main.rs")
+        );
+    }
+
+    #[test]
+    fn locate_and_open_from_flat_restores_tree_context_and_opens_diff() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::create_dir_all(left.path().join("src/bin"))
+            .expect("left nested directory should be created");
+        fs::create_dir_all(right.path().join("src/bin"))
+            .expect("right nested directory should be created");
+        fs::write(left.path().join("src/bin/main.rs"), "fn old() {}\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("src/bin/main.rs"), "fn new() {}\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+        presenter.handle_command(UiCommand::SetNavigatorViewModeFlat);
+
+        presenter.handle_command(UiCommand::LocateAndOpen("src/bin/main.rs".to_string()));
+        let snapshot = wait_until(&presenter, |state| {
+            !state.diff_loading
+                && state.selected_relative_path.as_deref() == Some("src/bin/main.rs")
+                && state.selected_diff.is_some()
+        });
+
+        assert_eq!(
+            snapshot.navigator_runtime_view_mode,
+            NavigatorViewMode::Tree
+        );
+        assert_eq!(
+            snapshot.effective_navigator_view_mode(),
+            NavigatorViewMode::Tree
+        );
+        assert_eq!(
+            snapshot.selected_row,
+            snapshot.row_index_for_relative_path("src/bin/main.rs")
+        );
+        assert_eq!(
+            snapshot.navigator_tree_expansion_overrides.get("src/bin"),
+            Some(&true)
+        );
+        assert_eq!(snapshot.navigator_tree_scroll_request_revision, 1);
+        assert_eq!(
+            snapshot.navigator_tree_scroll_target_source_index,
+            snapshot.row_index_for_relative_path("src/bin/main.rs")
         );
     }
 
