@@ -1,12 +1,12 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18` closeout baseline inside that shell
+  - the currently implemented `Phase 18` closeout baseline plus `Phase 19A` foundation baseline inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
-- The current default next-stage entry is `Phase 19` draft discussion, but `Phase 19` is not implemented in this document's baseline.
+- The current default next-stage entry is `Phase 19B` follow-up work on top of the implemented `Phase 19A` foundation baseline.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
 ## Stable Delivery Baseline
@@ -106,11 +106,38 @@
   - `Compare View / File View` workspace redesign
   - compare-core contract widening
 
+## Current Implemented Phase 19A Foundation Baseline
+
+- `Phase 19A` is now implemented as state/presenter/data-foundation work only; it does not add the later `19B` Compare View surface.
+- Workspace-level outer mode is now Rust-owned inside `fc-ui-slint` state:
+  - `FileView`
+  - `CompareView`
+- Current visible behavior still remains file-view-first:
+  - the attached `Diff / Analysis` shell is unchanged
+  - no user-facing directory Compare View surface is rendered yet
+  - no user-facing file Compare View surface is rendered yet
+- Compare workspace target anchoring is now split explicitly:
+  - `compare_focus_path` is the compare-side anchor for future Compare View navigation
+  - `selected_row / selected_relative_path` remain the current File View file anchor
+  - these anchors may later interact but are not the same state
+- `fc-ui-slint` now owns one independent `compare_foundation` as normalized compare source data:
+  - compare-root aware
+  - side-aware
+  - structured around relative path / parent path / node kind / side presence / base status / detail / capabilities
+  - not a direct `fc-core::CompareEntry` mirror
+  - not a long-term widget row model
+- Foundation is now the intended source-of-truth direction for migration:
+  - `compare_foundation -> navigator tree projection`
+  - `compare_foundation -> legacy flat/file-view row projection`
+  - migration-era `entry_rows` still exist, but they are now a projection rather than the intended long-term source of truth
+- The current tree projection is now built from that foundation rather than reconstituting long-lived compare structure from flat row strings.
+- `compare_foundation` already exposes the stable basis for later Compare View immediate-children derivation, but `19A` deliberately stops short of rendering that surface.
+
 ## Crate Responsibilities
 
 - `fc-core`: deterministic directory compare, text diff domain model, public API, and error contracts.
 - `fc-ai`: optional AI interpretation layer for diff outputs behind a provider abstraction.
-- `fc-ui-slint`: desktop entry, app-state orchestration, window/platform integration, presenter logic, and UI presentation.
+- `fc-ui-slint`: desktop entry, app-state orchestration, window/platform integration, presenter logic, compare foundation ownership, and UI presentation.
 
 ## Hard Architectural Boundaries
 
@@ -156,6 +183,10 @@
 - Tabs remain `Diff` and `Analysis`.
 - Only one main mode renders at a time, but both modes stay inside the same attached workbench shell.
 - The outer workspace wrapper stays visually subordinate to the inner workbench host/panel.
+- Rust state now also owns outer workspace product state needed for later dual-mode work:
+  - `workspace_mode`
+  - `compare_focus_path`
+- `Phase 19A` does not yet expose a new workspace surface for that outer mode; visible workspace structure therefore remains the current attached file-view shell.
 
 ### Diff / Analysis Shared File View Shell
 
@@ -344,8 +375,8 @@
 
 - The `Phase 18` sections below are kept as the architectural record of what was decided and implemented across `18A / 18B / 18C`.
 - They are not the default execution entry anymore.
-- New work should default to `Phase 19` draft discussion unless a concrete regression requires a narrow `18C fix-*` follow-up.
-- Nothing below should be read as evidence that `Compare View / File View` workspace work, tree search, directory detail panes, or compare-core widening already exist.
+- New work should default to `Phase 19B` follow-up work on top of the landed `Phase 19A` foundation unless a concrete regression requires a narrow `18C fix-*` follow-up.
+- Nothing below should be read as evidence that directory/file Compare View surfaces, tree search, directory detail panes, or compare-core widening already exist.
 
 ## Why Phase 18 Does Not Rewrite Compare Core Semantics
 
@@ -530,8 +561,12 @@
 
 ## Next-Stage Activation
 
-- Default next entry is `Phase 19` draft discussion.
-- `Phase 19` still refers to future `Compare View / File View` workspace work; it has not entered implementation in the current baseline.
+- Default next entry is `Phase 19B`.
+- `Phase 19A` has already landed:
+  - Rust-owned `workspace_mode`
+  - independent `compare_focus_path`
+  - structured `compare_foundation`
+- `Phase 19B` still refers to the later Compare View surface work on top of that foundation; those surfaces are not implemented in the current baseline.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
 ## Documentation Update Contract

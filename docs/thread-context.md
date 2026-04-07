@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Post-Phase 18 Closeout Handoff + macOS font-bootstrap baseline)
+# Folder Compare Thread Context (Post-Phase 19A Foundation Handoff + macOS font-bootstrap baseline)
 
 ## 目的
 
@@ -8,15 +8,22 @@
 
 ## 本轮更新说明（2026-04-07）
 
-- 当前真实代码基线已明确收口到 `Phase 18` closeout（含 `18C fix-1`），不再把 `18C fix-*` 当默认主线。
-- 默认下一入口已切换为 `Phase 19` 草案讨论；只有遇到明确 regression，才回到 `18C fix-*` 做窄修复。
+- 当前真实代码基线已明确包含：
+  - `Phase 18` closeout（含 `18C fix-1`）
+  - `Phase 19A` foundation-first 落地
+- 默认下一入口已切换为 `Phase 19B`，不是继续把 `Phase 19` 当纯草案讨论，也不是继续滚动 `18C fix-*`。
 - 当前必须继承的 navigator 事实已固定：
   - `Results / Navigator` 已是 `tree + flat` 双视图基线
   - 非搜索默认 view 来自 `Settings -> Behavior -> Default view`
   - 搜索非空强制 `flat`
   - tree / flat 已具备 locate / ensure-visible / selection continuity
   - 目录节点只 toggle，不进入 file-view selection
-- `Compare View / File View` 双模式 workspace 仍未实现；tree 内搜索、内容搜索、目录详情、compare-core widening 仍是 deferred。
+- `Phase 19A` 已新增并固定：
+  - Rust-owned `workspace_mode`
+  - 独立 `compare_focus_path`
+  - 独立 `compare_foundation`
+  - foundation -> navigator / legacy file-view projection 迁移方向
+- `Compare View / File View` 双模式 workspace 的 surface 仍未实现；tree 内搜索、内容搜索、目录详情、compare-core widening 仍是 deferred。
 - 字体方向维持当前集中式 macOS bootstrap shim 这一临时兼容基线；不要把它扩张成长期应用层字体策略。
 - `docs/architecture.md`、`docs/thread-context.md` 与 `README.md` 现已统一到同一 handoff 入口。
 
@@ -27,6 +34,7 @@
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
   - `Phase 18` navigator baseline 已收口完成（含 `18C fix-1`）
+  - `Phase 19A` compare workspace foundation 已落地
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 已知最近一次完整代码验证：
   - `cargo fmt --all`
@@ -37,7 +45,7 @@
   - `rg -n "UiTypography" crates/fc-ui-slint/src` 为 `0` 命中
   - macOS 15.x 已做人工验证，当前 bootstrap 基线可恢复中文与全角字符显示
 
-## 当前真实稳定基线（Through Phase 17D + Phase 18 Closeout）
+## 当前真实稳定基线（Through Phase 17D + Phase 18 Closeout + Phase 19A Foundation）
 
 ### 工具链与版本
 
@@ -61,6 +69,9 @@
   - `Header`
   - `Content`
 - `Diff / Analysis` 继续共用稳定 file-view shell。
+- 外层 workspace product state 现已在 Rust 中持有：
+  - `workspace_mode`
+  - `compare_focus_path`
 - macOS immersive title bar / non-mac legacy App Bar / `window_chrome` contract 继续稳定。
 
 ### 现已落地的 `Phase 18A + 18B + 18C` 事实
@@ -99,14 +110,41 @@
 - compare rerun 会按新树 prune / restore expanded-path overrides；不再无条件清空。
 - 折叠包含当前打开文件的目录不会触发 false stale-selection；只有 membership 真变化时才 stale。
 
+### 现已落地的 `Phase 19A` 事实
+
+- `fc-ui-slint` 内现已新增独立 `compare_foundation.rs`。
+- compare 结果现在先进入结构化、side-aware 的 `compare_foundation`，而不是继续把字符串化 row VM 当长期 source of truth。
+- foundation 当前至少承载：
+  - compare root / relative path / parent path
+  - entry kind
+  - side presence
+  - base status
+  - structured detail / capabilities
+  - immediate-children derivation基础
+- 当前迁移方向已明确为：
+  - `compare_foundation -> navigator tree projection`
+  - `compare_foundation -> legacy entry_rows`
+  - `legacy entry_rows -> 当前 Diff / Analysis file-view pipeline`
+- `entry_rows` 仍保留，但角色已退回迁移期投影层，而不是未来 Compare workspace 的长期 source of truth。
+- `compare_focus_path` 与当前文件选择状态明确分离：
+  - `compare_focus_path` 是未来 Compare View 的 compare target 锚点
+  - `selected_row / selected_relative_path` 继续承担当前 File View 文件锚点
+- 当前 UI 可见行为仍保持 file-view-first：
+  - attached `Diff / Analysis` shell 不回退
+  - tree 目录只 toggle，不接入 file-view selection
+  - 尚无目录 Compare View surface
+  - 尚无文件 Compare View surface
+
 ## 当前执行焦点（Execution Focus）
 
 - 当前不再是“启动 `18B`”或“准备 `18C`”。
 - 当前真实焦点是：
   - 把 `Phase 18` 视为已收口完成的 navigator 基线
-  - 后续如有新线程，默认入口改为 `Phase 19` 草案讨论或新的明确目标
+  - 把 `Phase 19A` 视为已实现的 foundation 基线，而不是 proposal
+  - 后续如有新线程，默认入口改为 `Phase 19B` 或新的明确目标
   - 除非遇到新回归，否则不要继续把 `18C fix-*` 当作默认主线
   - 不要回退到 “可视区域/locate 仍 deferred” 的旧叙事
+  - 不要把 compare workspace 的长期数据基础重新拉回到 `entry_rows` 字符串链路
 - 字体方向上的当前焦点不是继续扩展应用层字体策略，而是：
   - 维持现有集中式 macOS bootstrap shim
   - 等待可验证的上游版本升级窗口
@@ -116,8 +154,11 @@
 ## 当前不要做什么
 
 - 不要把继续滚动 `18C fix-*` 当成默认主线；只有明确 regression 才回去做补丁。
+- 不要把 `Phase 19A` 偷偷扩写成隐藏版 `19B` surface。
+- 不要把 `NavigatorTreeRowProjection` 直接再升级成 Compare View foundation。
+- 不要继续强化 `CompareEntryRowViewModel` 为长期 compare source of truth。
 - 不要顺手重开字体策略讨论；当前边界是维持 `macos_font_bootstrap.rs` 这一临时 shim，并等待上游升级窗口。
-- 不要把 `Phase 19` 未确认的设计拆分、workspace 形态或 compare-core 变更写成已实现事实。
+- 不要把 `Phase 19B` 未落地的 workspace surface、目录详情、dual-tree 或 compare-core 变更写成已实现事实。
 - 不要在没有明确目标的情况下，顺手重开 directory selection、directory detail pane、tree search、content search 或 compare-core widening。
 
 ## 仍然明确未做（Out of Scope / Deferred）
@@ -127,7 +168,7 @@
 - 目录 selection / 目录详情面板
 - tree 内搜索 / 内容搜索 / match-span 高亮
 - 目录 secondary text / descendant counts / summary
-- Compare View / File View workspace 重构
+- Compare View / File View workspace surface 重构
 - `fc-core` compare contract widening
 - 依赖层字体栈的本地私有 fork / 长期 patch 维护
 
@@ -157,10 +198,11 @@
 8. `crates/fc-ui-slint/Cargo.toml`
 9. `crates/fc-ui-slint/src/navigator_tree.rs`
 10. `crates/fc-ui-slint/src/navigator_tree.slint`
-11. `crates/fc-ui-slint/src/state.rs`
-12. `crates/fc-ui-slint/src/presenter.rs`
-13. `crates/fc-ui-slint/src/app.rs`
-14. `crates/fc-ui-slint/src/commands.rs`
+11. `crates/fc-ui-slint/src/compare_foundation.rs`
+12. `crates/fc-ui-slint/src/state.rs`
+13. `crates/fc-ui-slint/src/presenter.rs`
+14. `crates/fc-ui-slint/src/app.rs`
+15. `crates/fc-ui-slint/src/commands.rs`
 
 ## 验证（Verification）
 
@@ -185,16 +227,17 @@
   - status filter / hidden-files 在多层目录上的显示
   - macOS 15.x 下 `中`、`Ａ`、`（`、`中Ａ（`、左树文件行、左树目录行、diff 正文是否仍正确显示
 
-## Phase 19 草案讨论入口
+## Phase 19B 入口
 
 建议新线程首条消息直接使用：
 
 > 先阅读 `docs/thread-context.md`，再阅读 `docs/architecture.md`。  
 > 把 `Phase 17D` 之前的 shell / settings / tooltip / file-view contract 视为稳定基线。  
 > 把 `Phase 18A + 18B + 18C` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 mode 来自 `Settings -> Behavior -> Default view`；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree / flat 切换会在目标视图 ensure-scroll 当前文件；flat results（搜索态或显式 flat）都有 `Locate and Open`；compare rerun 会 prune / restore expanded-path overrides。  
+> 把 `Phase 19A` 也视为已落地事实，而不是 proposal：Rust state 中已有 `workspace_mode`；`compare_focus_path` 已与 `selected_row / selected_relative_path` 分离；`compare_foundation` 已在 `fc-ui-slint` 中成为 compare 数据基础；当前迁移方向已明确为 `compare_foundation -> navigator / legacy file-view projection`。  
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
-> 当前默认入口是 `Phase 19` 草案讨论，不是继续滚动 `18C fix-*`；只有出现明确 regression 时，才回到 `18C fix-*` 做小范围修正。  
-> 不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `Phase 19` 未确认设计写成已实现。
+> 当前默认入口是 `Phase 19B`，不是继续滚动 `18C fix-*`；只有出现明确 regression 时，才回到 `18C fix-*` 做小范围修正。  
+> 当前不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `19B` 未落地的 Compare View surface 写成已实现。
 
 ## 更新契约（Mandatory）
 
