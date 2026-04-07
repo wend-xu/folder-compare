@@ -17,8 +17,13 @@
   - 搜索非空强制 `flat results mode`
   - tree / flat 切换会把当前文件滚动回可见区域
   - flat results（搜索态与显式 flat）均支持 `Locate and Open`
-- 当前默认下一入口已切换为 `Phase 19` 草案讨论，而不是继续滚动 `18C fix-*`
-- 当前 workspace 仍是 attached `Diff / Analysis` file-view shell；`Phase 19` 对应的 `Compare View / File View` 双模式工作区尚未实现
+- `Phase 19A` 已落地：
+  - Rust-owned `workspace_mode`
+  - 独立 `compare_focus_path`
+  - 独立 `compare_foundation`
+  - foundation -> navigator / legacy file-view projection 迁移方向
+- 当前默认下一入口已切换为 `Phase 19B`，而不是继续滚动 `18C fix-*`
+- 当前 workspace 仍是 attached `Diff / Analysis` file-view shell；`Compare View / File View` 双模式工作区的 surface 尚未实现
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -50,6 +55,10 @@
   - `Results / Navigator`
 - Workspace 当前稳定为 attached `Diff / Analysis` file-view shell：
   - `Tabs -> Header -> Content`
+- 当前外层 workspace foundation 也已进入 Rust state：
+  - `workspace_mode`
+  - `compare_focus_path`
+  - `compare_foundation`
 - `Compare Status` 保持 summary-first，并支持块内 `Show details / Hide details` 与 `Copy Summary` / `Copy Detail`
 - 当前 `Results / Navigator` 代码基线已进入双视图：
   - 非搜索默认 view 来自 `Settings -> Behavior -> Default view`
@@ -210,7 +219,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 19` 草案讨论前的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 19B` 前的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` closeout 边界、deferred 与默认下一入口
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -218,7 +227,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19` 草案讨论，而不是继续滚动 `18C fix-*`。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19B`，而不是继续滚动 `18C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - attached `Diff / Analysis` shell
@@ -230,12 +239,17 @@ cargo test --workspace
   - 搜索非空时强制 flat mode
   - tree logic 放在 Rust presenter/state，Slint 只渲染 visible rows
   - tree / flat 与 locate 的可视区域连续性已是当前基线，不再视为 deferred
+- `Phase 19A` 当前额外事实：
+  - `workspace_mode` 已进入 Rust state
+  - `compare_focus_path` 已与 file selection state 分离
+  - `compare_foundation` 已在 `fc-ui-slint` 内落地
+  - 当前迁移方向已是 `compare_foundation -> navigator / legacy file-view projection`
 - 当前仍未实现：
-  - `Compare View / File View` 双模式工作区
+  - `Compare View / File View` 双模式工作区的 surface
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情
   - compare core widening
-- 后续若无明确 regression，默认下一入口应转到 `Phase 19` 草案讨论；只有出现明确 regression 时，才回到 `18C fix-*`
+- 后续若无明确 regression，默认下一入口应转到 `Phase 19B`；只有出现明确 regression 时，才回到 `18C fix-*`
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）
@@ -252,7 +266,7 @@ cargo test --workspace
 - `Phase 18`
   - 层级结果视图 / tree component / flat results 双视图
 - `Phase 19`
-  - Compare View / File View 双模式工作区
+  - Compare View / File View 双模式工作区（`19A` foundation 已落地，`19B` surface 待续）
 - `Phase 20`
   - AI 分析增强（多任务 / hunk 关联 / 缓存）
 - `Phase 21`

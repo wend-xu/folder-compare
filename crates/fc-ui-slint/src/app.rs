@@ -1320,6 +1320,8 @@ slint::slint! {
         in property <[bool]> tree_row_is_expanded;
         in property <[bool]> tree_row_is_selectable;
         in property <[int]> tree_row_source_indices;
+        in property <string> workspace_mode;
+        in property <string> compare_focus_path_raw;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
         in property <string> selected_relative_path_raw;
@@ -4426,6 +4428,8 @@ fn sync_window_state(
     window.set_navigator_runtime_view_mode(state.navigator_runtime_view_mode_text().into());
     window.set_navigator_effective_view_mode(state.navigator_effective_view_mode_text().into());
     window.set_navigator_search_forces_flat_mode(state.navigator_search_forces_flat_mode());
+    window.set_workspace_mode(state.workspace_mode_text().into());
+    window.set_compare_focus_path_raw(state.compare_focus_path_raw_text().into());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
     window.set_selected_relative_path_raw(

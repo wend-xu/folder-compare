@@ -1,11 +1,16 @@
 //! App state for compare + detailed diff UI workflow.
 
+use crate::compare_foundation::{
+    CompareBaseStatus, CompareFocusPath, CompareFoundation, CompareFoundationDetail,
+    CompareFoundationNode, CompareNodeKind,
+};
 use crate::navigator_tree::{
-    NavigatorTreeProjection, NavigatorTreeRowProjection, build_canonical_navigator_tree,
-    navigator_tree_reveal_targets, navigator_tree_toggle_target, project_navigator_tree_rows,
+    NavigatorTreeProjection, NavigatorTreeRowProjection, navigator_tree_reveal_targets,
+    navigator_tree_toggle_target, project_navigator_tree_rows,
 };
 use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
 use fc_ai::{AiConfig, AiProviderKind};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -95,6 +100,23 @@ impl NavigatorViewMode {
     }
 }
 
+/// Outer workspace mode for the future Compare View / File View split.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceMode {
+    FileView,
+    #[allow(dead_code)]
+    CompareView,
+}
+
+impl WorkspaceMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FileView => "file-view",
+            Self::CompareView => "compare-view",
+        }
+    }
+}
+
 /// In-memory UI state for compare workflow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppState {
@@ -108,6 +130,8 @@ pub struct AppState {
     pub status_text: String,
     /// Summary text derived from compare result.
     pub summary_text: String,
+    /// Structured compare foundation for workspace-level projections.
+    pub compare_foundation: CompareFoundation,
     /// Revision for flat navigator projection refreshes.
     pub navigator_flat_projection_revision: u64,
     /// Revision for tree navigator projection refreshes.
@@ -130,6 +154,10 @@ pub struct AppState {
     pub navigator_runtime_view_mode: NavigatorViewMode,
     /// Persisted default mode for non-search Results / Navigator.
     pub default_navigator_view_mode: NavigatorViewMode,
+    /// Outer workspace mode owned in Rust state.
+    pub workspace_mode: WorkspaceMode,
+    /// Compare-view focus anchor independent from file selection.
+    pub compare_focus_path: CompareFocusPath,
     /// Expansion overrides for directory nodes in tree mode.
     pub navigator_tree_expansion_overrides: BTreeMap<String, bool>,
     /// Warning lines from compare report.
@@ -186,6 +214,7 @@ impl Default for AppState {
             running: false,
             status_text: "Ready".to_string(),
             summary_text: String::new(),
+            compare_foundation: CompareFoundation::default(),
             navigator_flat_projection_revision: 0,
             navigator_tree_projection_revision: 0,
             navigator_flat_scroll_request_revision: 0,
@@ -197,6 +226,8 @@ impl Default for AppState {
             entry_status_filter: "all".to_string(),
             navigator_runtime_view_mode: NavigatorViewMode::Tree,
             default_navigator_view_mode: NavigatorViewMode::Tree,
+            workspace_mode: WorkspaceMode::FileView,
+            compare_focus_path: CompareFocusPath::root(),
             navigator_tree_expansion_overrides: BTreeMap::new(),
             warning_lines: Vec::new(),
             error_message: None,
@@ -694,26 +725,33 @@ impl AppState {
     }
 
     /// Returns filtered entry rows with their source index.
+    #[allow(dead_code)]
     pub fn filtered_entry_rows_with_index(&self) -> Vec<(usize, CompareEntryRowViewModel)> {
-        let status_filter = normalize_status_filter_token(&self.entry_status_filter);
-        self.entry_rows
-            .iter()
-            .enumerate()
-            .filter(|(_, row)| self.row_visible_in_results(row, status_filter.as_str()))
-            .map(|(index, row)| (index, row.clone()))
+        self.visible_source_indices()
+            .into_iter()
+            .filter_map(|source_index| {
+                self.entry_rows
+                    .get(source_index)
+                    .cloned()
+                    .map(|row| (source_index, row))
+            })
             .collect()
     }
 
     /// Returns filtered navigator rows with UI-focused presentation fields.
     pub fn navigator_row_projections(&self) -> Vec<NavigatorRowProjection> {
+        let foundation = self.compare_foundation_for_projections();
         let needle = normalize_filter_needle(&self.entry_filter);
-        self.filtered_entry_rows_with_index()
-            .into_iter()
-            .map(|(source_index, row)| {
-                let (parent_path_raw, display_name) = split_relative_path_leaf(&row.relative_path);
+        foundation
+            .source_nodes()
+            .filter(|node| self.source_node_visible_in_results(node))
+            .filter_map(|node| {
+                let source_index = node.source_index?;
+                let row = self.entry_rows.get(source_index)?.clone();
+                let (parent_path_raw, display_name) = split_relative_path_leaf(&node.relative_path);
                 let full_parent_path = normalize_navigator_parent_path(&parent_path_raw);
                 let parent_path = format_navigator_parent_path(&parent_path_raw);
-                let relative_path_lower = row.relative_path.to_lowercase();
+                let relative_path_lower = node.relative_path.to_lowercase();
                 let display_name_lower = display_name.to_lowercase();
                 let parent_path_lower = parent_path_raw.to_lowercase();
                 let has_match = !needle.is_empty() && relative_path_lower.contains(needle.as_str());
@@ -729,16 +767,16 @@ impl AppState {
                     }
                 }
 
-                NavigatorRowProjection {
+                Some(NavigatorRowProjection {
                     source_index,
-                    secondary_text: navigator_secondary_text(&row),
+                    secondary_text: navigator_secondary_text(node),
                     tooltip_text: navigator_row_tooltip_text(&display_name, &full_parent_path),
                     row,
                     display_name,
                     parent_path,
                     display_name_matches_filter,
                     parent_path_matches_filter,
-                }
+                })
             })
             .collect()
     }
@@ -780,6 +818,50 @@ impl AppState {
     /// Returns the effective mode token for UI syncing.
     pub fn navigator_effective_view_mode_text(&self) -> String {
         self.effective_navigator_view_mode().as_str().to_string()
+    }
+
+    /// Returns outer workspace mode token for UI syncing.
+    pub fn workspace_mode_text(&self) -> String {
+        self.workspace_mode.as_str().to_string()
+    }
+
+    /// Returns compare-focus raw path for UI syncing.
+    pub fn compare_focus_path_raw_text(&self) -> String {
+        self.compare_focus_path.raw_text()
+    }
+
+    /// Updates the outer workspace mode.
+    pub fn set_workspace_mode(&mut self, mode: WorkspaceMode) {
+        self.workspace_mode = mode;
+    }
+
+    /// Updates compare focus path, clamping to an existing compare target directory or root.
+    pub fn set_compare_focus_path(&mut self, focus: CompareFocusPath) -> bool {
+        let normalized = self
+            .compare_foundation_for_projections()
+            .as_ref()
+            .clamp_compare_focus_path(&focus);
+        if self.compare_focus_path == normalized {
+            return false;
+        }
+        self.compare_focus_path = normalized;
+        true
+    }
+
+    /// Moves compare focus back to the compare root.
+    #[allow(dead_code)]
+    pub fn reset_compare_focus_path(&mut self) -> bool {
+        self.set_compare_focus_path(CompareFocusPath::root())
+    }
+
+    /// Moves compare focus to the current focus target's parent directory, or root.
+    #[allow(dead_code)]
+    pub fn focus_compare_parent(&mut self) -> bool {
+        let parent = self
+            .compare_foundation_for_projections()
+            .as_ref()
+            .parent_compare_focus_path(&self.compare_focus_path);
+        self.set_compare_focus_path(parent)
     }
 
     /// Updates the persisted non-search default mode.
@@ -846,8 +928,9 @@ impl AppState {
 
     /// Returns true when a directory node toggle was applied.
     pub fn toggle_navigator_tree_node(&mut self, key: &str) -> bool {
+        let foundation = self.compare_foundation_for_projections();
         let Some((normalized_key, path_depth)) =
-            navigator_tree_toggle_target(&self.entry_rows, key)
+            navigator_tree_toggle_target(foundation.as_ref(), key)
         else {
             return false;
         };
@@ -872,8 +955,9 @@ impl AppState {
 
     /// Expands all ancestor directories required to reveal one file path in tree mode.
     pub fn reveal_navigator_tree_path(&mut self, relative_path: &str) -> bool {
+        let foundation = self.compare_foundation_for_projections();
         let mut changed = false;
-        for (key, path_depth) in navigator_tree_reveal_targets(&self.entry_rows, relative_path) {
+        for (key, path_depth) in navigator_tree_reveal_targets(foundation.as_ref(), relative_path) {
             let default_expanded = path_depth <= 1;
             if default_expanded {
                 changed |= self
@@ -899,10 +983,11 @@ impl AppState {
 
     /// Removes expansion overrides that no longer map to expandable directories.
     pub fn prune_navigator_tree_expansion_overrides(&mut self) -> bool {
+        let foundation = self.compare_foundation_for_projections().into_owned();
         let previous = self.navigator_tree_expansion_overrides.clone();
         self.navigator_tree_expansion_overrides
             .retain(
-                |key, expanded| match navigator_tree_toggle_target(&self.entry_rows, key) {
+                |key, expanded| match navigator_tree_toggle_target(&foundation, key) {
                     Some((_, path_depth)) => *expanded != (path_depth <= 1),
                     None => false,
                 },
@@ -936,10 +1021,10 @@ impl AppState {
 
     /// Returns true when one source row index is currently visible by filter.
     pub fn is_row_visible_in_filter(&self, index: usize) -> bool {
-        let status_filter = normalize_status_filter_token(&self.entry_status_filter);
-        self.entry_rows
-            .get(index)
-            .map(|row| self.row_visible_in_results(row, status_filter.as_str()))
+        self.compare_foundation_for_projections()
+            .as_ref()
+            .source_node(index)
+            .map(|node| self.source_node_visible_in_results(node))
             .unwrap_or(false)
     }
 
@@ -960,27 +1045,27 @@ impl AppState {
         if normalized.is_empty() {
             return None;
         }
-        self.entry_rows
-            .iter()
-            .position(|row| row.relative_path == normalized)
+        self.compare_foundation_for_projections()
+            .as_ref()
+            .source_index_for_relative_path(normalized)
     }
 
     /// Returns collection summary text for Results / Navigator.
     pub fn results_collection_text(&self) -> String {
         let status_filter = normalize_status_filter_token(&self.entry_status_filter);
-        let visible = self
-            .entry_rows
-            .iter()
-            .filter(|row| self.row_visible_in_results(row, status_filter.as_str()))
+        let foundation = self.compare_foundation_for_projections();
+        let visible = foundation
+            .source_nodes()
+            .filter(|node| self.source_node_visible_in_results(node))
             .count();
         let hidden_by_settings = if self.show_hidden_files {
             0
         } else {
-            self.entry_rows
-                .iter()
-                .filter(|row| {
-                    self.row_matches_filter_controls(row, status_filter.as_str())
-                        && is_hidden_relative_path(&row.relative_path)
+            foundation
+                .source_nodes()
+                .filter(|node| {
+                    self.source_node_matches_filter_controls(node, status_filter.as_str())
+                        && is_hidden_relative_path(&node.relative_path)
                 })
                 .count()
         };
@@ -1832,27 +1917,68 @@ impl AppState {
     }
 
     fn navigator_tree_projection(&self) -> NavigatorTreeProjection {
-        let tree = build_canonical_navigator_tree(&self.entry_rows);
+        let foundation = self.compare_foundation_for_projections();
         let status_filter = normalize_status_filter_token(&self.entry_status_filter);
         project_navigator_tree_rows(
-            &tree,
+            foundation.as_ref(),
             self.show_hidden_files,
             status_filter.as_str(),
             &self.navigator_tree_expansion_overrides,
         )
     }
 
-    fn row_matches_filter_controls(
-        &self,
-        row: &CompareEntryRowViewModel,
-        status_filter: &str,
-    ) -> bool {
-        row.matches_filter(&self.entry_filter) && status_filter_matches(&row.status, status_filter)
+    #[cfg(test)]
+    fn compare_foundation_for_projections(&self) -> Cow<'_, CompareFoundation> {
+        if self.compare_foundation.source_entry_count() == self.entry_rows.len() {
+            Cow::Borrowed(&self.compare_foundation)
+        } else {
+            Cow::Owned(crate::compare_foundation::foundation_from_legacy_rows(
+                &self.entry_rows,
+            ))
+        }
     }
 
-    fn row_visible_in_results(&self, row: &CompareEntryRowViewModel, status_filter: &str) -> bool {
-        self.row_matches_filter_controls(row, status_filter)
-            && (self.show_hidden_files || !is_hidden_relative_path(&row.relative_path))
+    #[cfg(not(test))]
+    fn compare_foundation_for_projections(&self) -> Cow<'_, CompareFoundation> {
+        Cow::Borrowed(&self.compare_foundation)
+    }
+
+    fn source_node_matches_filter_controls(
+        &self,
+        node: &CompareFoundationNode,
+        status_filter: &str,
+    ) -> bool {
+        let needle = normalize_filter_needle(&self.entry_filter);
+        (needle.is_empty() || node.relative_path.to_lowercase().contains(needle.as_str()))
+            && status_filter_matches(node.base_status.as_str(), status_filter)
+    }
+
+    fn source_node_visible_in_results(&self, node: &CompareFoundationNode) -> bool {
+        let status_filter = normalize_status_filter_token(&self.entry_status_filter);
+        self.source_node_matches_filter_controls(node, status_filter.as_str())
+            && (self.show_hidden_files || !is_hidden_relative_path(&node.relative_path))
+    }
+
+    #[allow(dead_code)]
+    fn visible_source_indices(&self) -> Vec<usize> {
+        self.compare_foundation_for_projections()
+            .as_ref()
+            .source_nodes()
+            .filter(|node| self.source_node_visible_in_results(node))
+            .filter_map(|node| node.source_index)
+            .collect()
+    }
+
+    pub fn set_compare_foundation(&mut self, foundation: CompareFoundation) {
+        self.compare_foundation = foundation;
+        self.compare_focus_path = self
+            .compare_foundation
+            .clamp_compare_focus_path(&self.compare_focus_path);
+    }
+
+    pub fn clear_compare_foundation(&mut self) {
+        self.compare_foundation = CompareFoundation::default();
+        self.compare_focus_path = CompareFocusPath::root();
     }
 
     fn compare_mode_token(&self) -> Option<String> {
@@ -2083,33 +2209,29 @@ fn navigator_row_tooltip_text(display_name: &str, full_parent_path: &str) -> Str
     }
 }
 
-fn navigator_secondary_text(row: &CompareEntryRowViewModel) -> String {
-    let secondary = match row.status.as_str() {
-        "left-only" => match row.entry_kind.as_str() {
-            "directory" => "Directory only on left".to_string(),
-            "symlink" => "Symlink only on left".to_string(),
-            "other" => "Special entry only on left".to_string(),
-            _ => navigator_single_side_file_secondary_text("left", &row.relative_path),
+fn navigator_secondary_text(node: &CompareFoundationNode) -> String {
+    let detail_text = node.detail.legacy_text(node.kind);
+    let diff_blocked_reason = node.capabilities.diff_blocked_reason_text();
+    let secondary = match node.base_status {
+        CompareBaseStatus::LeftOnly => match node.kind {
+            CompareNodeKind::Directory => "Directory only on left".to_string(),
+            CompareNodeKind::Symlink => "Symlink only on left".to_string(),
+            CompareNodeKind::Other => "Special entry only on left".to_string(),
+            _ => navigator_single_side_file_secondary_text("left", &node.relative_path),
         },
-        "right-only" => match row.entry_kind.as_str() {
-            "directory" => "Directory only on right".to_string(),
-            "symlink" => "Symlink only on right".to_string(),
-            "other" => "Special entry only on right".to_string(),
-            _ => navigator_single_side_file_secondary_text("right", &row.relative_path),
+        CompareBaseStatus::RightOnly => match node.kind {
+            CompareNodeKind::Directory => "Directory only on right".to_string(),
+            CompareNodeKind::Symlink => "Symlink only on right".to_string(),
+            CompareNodeKind::Other => "Special entry only on right".to_string(),
+            _ => navigator_single_side_file_secondary_text("right", &node.relative_path),
         },
-        "equal" => navigator_equal_secondary_text(row),
-        "different" => navigator_different_secondary_text(row),
-        "pending" => navigator_pending_secondary_text(row),
-        "skipped" => sentence_excerpt(
-            row.diff_blocked_reason
+        CompareBaseStatus::Equal => navigator_equal_secondary_text(node),
+        CompareBaseStatus::Different => navigator_different_secondary_text(node),
+        CompareBaseStatus::Pending => navigator_pending_secondary_text(node),
+        CompareBaseStatus::Skipped => sentence_excerpt(
+            diff_blocked_reason
                 .as_deref()
-                .unwrap_or(row.detail.as_str()),
-            NAVIGATOR_SECONDARY_MAX_CHARS,
-        ),
-        _ => sentence_excerpt(
-            row.diff_blocked_reason
-                .as_deref()
-                .unwrap_or(row.detail.as_str()),
+                .unwrap_or(detail_text.as_str()),
             NAVIGATOR_SECONDARY_MAX_CHARS,
         ),
     };
@@ -2121,62 +2243,79 @@ fn navigator_secondary_text(row: &CompareEntryRowViewModel) -> String {
     }
 }
 
-fn navigator_equal_secondary_text(row: &CompareEntryRowViewModel) -> String {
-    match (row.entry_kind.as_str(), row.detail_kind.as_str()) {
-        ("directory", _) => "Directory on both sides".to_string(),
-        ("symlink", _) => "Symlink compare deferred".to_string(),
-        ("file", "text-diff") => "Text matched".to_string(),
-        ("file", "file-comparison") => {
-            let base = navigator_file_comparison_matched_text(&row.relative_path);
-            format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
+fn navigator_equal_secondary_text(node: &CompareFoundationNode) -> String {
+    match (node.kind, &node.detail) {
+        (CompareNodeKind::Directory, _) => "Directory on both sides".to_string(),
+        (CompareNodeKind::Symlink, _) => "Symlink compare deferred".to_string(),
+        (CompareNodeKind::File, CompareFoundationDetail::TextDiffSummary { .. }) => {
+            "Text matched".to_string()
         }
-        ("file", "text-detail-deferred") => {
+        (CompareNodeKind::File, CompareFoundationDetail::FileComparison { .. }) => {
+            let base = navigator_file_comparison_matched_text(&node.relative_path);
             format!(
-                "Deferred text detail{}",
-                navigator_text_detail_reason_suffix(&row.detail)
+                "{base}{}",
+                navigator_file_compare_sizes_suffix(&node.detail)
             )
         }
-        ("file", "message") => "File matched".to_string(),
-        _ => format!("{} matched", navigator_entry_kind_label(&row.entry_kind)),
+        (CompareNodeKind::File, CompareFoundationDetail::TextDetailDeferred { .. }) => {
+            format!(
+                "Deferred text detail{}",
+                navigator_text_detail_reason_suffix(&node.detail)
+            )
+        }
+        (CompareNodeKind::File, CompareFoundationDetail::Message { .. }) => {
+            "File matched".to_string()
+        }
+        _ => format!("{} matched", navigator_entry_kind_label(node.kind)),
     }
 }
 
-fn navigator_different_secondary_text(row: &CompareEntryRowViewModel) -> String {
-    match row.detail_kind.as_str() {
-        "text-diff" => {
-            if let Some(summary) = navigator_text_diff_summary(&row.detail) {
+fn navigator_different_secondary_text(node: &CompareFoundationNode) -> String {
+    let detail_text = node.detail.legacy_text(node.kind);
+    match &node.detail {
+        CompareFoundationDetail::TextDiffSummary { .. } => {
+            if let Some(summary) = navigator_text_diff_summary(&node.detail) {
                 format!("Text diff · {summary}")
             } else {
                 "Text diff".to_string()
             }
         }
-        "type-mismatch" => format!(
+        CompareFoundationDetail::TypeMismatch { .. } => format!(
             "Type mismatch{}",
-            navigator_type_mismatch_suffix(&row.detail)
+            navigator_type_mismatch_suffix(&node.detail)
         ),
-        "file-comparison" => {
-            let base = navigator_file_comparison_differs_text(&row.relative_path);
-            format!("{base}{}", navigator_file_compare_sizes_suffix(&row.detail))
+        CompareFoundationDetail::FileComparison { .. } => {
+            let base = navigator_file_comparison_differs_text(&node.relative_path);
+            format!(
+                "{base}{}",
+                navigator_file_compare_sizes_suffix(&node.detail)
+            )
         }
-        "text-detail-deferred" => format!(
+        CompareFoundationDetail::TextDetailDeferred { .. } => format!(
             "Deferred text diff{}",
-            navigator_text_detail_reason_suffix(&row.detail)
+            navigator_text_detail_reason_suffix(&node.detail)
         ),
-        "message" => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
+        CompareFoundationDetail::Message { .. } => {
+            sentence_excerpt(&detail_text, NAVIGATOR_SECONDARY_MAX_CHARS)
+        }
         _ => sentence_excerpt(
-            row.diff_blocked_reason
+            node.capabilities
+                .diff_blocked_reason_text()
                 .as_deref()
-                .unwrap_or(row.detail.as_str()),
+                .unwrap_or(detail_text.as_str()),
             NAVIGATOR_SECONDARY_MAX_CHARS,
         ),
     }
 }
 
-fn navigator_pending_secondary_text(row: &CompareEntryRowViewModel) -> String {
-    match row.entry_kind.as_str() {
-        "symlink" => "Symlink deferred".to_string(),
-        "directory" => "Directory deferred".to_string(),
-        _ => sentence_excerpt(&row.detail, NAVIGATOR_SECONDARY_MAX_CHARS),
+fn navigator_pending_secondary_text(node: &CompareFoundationNode) -> String {
+    match node.kind {
+        CompareNodeKind::Symlink => "Symlink deferred".to_string(),
+        CompareNodeKind::Directory => "Directory deferred".to_string(),
+        _ => sentence_excerpt(
+            &node.detail.legacy_text(node.kind),
+            NAVIGATOR_SECONDARY_MAX_CHARS,
+        ),
     }
 }
 
@@ -2224,27 +2363,25 @@ fn navigator_capability_file_kind(relative_path: &str) -> Option<&'static str> {
     }
 }
 
-fn navigator_entry_kind_label(kind: &str) -> &'static str {
-    match kind {
-        "directory" => "Directory",
-        "symlink" => "Symlink",
-        "other" => "Special entry",
-        _ => "File",
-    }
+fn navigator_entry_kind_label(kind: CompareNodeKind) -> &'static str {
+    kind.display_label()
 }
 
-fn navigator_text_diff_summary(detail: &str) -> Option<String> {
-    let body = detail.strip_prefix("text summary:")?.trim();
-    let hunks = extract_prefixed_token(body, "hunks=").map(|value| format!("{value}h"));
-    let added = extract_prefixed_token(body, "+")
-        .filter(|value| value != "0")
-        .map(|value| format!("+{value}"));
-    let removed = extract_prefixed_token(body, "-")
-        .filter(|value| value != "0")
-        .map(|value| format!("-{value}"));
-    let context = extract_prefixed_token(body, "ctx=")
-        .filter(|value| value != "0")
-        .map(|value| format!("{value}ctx"));
+fn navigator_text_diff_summary(detail: &CompareFoundationDetail) -> Option<String> {
+    let CompareFoundationDetail::TextDiffSummary {
+        hunk_count,
+        added_lines,
+        removed_lines,
+        context_lines,
+    } = detail
+    else {
+        return None;
+    };
+
+    let hunks = (*hunk_count > 0).then(|| format!("{hunk_count}h"));
+    let added = (*added_lines > 0).then(|| format!("+{added_lines}"));
+    let removed = (*removed_lines > 0).then(|| format!("-{removed_lines}"));
+    let context = (*context_lines > 0).then(|| format!("{context_lines}ctx"));
     let parts = [hunks, added, removed, context]
         .into_iter()
         .flatten()
@@ -2256,44 +2393,38 @@ fn navigator_text_diff_summary(detail: &str) -> Option<String> {
     }
 }
 
-fn navigator_file_compare_sizes_suffix(detail: &str) -> String {
-    let left = extract_prefixed_token(detail, "left=");
-    let right = extract_prefixed_token(detail, "right=");
-    match (left, right) {
-        (Some(left), Some(right)) => format!(" · {left} / {right}"),
+fn navigator_file_compare_sizes_suffix(detail: &CompareFoundationDetail) -> String {
+    match detail {
+        CompareFoundationDetail::FileComparison {
+            left_size,
+            right_size,
+            ..
+        }
+        | CompareFoundationDetail::TextDetailDeferred {
+            left_size,
+            right_size,
+            ..
+        } => format!(" · {left_size}B / {right_size}B"),
         _ => String::new(),
     }
 }
 
-fn navigator_text_detail_reason_suffix(detail: &str) -> String {
-    let detail = detail.trim();
-    let Some(open_idx) = detail.find('(') else {
-        return String::new();
-    };
-    let Some(close_idx) = detail[open_idx + 1..].find(')') else {
-        return String::new();
-    };
-    let reason = detail[open_idx + 1..open_idx + 1 + close_idx].trim();
-    if reason.is_empty() {
-        String::new()
-    } else {
-        format!(" · {reason}")
-    }
-}
-
-fn navigator_type_mismatch_suffix(detail: &str) -> String {
-    let left = extract_prefixed_token(detail, "left=");
-    let right = extract_prefixed_token(detail, "right=");
-    match (left, right) {
-        (Some(left), Some(right)) => format!(" · {left} vs {right}"),
+fn navigator_text_detail_reason_suffix(detail: &CompareFoundationDetail) -> String {
+    match detail {
+        CompareFoundationDetail::TextDetailDeferred { reason, .. } => {
+            format!(" · {}", reason.label())
+        }
         _ => String::new(),
     }
 }
 
-fn extract_prefixed_token(text: &str, prefix: &str) -> Option<String> {
-    text.split_whitespace()
-        .find_map(|part| part.trim_matches('|').strip_prefix(prefix))
-        .map(|value| value.trim_matches(|ch| ch == ',' || ch == ';').to_string())
+fn navigator_type_mismatch_suffix(detail: &CompareFoundationDetail) -> String {
+    match detail {
+        CompareFoundationDetail::TypeMismatch { left, right } => {
+            format!(" · {} vs {}", left.as_str(), right.as_str())
+        }
+        _ => String::new(),
+    }
 }
 
 fn format_warning_count(count: usize) -> String {
@@ -2329,6 +2460,10 @@ pub struct DiffViewerRow {
     /// Row style kind (`hunk`, `added`, `removed`, `context`).
     pub row_kind: String,
 }
+
+#[cfg(test)]
+#[path = "tests/state_foundation_tests.rs"]
+mod foundation_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2383,126 +2518,10 @@ mod tests {
     }
 
     #[test]
-    fn empty_filter_returns_all_rows() {
-        let state = AppState {
-            entry_rows: sample_rows(),
-            ..AppState::default()
-        };
-        let filtered = state.filtered_entry_rows_with_index();
-        assert_eq!(filtered.len(), 2);
-        assert_eq!(filtered[0].0, 0);
-        assert_eq!(filtered[1].0, 1);
-    }
-
-    #[test]
-    fn non_empty_filter_matches_path_or_name_only() {
-        let state = AppState {
-            entry_rows: sample_rows(),
-            entry_filter: "logo".to_string(),
-            ..AppState::default()
-        };
-        let filtered = state.filtered_entry_rows_with_index();
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].0, 1);
-
-        let state = AppState {
-            entry_rows: sample_rows(),
-            entry_filter: "main.rs".to_string(),
-            ..AppState::default()
-        };
-        let filtered = state.filtered_entry_rows_with_index();
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].0, 0);
-
-        let state = AppState {
-            entry_rows: sample_rows(),
-            entry_filter: "text summary".to_string(),
-            ..AppState::default()
-        };
-        let filtered = state.filtered_entry_rows_with_index();
-        assert!(filtered.is_empty());
-    }
-
-    #[test]
-    fn status_filter_reduces_visible_rows() {
-        let mut rows = sample_rows();
-        rows.push(CompareEntryRowViewModel {
-            relative_path: "docs/guide.md".to_string(),
-            status: "equal".to_string(),
-            detail: "metadata equal".to_string(),
-            entry_kind: "file".to_string(),
-            detail_kind: "file-comparison".to_string(),
-            can_load_diff: false,
-            diff_blocked_reason: Some("not changed".to_string()),
-            can_load_analysis: false,
-            analysis_blocked_reason: Some("not changed".to_string()),
-        });
-        let state = AppState {
-            entry_rows: rows,
-            entry_status_filter: "equal".to_string(),
-            ..AppState::default()
-        };
-        let filtered = state.filtered_entry_rows_with_index();
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].1.status, "equal");
-    }
-
-    #[test]
     fn invalid_status_filter_falls_back_to_all() {
         let mut state = AppState::default();
         state.set_entry_status_filter("unexpected-status");
         assert_eq!(state.entry_status_filter, "all");
-    }
-
-    #[test]
-    fn results_collection_text_tracks_search_and_scope() {
-        let mut state = AppState {
-            entry_rows: sample_rows(),
-            ..AppState::default()
-        };
-        assert_eq!(
-            state.results_collection_text(),
-            "Showing 2 / 2 · All results"
-        );
-
-        state.entry_filter = "logo".to_string();
-        state.set_entry_status_filter("different");
-        let text = state.results_collection_text();
-        assert_eq!(text, "Showing 1 / 2 · Search: \"logo\" · Diff");
-    }
-
-    #[test]
-    fn hidden_files_preference_filters_dot_prefixed_entries() {
-        let rows = vec![
-            CompareEntryRowViewModel {
-                relative_path: ".gitignore".to_string(),
-                ..CompareEntryRowViewModel::default()
-            },
-            CompareEntryRowViewModel {
-                relative_path: "src/main.rs".to_string(),
-                ..CompareEntryRowViewModel::default()
-            },
-            CompareEntryRowViewModel {
-                relative_path: "assets/.cache/logo.png".to_string(),
-                ..CompareEntryRowViewModel::default()
-            },
-        ];
-
-        let hidden = AppState {
-            entry_rows: rows.clone(),
-            show_hidden_files: false,
-            ..AppState::default()
-        };
-        let visible = hidden.filtered_entry_rows_with_index();
-        assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].1.relative_path, "src/main.rs");
-
-        let shown = AppState {
-            entry_rows: rows,
-            show_hidden_files: true,
-            ..AppState::default()
-        };
-        assert_eq!(shown.filtered_entry_rows_with_index().len(), 3);
     }
 
     #[test]
@@ -2530,385 +2549,6 @@ mod tests {
         assert_eq!(
             state.effective_navigator_view_mode(),
             NavigatorViewMode::Flat
-        );
-    }
-
-    #[test]
-    fn results_collection_text_mentions_hidden_entries_filtered_by_settings() {
-        let state = AppState {
-            entry_rows: vec![
-                CompareEntryRowViewModel {
-                    relative_path: ".env".to_string(),
-                    status: "different".to_string(),
-                    ..CompareEntryRowViewModel::default()
-                },
-                CompareEntryRowViewModel {
-                    relative_path: "src/main.rs".to_string(),
-                    status: "different".to_string(),
-                    ..CompareEntryRowViewModel::default()
-                },
-            ],
-            summary_text: "mode=normal total=2 equal=0 different=2 left_only=0 right_only=0 pending=0 skipped=0 deferred=0 oversized_text=0".to_string(),
-            entry_status_filter: "different".to_string(),
-            show_hidden_files: false,
-            ..AppState::default()
-        };
-
-        assert_eq!(
-            state.results_collection_text(),
-            "Showing 1 / 2 · 1 hidden by Settings · Diff"
-        );
-    }
-
-    #[test]
-    fn tree_projection_keeps_directories_non_selectable_and_files_selectable() {
-        let state = AppState {
-            entry_rows: vec![
-                CompareEntryRowViewModel {
-                    relative_path: "src".to_string(),
-                    status: "equal".to_string(),
-                    entry_kind: "directory".to_string(),
-                    ..CompareEntryRowViewModel::default()
-                },
-                CompareEntryRowViewModel {
-                    relative_path: "src/main.rs".to_string(),
-                    status: "different".to_string(),
-                    entry_kind: "file".to_string(),
-                    can_load_diff: true,
-                    can_load_analysis: true,
-                    ..CompareEntryRowViewModel::default()
-                },
-            ],
-            ..AppState::default()
-        };
-
-        let rows = state.navigator_tree_row_projections();
-        assert_eq!(rows.len(), 2);
-        assert!(rows[0].is_directory);
-        assert!(!rows[0].is_selectable);
-        assert_eq!(rows[1].key, "src/main.rs");
-        assert!(rows[1].is_selectable);
-    }
-
-    #[test]
-    fn tree_membership_ignores_collapsed_ancestor() {
-        let mut state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "src/main.rs".to_string(),
-                status: "different".to_string(),
-                entry_kind: "file".to_string(),
-                can_load_diff: true,
-                can_load_analysis: true,
-                ..CompareEntryRowViewModel::default()
-            }],
-            selected_row: Some(0),
-            selected_relative_path: Some("src/main.rs".to_string()),
-            ..AppState::default()
-        };
-
-        assert!(state.is_row_member_in_active_results(0));
-        assert!(state.toggle_navigator_tree_node("src"));
-        let rows = state.navigator_tree_row_projections();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].key, "src");
-        assert!(!rows[0].is_expanded);
-        assert!(state.is_row_member_in_active_results(0));
-    }
-
-    #[test]
-    fn reveal_navigator_tree_path_expands_nested_ancestors() {
-        let mut state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "src/bin/main.rs".to_string(),
-                status: "different".to_string(),
-                entry_kind: "file".to_string(),
-                can_load_diff: true,
-                can_load_analysis: true,
-                ..CompareEntryRowViewModel::default()
-            }],
-            navigator_tree_expansion_overrides: BTreeMap::from([("src/bin".to_string(), false)]),
-            ..AppState::default()
-        };
-
-        assert!(state.reveal_navigator_tree_path("src/bin/main.rs"));
-        assert_eq!(
-            state.navigator_tree_expansion_overrides.get("src/bin"),
-            Some(&true)
-        );
-        assert!(
-            state
-                .navigator_tree_row_projections()
-                .iter()
-                .any(|row| row.key == "src/bin/main.rs")
-        );
-    }
-
-    #[test]
-    fn flat_scroll_request_requires_visible_source_row() {
-        let mut state = AppState {
-            entry_rows: vec![
-                CompareEntryRowViewModel {
-                    relative_path: "src/main.rs".to_string(),
-                    status: "different".to_string(),
-                    entry_kind: "file".to_string(),
-                    ..CompareEntryRowViewModel::default()
-                },
-                CompareEntryRowViewModel {
-                    relative_path: "docs/readme.md".to_string(),
-                    status: "equal".to_string(),
-                    entry_kind: "file".to_string(),
-                    ..CompareEntryRowViewModel::default()
-                },
-            ],
-            entry_status_filter: "different".to_string(),
-            ..AppState::default()
-        };
-
-        assert_eq!(
-            state.navigator_flat_visual_row_index_for_source_index(0),
-            Some(0)
-        );
-        assert!(state.request_navigator_flat_scroll_to_source_index(0));
-        assert_eq!(state.navigator_flat_scroll_request_revision, 1);
-        assert_eq!(state.navigator_flat_scroll_target_source_index, Some(0));
-
-        assert_eq!(
-            state.navigator_flat_visual_row_index_for_source_index(1),
-            None
-        );
-        assert!(!state.request_navigator_flat_scroll_to_source_index(1));
-        assert_eq!(state.navigator_flat_scroll_request_revision, 1);
-        assert_eq!(state.navigator_flat_scroll_target_source_index, Some(0));
-    }
-
-    #[test]
-    fn tree_scroll_request_requires_visible_revealed_source_row() {
-        let mut state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "src/bin/main.rs".to_string(),
-                status: "different".to_string(),
-                entry_kind: "file".to_string(),
-                can_load_diff: true,
-                can_load_analysis: true,
-                ..CompareEntryRowViewModel::default()
-            }],
-            navigator_tree_expansion_overrides: BTreeMap::from([("src/bin".to_string(), false)]),
-            ..AppState::default()
-        };
-
-        assert_eq!(
-            state.navigator_tree_visual_row_index_for_source_index(0),
-            None
-        );
-        assert!(!state.request_navigator_tree_scroll_to_source_index(0));
-        assert_eq!(state.navigator_tree_scroll_request_revision, 0);
-
-        assert!(state.reveal_navigator_tree_path("src/bin/main.rs"));
-        assert_eq!(
-            state.navigator_tree_visual_row_index_for_source_index(0),
-            Some(2)
-        );
-        assert!(state.request_navigator_tree_scroll_to_source_index(0));
-        assert_eq!(state.navigator_tree_scroll_request_revision, 1);
-        assert_eq!(state.navigator_tree_scroll_target_source_index, Some(0));
-    }
-
-    #[test]
-    fn prune_expansion_overrides_removes_invalid_paths_and_default_states() {
-        let mut state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "src/bin/main.rs".to_string(),
-                status: "different".to_string(),
-                entry_kind: "file".to_string(),
-                can_load_diff: true,
-                can_load_analysis: true,
-                ..CompareEntryRowViewModel::default()
-            }],
-            navigator_tree_expansion_overrides: BTreeMap::from([
-                ("src/bin".to_string(), true),
-                ("src".to_string(), true),
-                ("old".to_string(), false),
-            ]),
-            ..AppState::default()
-        };
-
-        assert!(state.prune_navigator_tree_expansion_overrides());
-        assert_eq!(
-            state.navigator_tree_expansion_overrides,
-            BTreeMap::from([("src/bin".to_string(), true)])
-        );
-    }
-
-    #[test]
-    fn navigator_row_projection_promotes_leaf_name_and_parent_context() {
-        let state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "assets/js/runtime/fernetBrowser.js".to_string(),
-                status: "right-only".to_string(),
-                detail: "only on right: /tmp/right/assets/js/runtime/fernetBrowser.js".to_string(),
-                entry_kind: "file".to_string(),
-                detail_kind: "message".to_string(),
-                can_load_diff: true,
-                diff_blocked_reason: None,
-                can_load_analysis: false,
-                analysis_blocked_reason: Some("not changed".to_string()),
-            }],
-            ..AppState::default()
-        };
-
-        let projected = state.navigator_row_projections();
-        assert_eq!(projected.len(), 1);
-        assert_eq!(projected[0].display_name, "fernetBrowser.js");
-        assert_eq!(projected[0].parent_path, "assets/js/runtime");
-        assert_eq!(projected[0].secondary_text, "Text-only preview");
-        assert_eq!(
-            projected[0].tooltip_text,
-            "fernetBrowser.js\nassets/js/runtime"
-        );
-    }
-
-    #[test]
-    fn navigator_row_projection_keeps_full_parent_path_for_tooltip_completion() {
-        let full_parent_path = "workspace/frontend/src/components/navigation/sidebar/results";
-        let state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: format!("{full_parent_path}/fernetBrowser.js"),
-                status: "right-only".to_string(),
-                detail: "only on right".to_string(),
-                entry_kind: "file".to_string(),
-                detail_kind: "message".to_string(),
-                can_load_diff: true,
-                diff_blocked_reason: None,
-                can_load_analysis: false,
-                analysis_blocked_reason: Some("not changed".to_string()),
-            }],
-            ..AppState::default()
-        };
-
-        let projected = state.navigator_row_projections();
-        assert_eq!(projected.len(), 1);
-        assert!(projected[0].parent_path.contains('…'));
-        assert_eq!(
-            projected[0].tooltip_text,
-            format!("fernetBrowser.js\n{full_parent_path}")
-        );
-    }
-
-    #[test]
-    fn navigator_row_projection_marks_image_preview_as_unavailable() {
-        let state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "assets/logo.jpg".to_string(),
-                status: "left-only".to_string(),
-                detail: "only on left".to_string(),
-                entry_kind: "file".to_string(),
-                detail_kind: "none".to_string(),
-                can_load_diff: true,
-                diff_blocked_reason: None,
-                can_load_analysis: false,
-                analysis_blocked_reason: Some("not changed".to_string()),
-            }],
-            ..AppState::default()
-        };
-
-        let projected = state.navigator_row_projections();
-        assert_eq!(projected[0].secondary_text, "Image · no text preview");
-    }
-
-    #[test]
-    fn navigator_row_projection_marks_file_compare_diff_as_unavailable() {
-        let state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "assets/logo.png".to_string(),
-                status: "different".to_string(),
-                detail: "file compare: left=1B right=2B content_checked=true".to_string(),
-                entry_kind: "file".to_string(),
-                detail_kind: "file-comparison".to_string(),
-                can_load_diff: false,
-                diff_blocked_reason: Some(
-                    "entry was compared as non-text/binary candidate, detailed text diff unavailable"
-                        .to_string(),
-                ),
-                can_load_analysis: false,
-                analysis_blocked_reason: Some(
-                    "entry was compared as non-text/binary candidate, detailed text diff unavailable"
-                        .to_string(),
-                ),
-            }],
-            ..AppState::default()
-        };
-
-        let projected = state.navigator_row_projections();
-        assert_eq!(
-            projected[0].secondary_text,
-            "Image · no text diff · 1B / 2B"
-        );
-    }
-
-    #[test]
-    fn navigator_row_projection_tracks_name_and_path_hits() {
-        let row = CompareEntryRowViewModel {
-            relative_path: "assets/js/runtime/fernetBrowser.js".to_string(),
-            status: "different".to_string(),
-            detail: "text summary: hunks=2 +4 -1 ctx=8".to_string(),
-            entry_kind: "file".to_string(),
-            detail_kind: "text-diff".to_string(),
-            can_load_diff: true,
-            diff_blocked_reason: None,
-            can_load_analysis: true,
-            analysis_blocked_reason: None,
-        };
-
-        let state = AppState {
-            entry_rows: vec![row.clone()],
-            entry_filter: "fernet".to_string(),
-            ..AppState::default()
-        };
-        let projected = state.navigator_row_projections();
-        assert!(projected[0].display_name_matches_filter);
-        assert!(!projected[0].parent_path_matches_filter);
-
-        let state = AppState {
-            entry_rows: vec![row.clone()],
-            entry_filter: "js/runtime".to_string(),
-            ..AppState::default()
-        };
-        let projected = state.navigator_row_projections();
-        assert!(!projected[0].display_name_matches_filter);
-        assert!(projected[0].parent_path_matches_filter);
-
-        let state = AppState {
-            entry_rows: vec![row],
-            entry_filter: "runtime/fernet".to_string(),
-            ..AppState::default()
-        };
-        let projected = state.navigator_row_projections();
-        assert!(
-            projected[0].display_name_matches_filter || projected[0].parent_path_matches_filter
-        );
-    }
-
-    #[test]
-    fn navigator_row_projection_summarizes_text_diff_for_scanability() {
-        let state = AppState {
-            entry_rows: vec![CompareEntryRowViewModel {
-                relative_path: "src/main.rs".to_string(),
-                status: "different".to_string(),
-                detail: "text summary: hunks=2 +4 -1 ctx=8".to_string(),
-                entry_kind: "file".to_string(),
-                detail_kind: "text-diff".to_string(),
-                can_load_diff: true,
-                diff_blocked_reason: None,
-                can_load_analysis: true,
-                analysis_blocked_reason: None,
-            }],
-            ..AppState::default()
-        };
-
-        let projected = state.navigator_row_projections();
-        assert_eq!(
-            projected[0].secondary_text,
-            "Text diff · 2h · +4 · -1 · 8ctx"
         );
     }
 
@@ -2976,18 +2616,6 @@ mod tests {
         };
         assert!(state.compare_has_deferred());
         assert!(state.compare_has_oversized());
-    }
-
-    #[test]
-    fn filtering_does_not_mutate_underlying_rows() {
-        let rows = sample_rows();
-        let state = AppState {
-            entry_rows: rows.clone(),
-            entry_filter: "logo".to_string(),
-            ..AppState::default()
-        };
-        let _ = state.filtered_entry_rows_with_index();
-        assert_eq!(state.entry_rows, rows);
     }
 
     #[test]

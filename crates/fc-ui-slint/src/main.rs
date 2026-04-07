@@ -3,6 +3,7 @@
 mod app;
 mod bridge;
 mod commands;
+mod compare_foundation;
 mod context_menu;
 mod folder_picker;
 mod macos_font_bootstrap;
@@ -10,6 +11,8 @@ mod navigator_tree;
 mod presenter;
 mod settings;
 mod state;
+#[cfg(test)]
+mod tests;
 mod toast_controller;
 mod view_models;
 mod window_chrome;
