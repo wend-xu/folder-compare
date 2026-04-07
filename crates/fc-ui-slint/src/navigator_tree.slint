@@ -54,6 +54,7 @@ component NavigatorTreeRow inherits Rectangle {
     in property <bool> enabled: true;
     callback file_selected(int);
     callback directory_toggled(string);
+    callback context_menu_requested(string, string, bool, int, length, length);
     callback tooltip_requested(string, length, length, length);
     callback tooltip_closed();
 
@@ -206,6 +207,16 @@ component NavigatorTreeRow inherits Rectangle {
             } else if event.kind == PointerEventKind.cancel {
                 root.tooltip_closed();
             }
+            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                root.context_menu_requested(
+                    root.row_key,
+                    root.status,
+                    root.directory,
+                    root.source_index,
+                    self.absolute-position.x + self.mouse-x,
+                    self.absolute-position.y + self.mouse-y,
+                );
+            }
         }
     }
 }
@@ -225,6 +236,7 @@ export component NavigatorTree inherits Rectangle {
     in property <bool> interaction_enabled: true;
     callback file_selected(int);
     callback directory_toggled(string);
+    callback context_menu_requested(string, string, bool, int, length, length);
     callback tooltip_requested(string, length, length, length);
     callback tooltip_closed();
 
@@ -278,6 +290,16 @@ export component NavigatorTree inherits Rectangle {
             }
             directory_toggled(key) => {
                 root.directory_toggled(key);
+            }
+            context_menu_requested(key, status, directory, source_index, anchor_x, anchor_y) => {
+                root.context_menu_requested(
+                    key,
+                    status,
+                    directory,
+                    source_index,
+                    anchor_x,
+                    anchor_y,
+                );
             }
             tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
                 root.tooltip_requested(text, anchor_x, anchor_top, anchor_bottom);

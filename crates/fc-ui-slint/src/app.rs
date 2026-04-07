@@ -11,7 +11,7 @@ use crate::context_menu::{
 };
 use crate::folder_picker;
 use crate::presenter::Presenter;
-use crate::state::{AppState, NavigatorViewMode};
+use crate::state::{AppState, CompareViewRowAction, NavigatorViewMode};
 use crate::toast_controller::{
     ToastPlacement, ToastQueueState, ToastRequest, ToastStrategy, ToastTone,
 };
@@ -26,9 +26,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const RESULTS_LOCATE_AND_OPEN_ACTION_ID: &str = "results-locate-and-open";
+const RESULTS_OPEN_IN_COMPARE_VIEW_ACTION_ID: &str = "results-open-in-compare-view";
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
+    import { CompareView } from "src/compare_view.slint";
     import { NavigatorTree } from "src/navigator_tree.slint";
     import { UiPalette } from "src/ui_palette.slint";
 
@@ -1320,11 +1322,34 @@ slint::slint! {
         in property <[bool]> tree_row_is_expanded;
         in property <[bool]> tree_row_is_selectable;
         in property <[int]> tree_row_source_indices;
+        in property <[string]> compare_row_paths;
+        in property <[string]> compare_row_left_icons;
+        in property <[string]> compare_row_left_names;
+        in property <[bool]> compare_row_left_present;
+        in property <[string]> compare_row_status_labels;
+        in property <[string]> compare_row_status_tones;
+        in property <[string]> compare_row_right_icons;
+        in property <[string]> compare_row_right_names;
+        in property <[bool]> compare_row_right_present;
+        in property <[bool]> compare_row_show_chevrons;
+        in property <int> compare_row_focused_index: -1;
         in property <string> workspace_mode;
         in property <string> compare_focus_path_raw;
+        in property <string> compare_root_pair_text;
+        in property <string> compare_view_current_path_text;
+        in property <string> compare_view_target_status_label;
+        in property <string> compare_view_target_status_tone;
+        in property <string> compare_view_empty_title_text;
+        in property <string> compare_view_empty_body_text;
+        in property <bool> compare_view_can_go_up;
+        in property <bool> can_return_to_compare_view;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
         in property <string> selected_relative_path_raw;
+        in property <string> file_view_title_text;
+        in property <string> file_view_compare_status_label;
+        in property <string> file_view_compare_status_tone;
+        in property <string> file_view_path_context_text;
         in property <string> diff_summary_text;
         in property <string> diff_warning_text;
         in property <string> diff_error_text;
@@ -1496,6 +1521,12 @@ slint::slint! {
             }
             navigator_tree_view.ensure_visible_row(target_row);
         }
+        public function ensure_compare_row_visible(target_row: int) {
+            compare_workspace_view.ensure_row_visible(target_row);
+        }
+        public function focus_compare_rows() {
+            compare_workspace_view.focus_rows();
+        }
         function open_settings() {
             root.settings_provider_mode = root.analysis_remote_mode ? 1 : 0;
             root.settings_provider_endpoint = root.analysis_endpoint;
@@ -1517,7 +1548,14 @@ slint::slint! {
         callback navigator_view_mode_flat_requested();
         callback navigator_tree_directory_toggled(string);
         callback navigator_tree_file_selected(int);
+        callback navigator_tree_context_menu_requested(string, string, bool, int);
         callback row_selected(int);
+        callback compare_view_back_to_results_requested();
+        callback compare_view_up_requested();
+        callback compare_view_row_focused(string);
+        callback compare_view_row_activated(string);
+        callback compare_view_row_context_menu_requested(string);
+        callback back_to_compare_view_requested();
         callback copy_requested(string, string);
         callback analyze_clicked();
         callback analysis_provider_mock_selected();
@@ -2180,6 +2218,17 @@ slint::slint! {
                                         root.hide_tooltip();
                                         root.navigator_tree_directory_toggled(key);
                                     }
+                                    context_menu_requested(key, status, directory, source_index, anchor_x, anchor_y) => {
+                                        root.hide_tooltip();
+                                        root.context_menu_anchor_x = anchor_x - root.absolute-position.x;
+                                        root.context_menu_anchor_y = anchor_y - root.absolute-position.y;
+                                        root.navigator_tree_context_menu_requested(
+                                            key,
+                                            status,
+                                            directory,
+                                            source_index,
+                                        );
+                                    }
                                     tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
                                         root.show_tooltip(
                                             text,
@@ -2455,6 +2504,7 @@ slint::slint! {
                                 property <length> panel_top: self.tab_row_height - self.panel_overlap;
 
                                 workbench_panel := Rectangle {
+                                    visible: root.workspace_mode == "file-view";
                                     x: 0px;
                                     y: workbench_host.panel_top;
                                     width: parent.width;
@@ -2487,51 +2537,89 @@ slint::slint! {
                                                     background: #dde5f0;
                                                 }
 
-                                                VerticalLayout {
+                                                HorizontalLayout {
                                                     padding: 10px;
-                                                    spacing: 4px;
+                                                    spacing: 12px;
 
-                                                    Text {
-                                                        text: root.selected_relative_path == "" ? "No file selected" : root.selected_relative_path;
-                                                        color: root.selected_relative_path == "" ? #607286 : #294b6b;
-                                                        font-size: 16px;
-                                                        font-weight: 600;
-                                                        horizontal-stretch: 1;
-                                                        overflow: elide;
+                                                    Rectangle {
+                                                        width: root.can_return_to_compare_view ? 140px : 0px;
+                                                        background: transparent;
+
+                                                        VerticalLayout {
+                                                            spacing: 6px;
+
+                                                            TextAction {
+                                                                visible: root.can_return_to_compare_view;
+                                                                label: "Back to Compare View";
+                                                                tapped => {
+                                                                    root.back_to_compare_view_requested();
+                                                                }
+                                                            }
+                                                        }
                                                     }
 
-                                                    HorizontalLayout {
-                                                        spacing: 6px;
-                                                        StatusPill {
-                                                            label: "Diff";
-                                                            tone: "neutral";
-                                                        }
-                                                        if root.has_selected_result : StatusPill {
-                                                            label: root.diff_mode_label;
-                                                            tone: root.diff_mode_tone;
-                                                        }
-                                                        if root.has_selected_result : StatusPill {
-                                                            label: root.diff_result_status_label;
-                                                            tone: root.diff_result_status_tone;
-                                                        }
-                                                        if !root.has_selected_result
-                                                            || root.diff_shell_state_token == "stale-selection"
-                                                            || root.diff_shell_state_token == "loading"
-                                                            || root.diff_shell_state_token == "unavailable"
-                                                            || root.diff_shell_state_token == "error" : StatusPill {
-                                                            label: root.diff_shell_state_label;
-                                                            tone: root.diff_shell_state_tone;
-                                                        }
-                                                        Text {
-                                                            text: root.diff_context_summary_text
-                                                                + (root.diff_context_hint_text != ""
-                                                                    ? (root.diff_context_summary_text != "" ? "  ·  " : "") + root.diff_context_hint_text
-                                                                    : "");
-                                                            color: #617285;
-                                                            font-size: 12px;
-                                                            vertical-alignment: center;
-                                                            horizontal-stretch: 1;
-                                                            overflow: elide;
+                                                    if root.can_return_to_compare_view : Rectangle {
+                                                        width: 1px;
+                                                        height: parent.height - 6px;
+                                                        background: #e2e9f1;
+                                                    }
+
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                        background: transparent;
+
+                                                        VerticalLayout {
+                                                            spacing: 4px;
+
+                                                            Text {
+                                                                text: root.compare_root_pair_text;
+                                                                color: #6e7f90;
+                                                                font-size: 11px;
+                                                                horizontal-stretch: 1;
+                                                                overflow: elide;
+                                                            }
+
+                                                            Text {
+                                                                text: root.file_view_title_text;
+                                                                color: root.file_view_title_text == "No file selected" ? #607286 : #294b6b;
+                                                                font-size: 16px;
+                                                                font-weight: 600;
+                                                                horizontal-stretch: 1;
+                                                                overflow: elide;
+                                                            }
+
+                                                            HorizontalLayout {
+                                                                spacing: 6px;
+
+                                                                StatusPill {
+                                                                    label: "Diff";
+                                                                    tone: "neutral";
+                                                                }
+                                                                if root.has_selected_result : StatusPill {
+                                                                    label: root.diff_mode_label;
+                                                                    tone: root.diff_mode_tone;
+                                                                }
+                                                                if root.has_selected_result : StatusPill {
+                                                                    label: root.file_view_compare_status_label;
+                                                                    tone: root.file_view_compare_status_tone;
+                                                                }
+                                                                if !root.has_selected_result
+                                                                    || root.diff_shell_state_token == "stale-selection"
+                                                                    || root.diff_shell_state_token == "loading"
+                                                                    || root.diff_shell_state_token == "unavailable"
+                                                                    || root.diff_shell_state_token == "error" : StatusPill {
+                                                                    label: root.diff_shell_state_label;
+                                                                    tone: root.diff_shell_state_tone;
+                                                                }
+                                                                Text {
+                                                                    text: root.file_view_path_context_text;
+                                                                    color: #617285;
+                                                                    font-size: 12px;
+                                                                    vertical-alignment: center;
+                                                                    horizontal-stretch: 1;
+                                                                    overflow: elide;
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -2544,9 +2632,9 @@ slint::slint! {
                                                             root.workspace_header_context_menu_requested(
                                                                 root.selected_relative_path_raw,
                                                                 root.diff_mode_label,
-                                                                root.diff_result_status_label,
-                                                                root.diff_context_summary_text,
-                                                                root.diff_context_hint_text,
+                                                                root.file_view_compare_status_label,
+                                                                root.file_view_path_context_text,
+                                                                root.compare_root_pair_text,
                                                             );
                                                         }
                                                     }
@@ -2843,6 +2931,29 @@ slint::slint! {
                                                     padding: 10px;
                                                     spacing: 10px;
 
+                                                    Rectangle {
+                                                        width: root.can_return_to_compare_view ? 140px : 0px;
+                                                        background: transparent;
+
+                                                        VerticalLayout {
+                                                            spacing: 6px;
+
+                                                            TextAction {
+                                                                visible: root.can_return_to_compare_view;
+                                                                label: "Back to Compare View";
+                                                                tapped => {
+                                                                    root.back_to_compare_view_requested();
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if root.can_return_to_compare_view : Rectangle {
+                                                        width: 1px;
+                                                        height: parent.height - 6px;
+                                                        background: #e2e9f1;
+                                                    }
+
                                                     analysis_header_surface := Rectangle {
                                                         horizontal-stretch: 1;
                                                         background: transparent;
@@ -2851,8 +2962,16 @@ slint::slint! {
                                                             spacing: 4px;
 
                                                             Text {
-                                                                text: root.selected_relative_path == "" ? "No file selected" : root.selected_relative_path;
-                                                                color: root.selected_relative_path == "" ? #607286 : #294b6b;
+                                                                text: root.compare_root_pair_text;
+                                                                color: #6e7f90;
+                                                                font-size: 11px;
+                                                                horizontal-stretch: 1;
+                                                                overflow: elide;
+                                                            }
+
+                                                            Text {
+                                                                text: root.file_view_title_text;
+                                                                color: root.file_view_title_text == "No file selected" ? #607286 : #294b6b;
                                                                 font-size: 16px;
                                                                 font-weight: 600;
                                                                 horizontal-stretch: 1;
@@ -2865,6 +2984,10 @@ slint::slint! {
                                                                     label: "Analysis";
                                                                     tone: "neutral";
                                                                 }
+                                                                if root.has_selected_result : StatusPill {
+                                                                    label: root.file_view_compare_status_label;
+                                                                    tone: root.file_view_compare_status_tone;
+                                                                }
                                                                 StatusPill {
                                                                     label: root.analysis_state_label;
                                                                     tone: root.analysis_state_tone;
@@ -2874,7 +2997,7 @@ slint::slint! {
                                                                     tone: root.analysis_provider_status_tone;
                                                                 }
                                                                 Text {
-                                                                    text: root.analysis_header_summary_text;
+                                                                    text: root.file_view_path_context_text;
                                                                     color: #5f7184;
                                                                     font-size: 12px;
                                                                     vertical-alignment: center;
@@ -2892,9 +3015,9 @@ slint::slint! {
                                                                     root.workspace_header_context_menu_requested(
                                                                         root.selected_relative_path_raw,
                                                                         "Analysis",
-                                                                        root.analysis_state_label,
-                                                                        root.analysis_header_summary_text,
-                                                                        root.analysis_technical_context_text,
+                                                                        root.file_view_compare_status_label,
+                                                                        root.file_view_path_context_text,
+                                                                        root.compare_root_pair_text,
                                                                     );
                                                                 }
                                                             }
@@ -3223,6 +3346,7 @@ slint::slint! {
                                 }
 
                                 Rectangle {
+                                    visible: root.workspace_mode == "file-view";
                                     x: workbench_host.panel_corner_radius;
                                     y: workbench_host.panel_top;
                                     width: max(0px, parent.width - workbench_host.panel_corner_radius * 2);
@@ -3231,6 +3355,7 @@ slint::slint! {
                                 }
 
                                 HorizontalLayout {
+                                    visible: root.workspace_mode == "file-view";
                                     x: 0px;
                                     y: 0px;
                                     width: parent.width;
@@ -3272,6 +3397,234 @@ slint::slint! {
                                         font-size: 12px;
                                         vertical-alignment: center;
                                         overflow: elide;
+                                    }
+                                }
+
+                                compare_workspace_surface := Rectangle {
+                                    visible: root.workspace_mode == "compare-view";
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    height: parent.height;
+                                    background: transparent;
+
+                                    Rectangle {
+                                        x: 0px;
+                                        y: 0px;
+                                        width: parent.width;
+                                        height: parent.height;
+                                        border-width: 1px;
+                                        border-color: workbench_host.panel_border;
+                                        border-radius: workbench_host.panel_corner_radius;
+                                        background: #fcfdff;
+                                        clip: true;
+
+                                        VerticalLayout {
+                                            padding: 0px;
+                                            spacing: 0px;
+
+                                            Rectangle {
+                                                height: 84px;
+                                                background: #f9fbfe;
+
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #dde5f0;
+                                                }
+
+                                                HorizontalLayout {
+                                                    padding: 10px;
+                                                    spacing: 12px;
+
+                                                    Rectangle {
+                                                        width: 132px;
+                                                        background: transparent;
+
+                                                        VerticalLayout {
+                                                            spacing: 6px;
+
+                                                            TextAction {
+                                                                label: "Back to Results";
+                                                                tapped => {
+                                                                    root.compare_view_back_to_results_requested();
+                                                                }
+                                                            }
+
+                                                            TextAction {
+                                                                label: "Up one level";
+                                                                enabled: root.compare_view_can_go_up;
+                                                                tapped => {
+                                                                    root.compare_view_up_requested();
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Rectangle {
+                                                        width: 1px;
+                                                        height: parent.height - 8px;
+                                                        background: #e2e9f1;
+                                                    }
+
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                        background: transparent;
+
+                                                        VerticalLayout {
+                                                            spacing: 4px;
+
+                                                            Text {
+                                                                text: "Root A ↔ Root B";
+                                                                color: #7a8897;
+                                                                font-size: 11px;
+                                                                font-weight: 600;
+                                                            }
+
+                                                            Text {
+                                                                text: root.compare_root_pair_text;
+                                                                color: #546879;
+                                                                font-size: 12px;
+                                                                horizontal-stretch: 1;
+                                                                overflow: elide;
+                                                            }
+
+                                                            HorizontalLayout {
+                                                                spacing: 8px;
+
+                                                                Text {
+                                                                    text: "Current Path";
+                                                                    color: #7a8897;
+                                                                    font-size: 11px;
+                                                                    font-weight: 600;
+                                                                    vertical-alignment: center;
+                                                                }
+
+                                                                Text {
+                                                                    text: root.compare_view_current_path_text;
+                                                                    color: #294b6b;
+                                                                    font-size: 15px;
+                                                                    font-weight: 600;
+                                                                    horizontal-stretch: 1;
+                                                                    vertical-alignment: center;
+                                                                    overflow: elide;
+                                                                }
+
+                                                                StatusPill {
+                                                                    label: root.compare_view_target_status_label;
+                                                                    tone: root.compare_view_target_status_tone;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                height: 28px;
+                                                background: #f4f7fb;
+
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #dde5ef;
+                                                }
+
+                                                HorizontalLayout {
+                                                    padding-left: 10px;
+                                                    padding-right: 10px;
+                                                    spacing: 10px;
+
+                                                    Text {
+                                                        text: "Source / Base";
+                                                        color: #6a7c8f;
+                                                        font-size: 11px;
+                                                        font-weight: 600;
+                                                        horizontal-stretch: 1;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Text {
+                                                        width: 118px;
+                                                        text: "Status / Relation";
+                                                        color: #6a7c8f;
+                                                        font-size: 11px;
+                                                        font-weight: 600;
+                                                        horizontal-alignment: center;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Text {
+                                                        text: "Target / Modified";
+                                                        color: #6a7c8f;
+                                                        font-size: 11px;
+                                                        font-weight: 600;
+                                                        horizontal-stretch: 1;
+                                                        horizontal-alignment: right;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Rectangle {
+                                                        width: 12px;
+                                                        background: transparent;
+                                                    }
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                vertical-stretch: 1;
+                                                background: #fcfdff;
+                                                clip: true;
+
+                                                compare_workspace_view := CompareView {
+                                                    x: 0px;
+                                                    y: 0px;
+                                                    width: parent.width;
+                                                    height: parent.height;
+                                                    row_paths: root.compare_row_paths;
+                                                    row_left_icons: root.compare_row_left_icons;
+                                                    row_left_names: root.compare_row_left_names;
+                                                    row_left_present: root.compare_row_left_present;
+                                                    row_status_labels: root.compare_row_status_labels;
+                                                    row_status_tones: root.compare_row_status_tones;
+                                                    row_right_icons: root.compare_row_right_icons;
+                                                    row_right_names: root.compare_row_right_names;
+                                                    row_right_present: root.compare_row_right_present;
+                                                    row_show_chevrons: root.compare_row_show_chevrons;
+                                                    focused_row: root.compare_row_focused_index;
+                                                    interaction_enabled: !root.running && !root.diff_loading;
+                                                    row_focused(path) => {
+                                                        root.compare_view_row_focused(path);
+                                                    }
+                                                    row_activated(path) => {
+                                                        root.compare_view_row_activated(path);
+                                                    }
+                                                    row_context_menu_requested(path, anchor_x, anchor_y) => {
+                                                        root.context_menu_anchor_x = anchor_x - root.absolute-position.x;
+                                                        root.context_menu_anchor_y = anchor_y - root.absolute-position.y;
+                                                        root.compare_view_row_context_menu_requested(path);
+                                                    }
+                                                    back_requested() => {
+                                                        root.compare_view_up_requested();
+                                                    }
+                                                }
+
+                                                if root.compare_row_paths.length == 0 : DiffStateShell {
+                                                    width: parent.width;
+                                                    height: parent.height;
+                                                    embedded: true;
+                                                    state_label: "Empty";
+                                                    tone: "neutral";
+                                                    title: root.compare_view_empty_title_text;
+                                                    body: root.compare_view_empty_body_text;
+                                                    note: "Use Results / Navigator -> Open in Compare View to change targets.";
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
@@ -4319,6 +4672,31 @@ fn should_apply_tree_scroll_request(last_state: Option<&AppState>, next_state: &
     }
 }
 
+fn should_refresh_compare_view_models(
+    last_state: Option<&AppState>,
+    next_state: &AppState,
+) -> bool {
+    match last_state {
+        None => true,
+        Some(last) => {
+            last.compare_view_projection_revision != next_state.compare_view_projection_revision
+        }
+    }
+}
+
+fn should_apply_compare_scroll_request(
+    last_state: Option<&AppState>,
+    next_state: &AppState,
+) -> bool {
+    match last_state {
+        None => next_state.compare_view_scroll_request_revision != 0,
+        Some(last) => {
+            last.compare_view_scroll_request_revision
+                != next_state.compare_view_scroll_request_revision
+        }
+    }
+}
+
 // Contract: diff model refresh boundary.
 // Rebuild diff row models only when selected diff payload changes.
 fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppState) -> bool {
@@ -4350,6 +4728,16 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_tree_row_is_expanded(Rc::new(VecModel::<bool>::default()).into());
     window.set_tree_row_is_selectable(Rc::new(VecModel::<bool>::default()).into());
     window.set_tree_row_source_indices(Rc::new(VecModel::<i32>::default()).into());
+    window.set_compare_row_paths(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_row_left_icons(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_row_left_names(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_row_left_present(Rc::new(VecModel::<bool>::default()).into());
+    window.set_compare_row_status_labels(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_row_status_tones(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_row_right_icons(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_row_right_names(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_row_right_present(Rc::new(VecModel::<bool>::default()).into());
+    window.set_compare_row_show_chevrons(Rc::new(VecModel::<bool>::default()).into());
     window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_old_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_new_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
@@ -4393,6 +4781,17 @@ fn sync_navigator_scroll_requests(
             window.invoke_ensure_tree_row_visible(visual_index);
         }
     }
+
+    if should_apply_compare_scroll_request(last_state, state) {
+        if let Some(visual_index) = state
+            .compare_view_scroll_target_relative_path
+            .as_deref()
+            .and_then(|path| state.compare_view_visual_row_index_for_path(path))
+            .and_then(|index| i32::try_from(index).ok())
+        {
+            window.invoke_ensure_compare_row_visible(visual_index);
+        }
+    }
 }
 
 // Contract: state -> window projection.
@@ -4430,6 +4829,20 @@ fn sync_window_state(
     window.set_navigator_search_forces_flat_mode(state.navigator_search_forces_flat_mode());
     window.set_workspace_mode(state.workspace_mode_text().into());
     window.set_compare_focus_path_raw(state.compare_focus_path_raw_text().into());
+    window.set_compare_root_pair_text(state.compare_root_pair_text().into());
+    window.set_compare_view_current_path_text(state.compare_view_current_path_text().into());
+    window.set_compare_view_target_status_label(state.compare_view_target_status_label().into());
+    window.set_compare_view_target_status_tone(state.compare_view_target_status_tone().into());
+    window.set_compare_view_empty_title_text(state.compare_view_empty_title_text().into());
+    window.set_compare_view_empty_body_text(state.compare_view_empty_body_text().into());
+    window.set_compare_view_can_go_up(state.compare_view_can_go_up());
+    window.set_can_return_to_compare_view(state.can_return_to_compare_view());
+    window.set_compare_row_focused_index(
+        state
+            .compare_view_focused_row_index()
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(-1),
+    );
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
     window.set_selected_relative_path_raw(
@@ -4439,6 +4852,10 @@ fn sync_window_state(
             .unwrap_or_default()
             .into(),
     );
+    window.set_file_view_title_text(state.file_view_title_text().into());
+    window.set_file_view_compare_status_label(state.file_view_compare_status_label().into());
+    window.set_file_view_compare_status_tone(state.file_view_compare_status_tone().into());
+    window.set_file_view_path_context_text(state.file_view_path_context_text().into());
     window.set_diff_summary_text(
         state
             .selected_diff
@@ -4703,6 +5120,100 @@ fn sync_window_state(
             window.get_tree_row_source_indices(),
             tree_row_source_indices,
             "tree_row_source_indices",
+        );
+    }
+
+    if should_refresh_compare_view_models(last_state, state) {
+        let projected_compare_rows = state.compare_view_row_projections();
+        let compare_row_paths = projected_compare_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.relative_path.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_paths(),
+            compare_row_paths,
+            "compare_row_paths",
+        );
+        let compare_row_left_icons = projected_compare_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.left_icon.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_left_icons(),
+            compare_row_left_icons,
+            "compare_row_left_icons",
+        );
+        let compare_row_left_names = projected_compare_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.left_name.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_left_names(),
+            compare_row_left_names,
+            "compare_row_left_names",
+        );
+        let compare_row_left_present = projected_compare_rows
+            .iter()
+            .map(|projection| projection.left_present)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_left_present(),
+            compare_row_left_present,
+            "compare_row_left_present",
+        );
+        let compare_row_status_labels = projected_compare_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.status_label.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_status_labels(),
+            compare_row_status_labels,
+            "compare_row_status_labels",
+        );
+        let compare_row_status_tones = projected_compare_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.status_tone.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_status_tones(),
+            compare_row_status_tones,
+            "compare_row_status_tones",
+        );
+        let compare_row_right_icons = projected_compare_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.right_icon.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_right_icons(),
+            compare_row_right_icons,
+            "compare_row_right_icons",
+        );
+        let compare_row_right_names = projected_compare_rows
+            .iter()
+            .map(|projection| SharedString::from(projection.right_name.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_right_names(),
+            compare_row_right_names,
+            "compare_row_right_names",
+        );
+        let compare_row_right_present = projected_compare_rows
+            .iter()
+            .map(|projection| projection.right_present)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_right_present(),
+            compare_row_right_present,
+            "compare_row_right_present",
+        );
+        let compare_row_show_chevrons = projected_compare_rows
+            .iter()
+            .map(|projection| projection.show_chevron)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_row_show_chevrons(),
+            compare_row_show_chevrons,
+            "compare_row_show_chevrons",
         );
     }
 
@@ -5076,11 +5587,16 @@ pub fn run() -> anyhow::Result<()> {
             let source_index = usize::try_from(source_index).ok();
             let relative_path = path.to_string();
             let snapshot = results_context_menu_bridge.snapshot();
-            let can_locate_and_open = source_index
+            let row = source_index
                 .and_then(|index| snapshot.entry_rows.get(index))
-                .is_some_and(|row| row.entry_kind == "file");
+                .cloned();
+            let can_locate_and_open = row.as_ref().is_some_and(|row| row.entry_kind == "file");
+            let can_open_compare_view = row
+                .as_ref()
+                .is_some_and(|row| row.entry_kind == "directory");
             let mut custom_actions = Vec::new();
             if can_locate_and_open {
+                let locate_relative_path = relative_path.clone();
                 let action_app_weak = app_weak.clone();
                 let action_bridge = results_context_menu_bridge.clone();
                 let action_cache = Arc::clone(&results_context_menu_cache);
@@ -5099,7 +5615,8 @@ pub fn run() -> anyhow::Result<()> {
                         };
 
                         window.set_workspace_tab(0);
-                        action_bridge.dispatch(UiCommand::LocateAndOpen(relative_path.clone()));
+                        action_bridge
+                            .dispatch(UiCommand::LocateAndOpen(locate_relative_path.clone()));
                         sync_window_state_if_changed(
                             &window,
                             &action_bridge,
@@ -5111,6 +5628,39 @@ pub fn run() -> anyhow::Result<()> {
                     }),
                 });
             }
+            if can_open_compare_view {
+                let compare_relative_path = relative_path.clone();
+                let action_app_weak = app_weak.clone();
+                let action_bridge = results_context_menu_bridge.clone();
+                let action_cache = Arc::clone(&results_context_menu_cache);
+                let action_context_menu_controller = results_context_menu_controller.clone();
+                let action_loading_mask_controller =
+                    results_context_menu_loading_mask_controller.clone();
+                custom_actions.push(ContextMenuCustomAction {
+                    descriptor: ContextMenuCustomActionDescriptor {
+                        label: "Open in Compare View".to_string(),
+                        action_id: RESULTS_OPEN_IN_COMPARE_VIEW_ACTION_ID.to_string(),
+                        enabled: true,
+                    },
+                    handler: Rc::new(move |_invocation| {
+                        let Some(window) = action_app_weak.upgrade() else {
+                            return;
+                        };
+
+                        action_bridge
+                            .dispatch(UiCommand::OpenCompareView(compare_relative_path.clone()));
+                        sync_window_state_if_changed(
+                            &window,
+                            &action_bridge,
+                            &action_cache,
+                            Some(&action_context_menu_controller),
+                            &action_loading_mask_controller,
+                            SyncMode::ProgrammaticInputs,
+                        );
+                        window.invoke_focus_compare_rows();
+                    }),
+                });
+            }
             results_context_menu_controller.open(ContextMenuOpenRequest {
                 target_token,
                 text_payload: payload,
@@ -5118,6 +5668,98 @@ pub fn run() -> anyhow::Result<()> {
             });
         },
     );
+
+    let app_weak = app.as_weak();
+    let tree_context_menu_controller = context_menu_controller.clone();
+    let tree_context_menu_bridge = bridge.clone();
+    let tree_context_menu_cache = Arc::clone(&sync_cache);
+    let tree_context_menu_loading_mask_controller = loading_mask_controller.clone();
+    app.on_navigator_tree_context_menu_requested(move |key, status, directory, source_index| {
+        if app_weak.upgrade().is_none() {
+            return;
+        }
+
+        let payload = build_results_row_payload(
+            key.as_str(),
+            status.as_str(),
+            if directory {
+                "directory compare target"
+            } else {
+                "tree result entry"
+            },
+            false,
+        );
+        let target_token = format!("tree-results:{}", key.as_str().trim());
+        let mut custom_actions = Vec::new();
+        if directory && key.as_str().trim() != "" {
+            let action_app_weak = app_weak.clone();
+            let action_bridge = tree_context_menu_bridge.clone();
+            let action_cache = Arc::clone(&tree_context_menu_cache);
+            let action_context_menu_controller = tree_context_menu_controller.clone();
+            let action_loading_mask_controller = tree_context_menu_loading_mask_controller.clone();
+            let relative_path = key.to_string();
+            custom_actions.push(ContextMenuCustomAction {
+                descriptor: ContextMenuCustomActionDescriptor {
+                    label: "Open in Compare View".to_string(),
+                    action_id: RESULTS_OPEN_IN_COMPARE_VIEW_ACTION_ID.to_string(),
+                    enabled: true,
+                },
+                handler: Rc::new(move |_invocation| {
+                    let Some(window) = action_app_weak.upgrade() else {
+                        return;
+                    };
+
+                    action_bridge.dispatch(UiCommand::OpenCompareView(relative_path.clone()));
+                    sync_window_state_if_changed(
+                        &window,
+                        &action_bridge,
+                        &action_cache,
+                        Some(&action_context_menu_controller),
+                        &action_loading_mask_controller,
+                        SyncMode::ProgrammaticInputs,
+                    );
+                    window.invoke_focus_compare_rows();
+                }),
+            });
+        } else if source_index >= 0 {
+            let source_index = source_index;
+            let action_app_weak = app_weak.clone();
+            let action_bridge = tree_context_menu_bridge.clone();
+            let action_cache = Arc::clone(&tree_context_menu_cache);
+            let action_context_menu_controller = tree_context_menu_controller.clone();
+            let action_loading_mask_controller = tree_context_menu_loading_mask_controller.clone();
+            custom_actions.push(ContextMenuCustomAction {
+                descriptor: ContextMenuCustomActionDescriptor {
+                    label: "Open File View".to_string(),
+                    action_id: RESULTS_LOCATE_AND_OPEN_ACTION_ID.to_string(),
+                    enabled: true,
+                },
+                handler: Rc::new(move |_invocation| {
+                    let Some(window) = action_app_weak.upgrade() else {
+                        return;
+                    };
+
+                    window.set_workspace_tab(0);
+                    action_bridge.dispatch(UiCommand::SelectRow(source_index));
+                    action_bridge.dispatch(UiCommand::LoadSelectedDiff);
+                    sync_window_state_if_changed(
+                        &window,
+                        &action_bridge,
+                        &action_cache,
+                        Some(&action_context_menu_controller),
+                        &action_loading_mask_controller,
+                        SyncMode::ProgrammaticInputs,
+                    );
+                }),
+            });
+        }
+
+        tree_context_menu_controller.open(ContextMenuOpenRequest {
+            target_token,
+            text_payload: payload,
+            custom_actions,
+        });
+    });
 
     let app_weak = app.as_weak();
     let header_context_menu_controller = context_menu_controller.clone();
@@ -5409,6 +6051,164 @@ pub fn run() -> anyhow::Result<()> {
             &status_filter_loading_mask_controller,
             SyncMode::Passive,
         );
+    });
+
+    let app_weak = app.as_weak();
+    let compare_back_bridge = bridge.clone();
+    let compare_back_cache = Arc::clone(&sync_cache);
+    let compare_back_context_menu_controller = context_menu_controller.clone();
+    let compare_back_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_view_back_to_results_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_back_context_menu_controller.close();
+        compare_back_bridge.dispatch(UiCommand::ExitCompareViewToResults);
+        sync_window_state_if_changed(
+            &window,
+            &compare_back_bridge,
+            &compare_back_cache,
+            Some(&compare_back_context_menu_controller),
+            &compare_back_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let compare_up_bridge = bridge.clone();
+    let compare_up_cache = Arc::clone(&sync_cache);
+    let compare_up_context_menu_controller = context_menu_controller.clone();
+    let compare_up_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_view_up_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_up_context_menu_controller.close();
+        compare_up_bridge.dispatch(UiCommand::CompareViewUpOneLevel);
+        sync_window_state_if_changed(
+            &window,
+            &compare_up_bridge,
+            &compare_up_cache,
+            Some(&compare_up_context_menu_controller),
+            &compare_up_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        window.invoke_focus_compare_rows();
+    });
+
+    let app_weak = app.as_weak();
+    let compare_focus_bridge = bridge.clone();
+    let compare_focus_cache = Arc::clone(&sync_cache);
+    let compare_focus_context_menu_controller = context_menu_controller.clone();
+    let compare_focus_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_view_row_focused(move |relative_path| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_focus_context_menu_controller.close();
+        compare_focus_bridge.dispatch(UiCommand::FocusCompareRow(relative_path.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &compare_focus_bridge,
+            &compare_focus_cache,
+            Some(&compare_focus_context_menu_controller),
+            &compare_focus_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        window.invoke_focus_compare_rows();
+    });
+
+    let app_weak = app.as_weak();
+    let compare_activate_bridge = bridge.clone();
+    let compare_activate_cache = Arc::clone(&sync_cache);
+    let compare_activate_context_menu_controller = context_menu_controller.clone();
+    let compare_activate_loading_mask_controller = loading_mask_controller.clone();
+    let compare_activate_toast_controller = toast_controller.clone();
+    app.on_compare_view_row_activated(move |relative_path| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_activate_context_menu_controller.close();
+        let snapshot = compare_activate_bridge.snapshot();
+        match snapshot.compare_view_row_action(relative_path.as_str()) {
+            Some(CompareViewRowAction::OpenCompareView) => {
+                compare_activate_bridge
+                    .dispatch(UiCommand::OpenCompareView(relative_path.to_string()));
+                sync_window_state_if_changed(
+                    &window,
+                    &compare_activate_bridge,
+                    &compare_activate_cache,
+                    Some(&compare_activate_context_menu_controller),
+                    &compare_activate_loading_mask_controller,
+                    SyncMode::Passive,
+                );
+                window.invoke_focus_compare_rows();
+            }
+            Some(CompareViewRowAction::OpenFileView) => {
+                window.set_workspace_tab(0);
+                compare_activate_bridge.dispatch(UiCommand::OpenFileViewFromCompare(
+                    relative_path.to_string(),
+                ));
+                sync_window_state_if_changed(
+                    &window,
+                    &compare_activate_bridge,
+                    &compare_activate_cache,
+                    Some(&compare_activate_context_menu_controller),
+                    &compare_activate_loading_mask_controller,
+                    SyncMode::Passive,
+                );
+            }
+            Some(CompareViewRowAction::TypeMismatch) => {
+                compare_activate_toast_controller.dispatch(
+                    ToastRequest::new(
+                        "Type mismatch cannot be opened yet",
+                        ToastTone::Warn,
+                        ToastPlacement::Toast,
+                    )
+                    .with_duration(Duration::from_millis(1600))
+                    .with_strategy(ToastStrategy::Replace),
+                );
+            }
+            None => {}
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let compare_row_context_menu_controller = context_menu_controller.clone();
+    app.on_compare_view_row_context_menu_requested(move |_relative_path| {
+        if app_weak.upgrade().is_none() {
+            return;
+        }
+        compare_row_context_menu_controller.close();
+    });
+
+    let app_weak = app.as_weak();
+    let back_to_compare_bridge = bridge.clone();
+    let back_to_compare_cache = Arc::clone(&sync_cache);
+    let back_to_compare_context_menu_controller = context_menu_controller.clone();
+    let back_to_compare_loading_mask_controller = loading_mask_controller.clone();
+    app.on_back_to_compare_view_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        back_to_compare_context_menu_controller.close();
+        back_to_compare_bridge.dispatch(UiCommand::ReturnToCompareView);
+        sync_window_state_if_changed(
+            &window,
+            &back_to_compare_bridge,
+            &back_to_compare_cache,
+            Some(&back_to_compare_context_menu_controller),
+            &back_to_compare_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
     });
 
     let app_weak = app.as_weak();

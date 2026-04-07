@@ -22,8 +22,15 @@
   - 独立 `compare_focus_path`
   - 独立 `compare_foundation`
   - foundation -> navigator / legacy file-view projection 迁移方向
-- 当前默认下一入口已切换为 `Phase 19B`，而不是继续滚动 `18C fix-*`
-- 当前 workspace 仍是 attached `Diff / Analysis` file-view shell；`Compare View / File View` 双模式工作区的 surface 尚未实现
+- `Phase 19B` 已落地：
+  - `Compare View` workspace mode
+  - immediate-children 三列 compare surface
+  - 独立 `compare_row_focus_path`
+  - Compare View / File View / Results 基础导航闭环
+- 当前默认下一入口已切换为 `Phase 19C`，而不是继续滚动 `18C fix-*`
+- 当前 workspace 已进入 `Compare View / File View` 双模式：
+  - `Compare View` 是目录 compare MVP surface
+  - `File View` 继续复用 attached `Diff / Analysis` shell
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -53,11 +60,13 @@
   - `Compare Status`
   - `Filter / Scope`
   - `Results / Navigator`
-- Workspace 当前稳定为 attached `Diff / Analysis` file-view shell：
-  - `Tabs -> Header -> Content`
+- Workspace 当前稳定为双模式：
+  - `Compare View`
+  - `File View` -> `Tabs -> Header -> Content`
 - 当前外层 workspace foundation 也已进入 Rust state：
   - `workspace_mode`
   - `compare_focus_path`
+  - `compare_row_focus_path`
   - `compare_foundation`
 - `Compare Status` 保持 summary-first，并支持块内 `Show details / Hide details` 与 `Copy Summary` / `Copy Detail`
 - 当前 `Results / Navigator` 代码基线已进入双视图：
@@ -95,7 +104,13 @@
   - tree 中目录节点点击只负责展开/收起
   - tree 中文件 leaf 节点点击复用既有 file-view 打开链路
   - flat results 中 file leaf 支持 `Locate and Open` 回 tree
+  - 目录 compare target 可通过显式 `Open in Compare View` 动作进入 workspace `Compare View`
   - row tooltip 只做完整 filename + parent path completion
+- `Compare View`
+  - 基于 `compare_foundation.immediate_children(...)` 渲染
+  - 使用 `Source / Base | Status / Relation | Target / Modified` 三列布局
+  - `Back to Results`、`Up one level`、`Back to Compare View` 已接线
+  - `Type mismatch` row 不可进入，只弹 restrained toast
 - `Diff`
   - 状态机：`no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
   - single-side preview 继续是一等路径
@@ -219,7 +234,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 19B` 前的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 19C` 前的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` closeout 边界、deferred 与默认下一入口
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -227,7 +242,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19B`，而不是继续滚动 `18C fix-*`。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19C`，而不是继续滚动 `18C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - attached `Diff / Analysis` shell
@@ -245,11 +260,11 @@ cargo test --workspace
   - `compare_foundation` 已在 `fc-ui-slint` 内落地
   - 当前迁移方向已是 `compare_foundation -> navigator / legacy file-view projection`
 - 当前仍未实现：
-  - `Compare View / File View` 双模式工作区的 surface
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情
   - compare core widening
-- 后续若无明确 regression，默认下一入口应转到 `Phase 19B`；只有出现明确 regression 时，才回到 `18C fix-*`
+  - 超出 MVP 的更深层 `Compare View / File View` 重构
+- 后续若无明确 regression，默认下一入口应转到 `Phase 19C`；只有出现明确 regression 时，才回到 `18C fix-*`
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）
@@ -266,7 +281,7 @@ cargo test --workspace
 - `Phase 18`
   - 层级结果视图 / tree component / flat results 双视图
 - `Phase 19`
-  - Compare View / File View 双模式工作区（`19A` foundation 已落地，`19B` surface 待续）
+  - Compare View / File View 双模式工作区（`19A` foundation 与 `19B` MVP surface 已落地，`19C` 进入 follow-up）
 - `Phase 20`
   - AI 分析增强（多任务 / hunk 关联 / 缓存）
 - `Phase 21`

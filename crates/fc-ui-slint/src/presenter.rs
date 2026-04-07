@@ -3,6 +3,7 @@
 use crate::bridge;
 use crate::commands::UiCommand;
 use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
+use crate::compare_foundation::CompareFocusPath;
 use crate::settings::{
     self, AppPreferences, BehaviorSettings, DefaultResultsView, ProviderSettings,
 };
@@ -125,11 +126,53 @@ impl Presenter {
                 let selected_index = usize::try_from(index)
                     .ok()
                     .filter(|value| *value < state.entry_rows.len());
-                Self::apply_row_selection(&mut state, selected_index);
+                Self::apply_row_selection(&mut state, selected_index, false);
             }
             UiCommand::LoadSelectedDiff => self.execute_load_selected_diff(),
             UiCommand::LocateAndOpen(relative_path) => {
                 self.execute_locate_and_open(relative_path);
+            }
+            UiCommand::OpenCompareView(relative_path) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                Self::enter_compare_view(&mut state, relative_path.as_str(), None, true);
+            }
+            UiCommand::CompareViewUpOneLevel => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                let child_focus = state.compare_focus_path_raw_text();
+                if state.focus_compare_parent() {
+                    let parent_focus = state.compare_focus_path_raw_text();
+                    Self::enter_compare_view(
+                        &mut state,
+                        parent_focus.as_str(),
+                        Some(child_focus.as_str()),
+                        false,
+                    );
+                }
+            }
+            UiCommand::ExitCompareViewToResults => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.set_workspace_mode(WorkspaceMode::FileView);
+                state.can_return_to_compare_view = false;
+            }
+            UiCommand::ReturnToCompareView => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                if state.can_return_to_compare_view {
+                    state.set_workspace_mode(WorkspaceMode::CompareView);
+                    if let Some(path) = state.compare_row_focus_path.clone() {
+                        state.request_compare_view_scroll_to_path(path.as_str());
+                    }
+                }
+            }
+            UiCommand::FocusCompareRow(relative_path) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                let changed = state.set_compare_row_focus_path(Some(relative_path.as_str()));
+                let scrolled = state.request_compare_view_scroll_to_path(relative_path.as_str());
+                if !changed && !scrolled {
+                    return;
+                }
+            }
+            UiCommand::OpenFileViewFromCompare(relative_path) => {
+                self.open_file_view_from_compare(relative_path);
             }
             UiCommand::LoadAiAnalysis => self.execute_load_ai_analysis(),
             UiCommand::SetAiProviderModeMock => {
@@ -277,7 +320,11 @@ impl Presenter {
             Some("Previous selection will be rechecked after compare finishes.".to_string());
     }
 
-    fn apply_row_selection(state: &mut AppState, selected_index: Option<usize>) {
+    fn apply_row_selection(
+        state: &mut AppState,
+        selected_index: Option<usize>,
+        opened_from_compare_view: bool,
+    ) {
         state.selected_row = selected_index;
         let selected_row_vm = state
             .selected_row
@@ -286,6 +333,7 @@ impl Presenter {
         if selected_row_vm.is_some() {
             state.set_workspace_mode(WorkspaceMode::FileView);
         }
+        state.can_return_to_compare_view = selected_row_vm.is_some() && opened_from_compare_view;
         state.selected_relative_path = selected_row_vm
             .as_ref()
             .map(|row| row.relative_path.clone());
@@ -297,6 +345,25 @@ impl Presenter {
             Some(_) => "Load detailed diff, then click Analyze.".to_string(),
             None => "Select one changed text file to analyze.".to_string(),
         });
+    }
+
+    fn enter_compare_view(
+        state: &mut AppState,
+        relative_path: &str,
+        preferred_row_focus: Option<&str>,
+        reset_compare_return: bool,
+    ) {
+        state.set_compare_focus_path(CompareFocusPath::relative(relative_path));
+        state.set_workspace_mode(WorkspaceMode::CompareView);
+        if reset_compare_return {
+            state.can_return_to_compare_view = false;
+        }
+        if let Some(preferred) = preferred_row_focus {
+            state.set_compare_row_focus_path(Some(preferred));
+        }
+        if let Some(path) = state.compare_row_focus_path.clone() {
+            state.request_compare_view_scroll_to_path(path.as_str());
+        }
     }
 
     fn selection_path_at(state: &AppState, index: usize) -> Option<String> {
@@ -671,13 +738,14 @@ impl Presenter {
                 .filter(|index| state.is_row_member_in_active_results(*index))
             {
                 Some(index) => {
-                    Self::apply_row_selection(&mut state, Some(index));
+                    Self::apply_row_selection(&mut state, Some(index), false);
                     state.request_navigator_tree_scroll_to_source_index(index);
                     true
                 }
                 None => {
                     state.selected_row = None;
                     state.selected_relative_path = Some(relative_path);
+                    state.can_return_to_compare_view = false;
                     Self::clear_file_view_state(&mut state);
                     Self::set_analysis_stale_selection_hint(&mut state);
                     false
@@ -803,9 +871,40 @@ impl Presenter {
                 let stale_path = Self::selection_path_at(state, selected_row);
                 state.selected_row = None;
                 state.selected_relative_path = stale_path;
+                state.can_return_to_compare_view = false;
                 Self::clear_file_view_state(state);
                 Self::set_analysis_stale_selection_hint(state);
             }
+        }
+    }
+
+    fn open_file_view_from_compare(&self, relative_path: String) {
+        let should_load_selected_diff = {
+            let mut state = self.state.lock().expect("state mutex poisoned");
+            let relative_path = relative_path.trim().to_string();
+            if relative_path.is_empty() {
+                return;
+            }
+
+            match state.row_index_for_relative_path(&relative_path) {
+                Some(index) => {
+                    Self::apply_row_selection(&mut state, Some(index), true);
+                    true
+                }
+                None => {
+                    state.selected_row = None;
+                    state.selected_relative_path = Some(relative_path);
+                    state.can_return_to_compare_view = true;
+                    Self::clear_file_view_state(&mut state);
+                    Self::set_analysis_stale_selection_hint(&mut state);
+                    false
+                }
+            }
+        };
+        self.notify_state_changed();
+
+        if should_load_selected_diff {
+            self.execute_load_selected_diff();
         }
     }
 }

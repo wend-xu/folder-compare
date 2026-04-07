@@ -22,6 +22,9 @@ const NAVIGATOR_PARENT_PATH_MAX_CHARS: usize = 52;
 const NAVIGATOR_PARENT_PATH_HEAD_CHARS: usize = 18;
 const NAVIGATOR_PARENT_PATH_TAIL_CHARS: usize = 28;
 const NAVIGATOR_SECONDARY_MAX_CHARS: usize = 96;
+const ROOT_PAIR_MAX_CHARS: usize = 54;
+const ROOT_PAIR_HEAD_CHARS: usize = 30;
+const ROOT_PAIR_TAIL_CHARS: usize = 16;
 
 /// Diff tab shell state for unified status rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +85,42 @@ pub struct NavigatorRowProjection {
     pub display_name_matches_filter: bool,
     /// Whether current filter matched the weak parent-path context.
     pub parent_path_matches_filter: bool,
+}
+
+/// One Compare View immediate-child row projected from `compare_foundation`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompareViewRowProjection {
+    /// Canonical child relative path.
+    pub relative_path: String,
+    /// Whether the left/base side exists for this child key.
+    pub left_present: bool,
+    /// Lightweight left-side icon token.
+    pub left_icon: String,
+    /// Left-side display name or placeholder.
+    pub left_name: String,
+    /// Compare status label rendered in the center column.
+    pub status_label: String,
+    /// Compare status tone token for restrained color styling.
+    pub status_tone: String,
+    /// Whether the right/modified side exists for this child key.
+    pub right_present: bool,
+    /// Lightweight right-side icon token.
+    pub right_icon: String,
+    /// Right-side display name or placeholder.
+    pub right_name: String,
+    /// Whether this row should show the compare-view directory chevron.
+    pub show_chevron: bool,
+}
+
+/// Execution target for one Compare View row activation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareViewRowAction {
+    /// Open the child directory in Compare View.
+    OpenCompareView,
+    /// Open the child file/special entry in File View.
+    OpenFileView,
+    /// Row is a type mismatch and cannot open yet.
+    TypeMismatch,
 }
 
 /// Runtime Results / Navigator view mode for non-search browsing.
@@ -158,6 +197,16 @@ pub struct AppState {
     pub workspace_mode: WorkspaceMode,
     /// Compare-view focus anchor independent from file selection.
     pub compare_focus_path: CompareFocusPath,
+    /// Focused immediate-child row inside Compare View, independent from file selection.
+    pub compare_row_focus_path: Option<String>,
+    /// Revision for Compare View immediate-children projection refreshes.
+    pub compare_view_projection_revision: u64,
+    /// Revision for Compare View one-shot ensure-visible requests.
+    pub compare_view_scroll_request_revision: u64,
+    /// Relative path requested for Compare View ensure-visible.
+    pub compare_view_scroll_target_relative_path: Option<String>,
+    /// Whether current File View session should show Back to Compare View.
+    pub can_return_to_compare_view: bool,
     /// Expansion overrides for directory nodes in tree mode.
     pub navigator_tree_expansion_overrides: BTreeMap<String, bool>,
     /// Warning lines from compare report.
@@ -228,6 +277,11 @@ impl Default for AppState {
             default_navigator_view_mode: NavigatorViewMode::Tree,
             workspace_mode: WorkspaceMode::FileView,
             compare_focus_path: CompareFocusPath::root(),
+            compare_row_focus_path: None,
+            compare_view_projection_revision: 0,
+            compare_view_scroll_request_revision: 0,
+            compare_view_scroll_target_relative_path: None,
+            can_return_to_compare_view: false,
             navigator_tree_expansion_overrides: BTreeMap::new(),
             warning_lines: Vec::new(),
             error_message: None,
@@ -830,6 +884,243 @@ impl AppState {
         self.compare_focus_path.raw_text()
     }
 
+    /// Returns the current Compare View row projections derived from immediate children.
+    pub fn compare_view_row_projections(&self) -> Vec<CompareViewRowProjection> {
+        let foundation = self.compare_foundation_for_projections();
+        foundation
+            .as_ref()
+            .immediate_children(&self.compare_focus_path)
+            .into_iter()
+            .map(|child| {
+                let node = foundation
+                    .as_ref()
+                    .node(child.relative_path.as_str())
+                    .expect("compare-view child node must exist");
+                let action = compare_view_row_action_from_node(node);
+                let (left_kind, right_kind) = compare_view_side_kinds(node);
+                let left_present = child.side_presence.left;
+                let right_present = child.side_presence.right;
+                let (status_label, status_tone) = compare_display_status(node);
+
+                CompareViewRowProjection {
+                    relative_path: child.relative_path.clone(),
+                    left_present,
+                    left_icon: if left_present {
+                        compare_view_icon_token(left_kind, &node.detail).to_string()
+                    } else {
+                        String::new()
+                    },
+                    left_name: if left_present {
+                        child.display_name.clone()
+                    } else {
+                        "-".to_string()
+                    },
+                    status_label: status_label.to_string(),
+                    status_tone: status_tone.to_string(),
+                    right_present,
+                    right_icon: if right_present {
+                        compare_view_icon_token(right_kind, &node.detail).to_string()
+                    } else {
+                        String::new()
+                    },
+                    right_name: if right_present {
+                        child.display_name
+                    } else {
+                        "-".to_string()
+                    },
+                    show_chevron: action == Some(CompareViewRowAction::OpenCompareView),
+                }
+            })
+            .collect()
+    }
+
+    /// Resolves one Compare View visual row index by immediate-child relative path.
+    pub fn compare_view_visual_row_index_for_path(&self, relative_path: &str) -> Option<usize> {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() {
+            return None;
+        }
+        self.compare_view_row_projections()
+            .iter()
+            .position(|row| row.relative_path == normalized)
+    }
+
+    /// Returns the focused Compare View visual row index when available.
+    pub fn compare_view_focused_row_index(&self) -> Option<usize> {
+        self.compare_row_focus_path
+            .as_deref()
+            .and_then(|path| self.compare_view_visual_row_index_for_path(path))
+    }
+
+    /// Resolves activation behavior for one Compare View row under the current target.
+    pub fn compare_view_row_action(&self, relative_path: &str) -> Option<CompareViewRowAction> {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() {
+            return None;
+        }
+        let foundation = self.compare_foundation_for_projections();
+        if !foundation
+            .as_ref()
+            .immediate_children(&self.compare_focus_path)
+            .iter()
+            .any(|child| child.relative_path == normalized)
+        {
+            return None;
+        }
+        let node = foundation.as_ref().node(normalized)?;
+        compare_view_row_action_from_node(node)
+    }
+
+    /// Returns true when the current Compare View target can move to a parent directory.
+    pub fn compare_view_can_go_up(&self) -> bool {
+        !self.compare_focus_path.is_root()
+    }
+
+    /// Returns one formatted root-pair context string for Compare/File view headers.
+    pub fn compare_root_pair_text(&self) -> String {
+        format!(
+            "{} ↔ {}",
+            abbreviate_middle(
+                self.left_root.trim(),
+                ROOT_PAIR_MAX_CHARS,
+                ROOT_PAIR_HEAD_CHARS,
+                ROOT_PAIR_TAIL_CHARS,
+            ),
+            abbreviate_middle(
+                self.right_root.trim(),
+                ROOT_PAIR_MAX_CHARS,
+                ROOT_PAIR_HEAD_CHARS,
+                ROOT_PAIR_TAIL_CHARS,
+            ),
+        )
+    }
+
+    /// Returns current Compare View path text.
+    pub fn compare_view_current_path_text(&self) -> String {
+        let raw = self.compare_focus_path.raw_text();
+        if raw.is_empty() {
+            "/".to_string()
+        } else {
+            abbreviate_middle(
+                &raw,
+                PATH_DISPLAY_MAX_CHARS,
+                PATH_DISPLAY_HEAD_CHARS,
+                PATH_DISPLAY_TAIL_CHARS,
+            )
+        }
+    }
+
+    /// Returns current Compare View target status label.
+    pub fn compare_view_target_status_label(&self) -> String {
+        self.compare_view_target_status()
+            .map(|(label, _)| label.to_string())
+            .unwrap_or_else(|| "Unavailable".to_string())
+    }
+
+    /// Returns current Compare View target status tone.
+    pub fn compare_view_target_status_tone(&self) -> String {
+        self.compare_view_target_status()
+            .map(|(_, tone)| tone.to_string())
+            .unwrap_or_else(|| "neutral".to_string())
+    }
+
+    /// Returns empty-state title for Compare View content.
+    pub fn compare_view_empty_title_text(&self) -> String {
+        if self.compare_foundation.source_entry_count() == 0 {
+            "No compare result".to_string()
+        } else {
+            "This level has no entries".to_string()
+        }
+    }
+
+    /// Returns empty-state body text for Compare View content.
+    pub fn compare_view_empty_body_text(&self) -> String {
+        if self.compare_foundation.source_entry_count() == 0 {
+            "Run Compare from the sidebar, then open one directory from Results / Navigator."
+                .to_string()
+        } else {
+            "The current compare target has no immediate children to render in Compare View."
+                .to_string()
+        }
+    }
+
+    /// Returns whether File View should expose Back to Compare View.
+    pub fn can_return_to_compare_view(&self) -> bool {
+        self.can_return_to_compare_view
+    }
+
+    /// Returns current File View title text derived from the selected file path.
+    pub fn file_view_title_text(&self) -> String {
+        self.selected_relative_path
+            .as_deref()
+            .and_then(normalize_optional_text)
+            .map(|value| split_relative_path_leaf(&value).1)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "No file selected".to_string())
+    }
+
+    /// Returns the File View compare-status label.
+    pub fn file_view_compare_status_label(&self) -> String {
+        self.selected_entry_compare_status()
+            .map(|(label, _)| label.to_string())
+            .unwrap_or_else(|| "Unavailable".to_string())
+    }
+
+    /// Returns the File View compare-status tone.
+    pub fn file_view_compare_status_tone(&self) -> String {
+        self.selected_entry_compare_status()
+            .map(|(_, tone)| tone.to_string())
+            .unwrap_or_else(|| "neutral".to_string())
+    }
+
+    /// Returns the File View path-context text.
+    pub fn file_view_path_context_text(&self) -> String {
+        let Some(node) = self.selected_entry_compare_node() else {
+            return String::new();
+        };
+
+        let relative_path = node.relative_path.trim();
+        if relative_path.is_empty() {
+            return String::new();
+        }
+
+        let left_path = node.side_presence.left.then_some(relative_path);
+        let right_path = node.side_presence.right.then_some(relative_path);
+        match (left_path, right_path) {
+            (Some(left), Some(right)) if left == right => format!(
+                "Compare Path · {}",
+                abbreviate_middle(
+                    left,
+                    PATH_DISPLAY_MAX_CHARS,
+                    PATH_DISPLAY_HEAD_CHARS,
+                    PATH_DISPLAY_TAIL_CHARS,
+                )
+            ),
+            (left, right) => format!(
+                "Source Path · {}    Target Path · {}",
+                left.map(|value| {
+                    abbreviate_middle(
+                        value,
+                        PATH_DISPLAY_MAX_CHARS,
+                        PATH_DISPLAY_HEAD_CHARS,
+                        PATH_DISPLAY_TAIL_CHARS,
+                    )
+                })
+                .unwrap_or_else(|| "-".to_string()),
+                right
+                    .map(|value| {
+                        abbreviate_middle(
+                            value,
+                            PATH_DISPLAY_MAX_CHARS,
+                            PATH_DISPLAY_HEAD_CHARS,
+                            PATH_DISPLAY_TAIL_CHARS,
+                        )
+                    })
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+        }
+    }
+
     /// Updates the outer workspace mode.
     pub fn set_workspace_mode(&mut self, mode: WorkspaceMode) {
         self.workspace_mode = mode;
@@ -845,6 +1136,8 @@ impl AppState {
             return false;
         }
         self.compare_focus_path = normalized;
+        self.reconcile_compare_row_focus(None);
+        self.bump_compare_view_projection_revision();
         true
     }
 
@@ -862,6 +1155,32 @@ impl AppState {
             .as_ref()
             .parent_compare_focus_path(&self.compare_focus_path);
         self.set_compare_focus_path(parent)
+    }
+
+    /// Focuses one Compare View row when it is an immediate child of the current target.
+    pub fn set_compare_row_focus_path(&mut self, relative_path: Option<&str>) -> bool {
+        let next = self.resolve_compare_row_focus_path(relative_path);
+        if self.compare_row_focus_path == next {
+            return false;
+        }
+        self.compare_row_focus_path = next;
+        true
+    }
+
+    /// Queues one Compare View ensure-visible request when the target row is visible.
+    pub fn request_compare_view_scroll_to_path(&mut self, relative_path: &str) -> bool {
+        let normalized = relative_path.trim();
+        if normalized.is_empty()
+            || self
+                .compare_view_visual_row_index_for_path(normalized)
+                .is_none()
+        {
+            return false;
+        }
+        self.compare_view_scroll_target_relative_path = Some(normalized.to_string());
+        self.compare_view_scroll_request_revision =
+            self.compare_view_scroll_request_revision.wrapping_add(1);
+        true
     }
 
     /// Updates the persisted non-search default mode.
@@ -1901,6 +2220,76 @@ impl AppState {
             && (!self.analysis_remote_mode() || self.analysis_remote_config_ready())
     }
 
+    fn compare_view_target_status(&self) -> Option<(&'static str, &'static str)> {
+        let foundation = self.compare_foundation_for_projections();
+        let node = foundation.as_ref().node(
+            self.compare_focus_path
+                .as_relative_path()
+                .unwrap_or_default(),
+        )?;
+        Some(compare_display_status(node))
+    }
+
+    fn selected_entry_compare_node(&self) -> Option<CompareFoundationNode> {
+        let path = self.selected_relative_path.as_deref()?.trim();
+        if path.is_empty() {
+            return None;
+        }
+        self.compare_foundation_for_projections()
+            .as_ref()
+            .node(path)
+            .cloned()
+    }
+
+    fn selected_entry_compare_status(&self) -> Option<(&'static str, &'static str)> {
+        let node = self.selected_entry_compare_node()?;
+        Some(compare_display_status(&node))
+    }
+
+    fn resolve_compare_row_focus_path(&self, preferred: Option<&str>) -> Option<String> {
+        let rows = self.compare_view_row_projections();
+        if rows.is_empty() {
+            return None;
+        }
+
+        let preferred = preferred
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        if let Some(path) = preferred {
+            if rows.iter().any(|row| row.relative_path == path) {
+                return Some(path);
+            }
+        }
+
+        if let Some(current) = self
+            .compare_row_focus_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if rows.iter().any(|row| row.relative_path == current) {
+                return Some(current.to_string());
+            }
+        }
+
+        rows.first().map(|row| row.relative_path.clone())
+    }
+
+    fn reconcile_compare_row_focus(&mut self, preferred: Option<&str>) -> bool {
+        let next = self.resolve_compare_row_focus_path(preferred);
+        if self.compare_row_focus_path == next {
+            return false;
+        }
+        self.compare_row_focus_path = next;
+        true
+    }
+
+    fn bump_compare_view_projection_revision(&mut self) {
+        self.compare_view_projection_revision =
+            self.compare_view_projection_revision.wrapping_add(1);
+    }
+
     fn bump_navigator_flat_projection_revision(&mut self) {
         self.navigator_flat_projection_revision =
             self.navigator_flat_projection_revision.wrapping_add(1);
@@ -1974,11 +2363,15 @@ impl AppState {
         self.compare_focus_path = self
             .compare_foundation
             .clamp_compare_focus_path(&self.compare_focus_path);
+        self.reconcile_compare_row_focus(None);
+        self.bump_compare_view_projection_revision();
     }
 
     pub fn clear_compare_foundation(&mut self) {
         self.compare_foundation = CompareFoundation::default();
         self.compare_focus_path = CompareFocusPath::root();
+        self.compare_row_focus_path = None;
+        self.bump_compare_view_projection_revision();
     }
 
     fn compare_mode_token(&self) -> Option<String> {
@@ -2010,6 +2403,56 @@ impl AppState {
 
     fn compare_oversized_count(&self) -> Option<usize> {
         summary_metric_usize(&self.summary_text, "oversized_text=")
+    }
+}
+
+fn compare_display_status(node: &CompareFoundationNode) -> (&'static str, &'static str) {
+    if matches!(node.detail, CompareFoundationDetail::TypeMismatch { .. }) {
+        return ("Type mismatch", "warn");
+    }
+
+    match node.base_status {
+        CompareBaseStatus::LeftOnly => ("Deleted", "left"),
+        CompareBaseStatus::RightOnly => ("Added", "right"),
+        CompareBaseStatus::Equal => ("Identical", "equal"),
+        CompareBaseStatus::Different | CompareBaseStatus::Pending | CompareBaseStatus::Skipped => {
+            ("Modified", "different")
+        }
+    }
+}
+
+fn compare_view_row_action_from_node(node: &CompareFoundationNode) -> Option<CompareViewRowAction> {
+    if matches!(node.detail, CompareFoundationDetail::TypeMismatch { .. }) {
+        return Some(CompareViewRowAction::TypeMismatch);
+    }
+    if node.kind.is_directory_target() {
+        return Some(CompareViewRowAction::OpenCompareView);
+    }
+    node.source_index
+        .map(|_| CompareViewRowAction::OpenFileView)
+}
+
+fn compare_view_side_kinds(node: &CompareFoundationNode) -> (CompareNodeKind, CompareNodeKind) {
+    match node.detail {
+        CompareFoundationDetail::TypeMismatch { left, right } => (left, right),
+        _ => (node.kind, node.kind),
+    }
+}
+
+fn compare_view_icon_token(
+    kind: CompareNodeKind,
+    detail: &CompareFoundationDetail,
+) -> &'static str {
+    match kind {
+        CompareNodeKind::Root | CompareNodeKind::Directory => "DIR",
+        CompareNodeKind::File => {
+            if matches!(detail, CompareFoundationDetail::FileComparison { .. }) {
+                "BIN"
+            } else {
+                "TXT"
+            }
+        }
+        CompareNodeKind::Symlink | CompareNodeKind::Other => "BIN",
     }
 }
 

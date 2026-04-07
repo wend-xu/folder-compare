@@ -154,3 +154,93 @@ fn selecting_file_row_switches_workspace_mode_to_file_view_without_resetting_com
     );
     assert_eq!(snapshot.selected_row, Some(selected_index));
 }
+
+#[test]
+fn opening_compare_view_switches_workspace_mode_without_clearing_file_selection() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    let selected_index = state
+        .row_index_for_relative_path("src/main.rs")
+        .expect("file row should exist");
+    state.selected_row = Some(selected_index);
+    state.selected_relative_path = Some("src/main.rs".to_string());
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenCompareView("src".to_string()));
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(
+        snapshot.compare_row_focus_path.as_deref(),
+        Some("src/main.rs")
+    );
+    assert_eq!(snapshot.selected_row, Some(selected_index));
+    assert_eq!(
+        snapshot.selected_relative_path.as_deref(),
+        Some("src/main.rs")
+    );
+}
+
+#[test]
+fn opening_file_view_from_compare_preserves_compare_return_context() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    state.set_workspace_mode(WorkspaceMode::CompareView);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+    assert_eq!(state.compare_row_focus_path.as_deref(), Some("src/main.rs"));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+        "src/main.rs".to_string(),
+    ));
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::FileView);
+    assert!(snapshot.can_return_to_compare_view);
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(
+        snapshot.compare_row_focus_path.as_deref(),
+        Some("src/main.rs")
+    );
+    assert_eq!(
+        snapshot.selected_relative_path.as_deref(),
+        Some("src/main.rs")
+    );
+}
+
+#[test]
+fn returning_to_compare_view_restores_compare_mode() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    state.set_workspace_mode(WorkspaceMode::FileView);
+    state.can_return_to_compare_view = true;
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+    assert_eq!(state.compare_row_focus_path.as_deref(), Some("src/main.rs"));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::ReturnToCompareView);
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert!(snapshot.can_return_to_compare_view);
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(
+        snapshot.compare_row_focus_path.as_deref(),
+        Some("src/main.rs")
+    );
+}
+
+#[test]
+fn compare_view_up_one_level_focuses_previous_child_directory() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+        file_entry("src/lib.rs", EntryStatus::Equal),
+    ]);
+    state.set_workspace_mode(WorkspaceMode::CompareView);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src/bin")));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::CompareViewUpOneLevel);
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(snapshot.compare_row_focus_path.as_deref(), Some("src/bin"));
+}

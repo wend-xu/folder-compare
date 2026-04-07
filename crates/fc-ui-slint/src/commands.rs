@@ -35,6 +35,18 @@ pub enum UiCommand {
     LoadSelectedDiff,
     /// Reveals one flat result in tree mode, clearing search when needed, and opens its file view.
     LocateAndOpen(String),
+    /// Opens one directory compare target in workspace Compare View.
+    OpenCompareView(String),
+    /// Moves current Compare View target to its parent directory.
+    CompareViewUpOneLevel,
+    /// Exits Compare View back to the existing Results / File View shell.
+    ExitCompareViewToResults,
+    /// Restores Compare View from File View when the current session came from Compare View.
+    ReturnToCompareView,
+    /// Focuses one immediate-child row inside Compare View.
+    FocusCompareRow(String),
+    /// Opens one file/special-entry row in File View while preserving Compare View return context.
+    OpenFileViewFromCompare(String),
     /// Loads AI analysis for selected detailed diff.
     LoadAiAnalysis,
     /// Switches AI provider mode to mock.

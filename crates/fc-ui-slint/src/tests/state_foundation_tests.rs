@@ -3,7 +3,7 @@ use crate::compare_foundation::CompareFocusPath;
 use crate::tests::fixtures::{
     file_comparison_entry, file_entry, state_from_entries, text_diff_entry,
 };
-use fc_core::{CompareEntry, EntryStatus};
+use fc_core::{CompareEntry, EntryDetail, EntryKind, EntryStatus};
 
 fn sample_entries() -> Vec<CompareEntry> {
     vec![
@@ -252,6 +252,78 @@ fn tree_scroll_request_requires_visible_revealed_source_row() {
     assert_eq!(
         state.navigator_tree_scroll_target_source_index,
         Some(source_index)
+    );
+}
+
+#[test]
+fn compare_view_rows_project_immediate_children_status_and_icons() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        file_entry("src/lib.rs", EntryStatus::Equal),
+        CompareEntry::new("src/only_left.txt", EntryKind::File, EntryStatus::LeftOnly),
+        CompareEntry::new(
+            "src/only_right.txt",
+            EntryKind::File,
+            EntryStatus::RightOnly,
+        ),
+        CompareEntry::new("src/mismatch", EntryKind::File, EntryStatus::Different).with_detail(
+            EntryDetail::TypeMismatch {
+                left: EntryKind::File,
+                right: EntryKind::Directory,
+            },
+        ),
+    ]);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    let rows = state.compare_view_row_projections();
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[0].relative_path, "src/lib.rs");
+    assert_eq!(rows[0].status_label, "Identical");
+    assert_eq!(rows[0].left_icon, "TXT");
+    assert_eq!(rows[0].right_icon, "TXT");
+
+    let deleted = rows
+        .iter()
+        .find(|row| row.relative_path == "src/only_left.txt")
+        .expect("deleted row should exist");
+    assert_eq!(deleted.status_label, "Deleted");
+    assert_eq!(deleted.status_tone, "left");
+    assert_eq!(deleted.right_name, "-");
+
+    let added = rows
+        .iter()
+        .find(|row| row.relative_path == "src/only_right.txt")
+        .expect("added row should exist");
+    assert_eq!(added.status_label, "Added");
+    assert_eq!(added.status_tone, "right");
+    assert_eq!(added.left_name, "-");
+
+    let mismatch = rows
+        .iter()
+        .find(|row| row.relative_path == "src/mismatch")
+        .expect("mismatch row should exist");
+    assert_eq!(mismatch.status_label, "Type mismatch");
+    assert_eq!(mismatch.left_icon, "TXT");
+    assert_eq!(mismatch.right_icon, "DIR");
+    assert!(!mismatch.show_chevron);
+}
+
+#[test]
+fn file_view_header_context_uses_compare_status_and_compare_path() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    let selected_index = state
+        .row_index_for_relative_path("src/main.rs")
+        .expect("selected file should exist");
+    state.selected_row = Some(selected_index);
+    state.selected_relative_path = Some("src/main.rs".to_string());
+
+    assert_eq!(state.file_view_title_text(), "main.rs");
+    assert_eq!(state.file_view_compare_status_label(), "Modified");
+    assert_eq!(state.file_view_compare_status_tone(), "different");
+    assert_eq!(
+        state.file_view_path_context_text(),
+        "Compare Path · src/main.rs"
     );
 }
 
