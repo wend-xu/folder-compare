@@ -1,6 +1,7 @@
 //! Bridge between UI event handlers and presenter logic.
 
 use crate::commands::UiCommand;
+use crate::compare_foundation::CompareFoundation;
 use crate::presenter::Presenter;
 use crate::state::AppState;
 use crate::view_models::{
@@ -10,9 +11,10 @@ use crate::view_models::{
 use fc_ai::{
     AiConfig, AnalysisTask, AnalyzeDiffRequest, AnalyzeDiffResponse, RiskLevel as AiRiskLevel,
 };
+#[cfg(test)]
+use fc_core::{CompareEntry, EntryDetail, EntryKind, EntryStatus, TextDetailDeferredReason};
 use fc_core::{
-    CompareEntry, CompareOptions, CompareReport, CompareRequest, DiffLineKind, EntryDetail,
-    EntryKind, EntryStatus, TextDetailDeferredReason, TextDiffOptions, TextDiffRequest,
+    CompareOptions, CompareReport, CompareRequest, DiffLineKind, TextDiffOptions, TextDiffRequest,
     TextDiffResult, TextDiffSummary,
 };
 use std::fs;
@@ -105,10 +107,12 @@ pub fn map_compare_report(report: CompareReport) -> CompareResultViewModel {
         summary_text.push_str(" | truncated=true");
     }
 
-    let entry_rows = report.entries.iter().map(map_entry_row).collect::<Vec<_>>();
+    let compare_foundation = CompareFoundation::from_compare_entries(&report.entries);
+    let entry_rows = compare_foundation.project_legacy_entry_rows();
 
     CompareResultViewModel {
         summary_text,
+        compare_foundation,
         entry_rows,
         warnings: report.warnings,
         truncated: report.truncated,
@@ -438,6 +442,9 @@ pub fn map_analyze_diff_response(response: AnalyzeDiffResponse) -> AnalysisResul
     }
 }
 
+#[cfg(test)]
+#[cfg(test)]
+#[allow(dead_code)]
 fn map_entry_row(entry: &CompareEntry) -> CompareEntryRowViewModel {
     let diff_blocked_reason = detailed_diff_blocked_reason(entry);
     let analysis_blocked_reason = detailed_analysis_blocked_reason(entry, &diff_blocked_reason);
@@ -454,6 +461,8 @@ fn map_entry_row(entry: &CompareEntry) -> CompareEntryRowViewModel {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn status_text(status: EntryStatus) -> String {
     match status {
         EntryStatus::LeftOnly => "left-only".to_string(),
@@ -465,6 +474,8 @@ fn status_text(status: EntryStatus) -> String {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn detail_text(detail: &EntryDetail, kind: EntryKind) -> String {
     match detail {
         EntryDetail::None => format!("kind={}", kind_text(kind)),
@@ -506,6 +517,8 @@ fn detail_text(detail: &EntryDetail, kind: EntryKind) -> String {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn detail_kind_text(detail: &EntryDetail) -> &'static str {
     match detail {
         EntryDetail::None => "none",
@@ -518,6 +531,8 @@ fn detail_kind_text(detail: &EntryDetail) -> &'static str {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn kind_text(kind: EntryKind) -> &'static str {
     match kind {
         EntryKind::File => "file",
@@ -527,6 +542,8 @@ fn kind_text(kind: EntryKind) -> &'static str {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn detailed_diff_blocked_reason(entry: &CompareEntry) -> Option<String> {
     if entry.kind != EntryKind::File {
         return Some("detailed text diff is only available for file entries".to_string());
@@ -566,6 +583,8 @@ fn detailed_diff_blocked_reason(entry: &CompareEntry) -> Option<String> {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 fn detailed_analysis_blocked_reason(
     entry: &CompareEntry,
     diff_blocked_reason: &Option<String>,

@@ -1,5 +1,7 @@
 //! View model definitions for Slint binding.
 
+use crate::compare_foundation::CompareFoundation;
+
 /// One compare entry row rendered by the MVP list.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompareEntryRowViewModel {
@@ -23,22 +25,13 @@ pub struct CompareEntryRowViewModel {
     pub analysis_blocked_reason: Option<String>,
 }
 
-impl CompareEntryRowViewModel {
-    /// Returns true when filter text matches path/name only (case-insensitive).
-    pub fn matches_filter(&self, filter: &str) -> bool {
-        let needle = filter.trim().to_lowercase();
-        if needle.is_empty() {
-            return true;
-        }
-        self.relative_path.to_lowercase().contains(&needle)
-    }
-}
-
 /// Compare result view model projected from `fc-core::CompareReport`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompareResultViewModel {
     /// Summary text rendered in the header area.
     pub summary_text: String,
+    /// Structured compare-data foundation for workspace projections.
+    pub compare_foundation: CompareFoundation,
     /// Flat result rows for list rendering.
     pub entry_rows: Vec<CompareEntryRowViewModel>,
     /// Warning lines to show in warning area.

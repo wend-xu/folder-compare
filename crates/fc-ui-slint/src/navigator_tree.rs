@@ -1,38 +1,11 @@
-//! Rust-owned tree domain for Results / Navigator tree mode.
+//! Rust-owned tree projection for Results / Navigator tree mode.
 
-use crate::view_models::CompareEntryRowViewModel;
+use crate::compare_foundation::{CompareFoundation, CompareFoundationNode, CompareNodeKind};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CanonicalNavigatorTree {
-    nodes: BTreeMap<String, CanonicalNavigatorNode>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CanonicalNavigatorNode {
-    key: String,
-    relative_path: String,
-    display_name: String,
-    kind: NavigatorTreeNodeKind,
-    source_index: Option<usize>,
-    direct_status: Option<String>,
-    base_status: String,
-    path_depth: u16,
-    child_keys: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NavigatorTreeNodeKind {
-    Root,
-    Directory,
-    File,
-    Symlink,
-    Other,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 struct FilteredNavigatorNode<'a> {
-    node: &'a CanonicalNavigatorNode,
+    node: &'a CompareFoundationNode,
     display_status: String,
     children: Vec<FilteredNavigatorNode<'a>>,
 }
@@ -58,105 +31,19 @@ pub struct NavigatorTreeRowProjection {
     pub is_selectable: bool,
 }
 
-impl CanonicalNavigatorNode {
-    pub(crate) fn is_directory(&self) -> bool {
-        matches!(
-            self.kind,
-            NavigatorTreeNodeKind::Root | NavigatorTreeNodeKind::Directory
-        )
-    }
-}
-
-pub fn build_canonical_navigator_tree(
-    entry_rows: &[CompareEntryRowViewModel],
-) -> CanonicalNavigatorTree {
-    let mut nodes = BTreeMap::new();
-    nodes.insert(
-        String::new(),
-        CanonicalNavigatorNode {
-            key: String::new(),
-            relative_path: String::new(),
-            display_name: "compare root".to_string(),
-            kind: NavigatorTreeNodeKind::Root,
-            source_index: None,
-            direct_status: None,
-            base_status: "equal".to_string(),
-            path_depth: 0,
-            child_keys: Vec::new(),
-        },
-    );
-
-    for (source_index, row) in entry_rows.iter().enumerate() {
-        let normalized_path = normalize_relative_path(&row.relative_path);
-        let components = path_components(&normalized_path);
-        if components.is_empty() {
-            continue;
-        }
-
-        let final_kind = node_kind_from_entry_kind(&row.entry_kind);
-        let mut parent_key = String::new();
-        for (component_index, component) in components.iter().enumerate() {
-            let is_last = component_index + 1 == components.len();
-            let key = join_path_components(&components[..=component_index]);
-            let path_depth = u16::try_from(component_index + 1).unwrap_or(u16::MAX);
-            let kind = if is_last {
-                final_kind
-            } else {
-                NavigatorTreeNodeKind::Directory
-            };
-
-            nodes
-                .entry(key.clone())
-                .or_insert_with(|| CanonicalNavigatorNode {
-                    key: key.clone(),
-                    relative_path: key.clone(),
-                    display_name: (*component).to_string(),
-                    kind,
-                    source_index: None,
-                    direct_status: None,
-                    base_status: "equal".to_string(),
-                    path_depth,
-                    child_keys: Vec::new(),
-                });
-
-            if !parent_key.is_empty() || key != parent_key {
-                let parent = nodes
-                    .get_mut(&parent_key)
-                    .expect("parent tree node must exist");
-                parent.child_keys.push(key.clone());
-            }
-
-            if is_last {
-                let node = nodes.get_mut(&key).expect("final tree node must exist");
-                node.kind = kind;
-                node.source_index = Some(source_index);
-                node.direct_status = Some(row.status.clone());
-            }
-
-            parent_key = key;
-        }
-    }
-
-    for node in nodes.values_mut() {
-        node.child_keys.sort();
-        node.child_keys.dedup();
-    }
-
-    let root_key = String::new();
-    compute_base_status(&root_key, &mut nodes);
-
-    CanonicalNavigatorTree { nodes }
-}
-
 pub fn project_navigator_tree_rows(
-    tree: &CanonicalNavigatorTree,
+    foundation: &CompareFoundation,
     show_hidden_files: bool,
     status_filter: &str,
     expansion_overrides: &BTreeMap<String, bool>,
 ) -> NavigatorTreeProjection {
     let normalized_filter = normalize_status_filter(status_filter);
-    let Some(root) = filter_tree_node(tree, "", show_hidden_files, normalized_filter.as_str())
-    else {
+    let Some(root) = filter_tree_node(
+        foundation,
+        "",
+        show_hidden_files,
+        normalized_filter.as_str(),
+    ) else {
         return NavigatorTreeProjection {
             rows: Vec::new(),
             selectable_source_indices: BTreeSet::new(),
@@ -182,13 +69,13 @@ pub fn project_navigator_tree_rows(
 }
 
 fn filter_tree_node<'a>(
-    tree: &'a CanonicalNavigatorTree,
+    foundation: &'a CompareFoundation,
     key: &str,
     show_hidden_files: bool,
     status_filter: &str,
 ) -> Option<FilteredNavigatorNode<'a>> {
-    let node = tree.nodes.get(key)?;
-    if !matches!(node.kind, NavigatorTreeNodeKind::Root)
+    let node = foundation.node(key)?;
+    if node.kind != CompareNodeKind::Root
         && !show_hidden_files
         && is_hidden_relative_path(&node.relative_path)
     {
@@ -196,12 +83,19 @@ fn filter_tree_node<'a>(
     }
 
     let children = node
-        .child_keys
+        .child_relative_paths
         .iter()
-        .filter_map(|child_key| filter_tree_node(tree, child_key, show_hidden_files, status_filter))
+        .filter_map(|child_key| {
+            filter_tree_node(
+                foundation,
+                child_key.as_str(),
+                show_hidden_files,
+                status_filter,
+            )
+        })
         .collect::<Vec<_>>();
 
-    if matches!(node.kind, NavigatorTreeNodeKind::Root) {
+    if node.kind == CompareNodeKind::Root {
         return if children.is_empty() {
             None
         } else {
@@ -216,7 +110,7 @@ fn filter_tree_node<'a>(
         };
     }
 
-    let direct_status = node.direct_status.as_deref();
+    let direct_status = node.has_compare_entry().then(|| node.base_status.as_str());
     let keep_without_children = direct_status
         .map(|status| status_filter_matches(status, status_filter))
         .unwrap_or(false);
@@ -248,7 +142,7 @@ fn flatten_filtered_tree(
     out: &mut Vec<NavigatorTreeRowProjection>,
     selectable_source_indices: &mut BTreeSet<usize>,
 ) {
-    if matches!(node.node.kind, NavigatorTreeNodeKind::File) {
+    if node.node.kind == CompareNodeKind::File {
         if let Some(source_index) = node.node.source_index {
             selectable_source_indices.insert(source_index);
         }
@@ -257,17 +151,17 @@ fn flatten_filtered_tree(
     let is_expandable = !node.children.is_empty();
     let is_expanded = is_expandable
         && expansion_state(
-            node.node.key.as_str(),
+            node.node.relative_path.as_str(),
             node.node.path_depth,
             expansion_overrides,
         );
     if push_visible_row {
         out.push(NavigatorTreeRowProjection {
-            key: node.node.key.clone(),
+            key: node.node.relative_path.clone(),
             relative_path: node.node.relative_path.clone(),
             source_index: node.node.source_index,
             depth: node.node.path_depth.saturating_sub(1),
-            is_directory: node.node.is_directory(),
+            is_directory: node.node.kind.is_directory_target(),
             is_expandable,
             is_expanded,
             display_status: node.display_status.clone(),
@@ -277,7 +171,7 @@ fn flatten_filtered_tree(
             } else {
                 node.node.relative_path.clone()
             },
-            is_selectable: matches!(node.node.kind, NavigatorTreeNodeKind::File)
+            is_selectable: node.node.kind == CompareNodeKind::File
                 && node.node.source_index.is_some(),
         });
     }
@@ -306,28 +200,22 @@ fn expansion_state(
 }
 
 pub(crate) fn navigator_tree_toggle_target(
-    entry_rows: &[CompareEntryRowViewModel],
+    foundation: &CompareFoundation,
     key: &str,
 ) -> Option<(String, u16)> {
     let normalized_key = normalize_relative_path(key);
-    if normalized_key.is_empty() {
+    let node = foundation.node(normalized_key.as_str())?;
+    if normalized_key.is_empty()
+        || !node.kind.is_directory_target()
+        || node.child_relative_paths.is_empty()
+    {
         return None;
     }
-
-    let prefix = format!("{normalized_key}/");
-    entry_rows
-        .iter()
-        .map(|row| normalize_relative_path(&row.relative_path))
-        .any(|relative_path| relative_path.starts_with(prefix.as_str()))
-        .then(|| {
-            let path_depth =
-                u16::try_from(path_components(normalized_key.as_str()).len()).unwrap_or(u16::MAX);
-            (normalized_key, path_depth)
-        })
+    Some((normalized_key, node.path_depth))
 }
 
 pub(crate) fn navigator_tree_reveal_targets(
-    entry_rows: &[CompareEntryRowViewModel],
+    foundation: &CompareFoundation,
     relative_path: &str,
 ) -> Vec<(String, u16)> {
     let normalized_path = normalize_relative_path(relative_path);
@@ -339,36 +227,11 @@ pub(crate) fn navigator_tree_reveal_targets(
     let mut targets = Vec::new();
     for index in 0..components.len().saturating_sub(1) {
         let key = join_path_components(&components[..=index]);
-        if let Some(target) = navigator_tree_toggle_target(entry_rows, key.as_str()) {
+        if let Some(target) = navigator_tree_toggle_target(foundation, key.as_str()) {
             targets.push(target);
         }
     }
     targets
-}
-
-fn compute_base_status(key: &str, nodes: &mut BTreeMap<String, CanonicalNavigatorNode>) -> String {
-    let child_keys = nodes
-        .get(key)
-        .expect("tree node must exist")
-        .child_keys
-        .clone();
-    let child_statuses = child_keys
-        .iter()
-        .map(|child_key| compute_base_status(child_key, nodes))
-        .collect::<Vec<_>>();
-
-    let fallback = nodes
-        .get(key)
-        .and_then(|node| node.direct_status.clone())
-        .unwrap_or_else(|| "equal".to_string());
-    let aggregated = aggregate_statuses(
-        child_statuses.iter().map(|status| status.as_str()),
-        fallback.as_str(),
-    );
-    if let Some(node) = nodes.get_mut(key) {
-        node.base_status = aggregated.clone();
-    }
-    aggregated
 }
 
 fn aggregate_statuses<'a>(statuses: impl IntoIterator<Item = &'a str>, fallback: &str) -> String {
@@ -405,15 +268,6 @@ fn status_filter_matches(status: &str, filter: &str) -> bool {
     filter == "all" || status.eq_ignore_ascii_case(filter)
 }
 
-fn node_kind_from_entry_kind(entry_kind: &str) -> NavigatorTreeNodeKind {
-    match entry_kind.trim().to_ascii_lowercase().as_str() {
-        "directory" => NavigatorTreeNodeKind::Directory,
-        "symlink" => NavigatorTreeNodeKind::Symlink,
-        "other" => NavigatorTreeNodeKind::Other,
-        _ => NavigatorTreeNodeKind::File,
-    }
-}
-
 fn normalize_relative_path(relative_path: &str) -> String {
     relative_path
         .trim()
@@ -445,6 +299,8 @@ fn is_hidden_relative_path(relative_path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compare_foundation::foundation_from_legacy_rows;
+    use crate::view_models::CompareEntryRowViewModel;
 
     fn row(
         relative_path: &str,
@@ -463,48 +319,15 @@ mod tests {
     }
 
     #[test]
-    fn canonical_tree_builds_missing_ancestors_without_duplicates() {
-        let rows = vec![
-            row("src/app/main.rs", "different", "file", true),
-            row("src/app/lib.rs", "equal", "file", true),
-            row("assets/logo.png", "different", "file", false),
-        ];
-
-        let tree = build_canonical_navigator_tree(&rows);
-
-        let src = tree.nodes.get("src").expect("src directory should exist");
-        assert!(src.is_directory());
-        assert_eq!(src.path_depth, 1);
-        assert_eq!(src.child_keys, vec!["src/app".to_string()]);
-
-        let app = tree
-            .nodes
-            .get("src/app")
-            .expect("app directory should exist");
-        assert!(app.is_directory());
-        assert_eq!(app.child_keys.len(), 2);
-        assert!(app.child_keys.contains(&"src/app/lib.rs".to_string()));
-        assert!(app.child_keys.contains(&"src/app/main.rs".to_string()));
-
-        let main = tree
-            .nodes
-            .get("src/app/main.rs")
-            .expect("main file should exist");
-        assert!(!main.is_directory());
-        assert_eq!(main.source_index, Some(0));
-    }
-
-    #[test]
     fn projection_defaults_top_level_directories_to_expanded() {
-        let rows = vec![
+        let foundation = foundation_from_legacy_rows(&[
             row("src/main.rs", "different", "file", true),
             row("src/util.rs", "equal", "file", true),
             row("Cargo.toml", "equal", "file", true),
-        ];
+        ]);
 
-        let tree = build_canonical_navigator_tree(&rows);
         let projection =
-            project_navigator_tree_rows(&tree, true, "all", &BTreeMap::<String, bool>::new());
+            project_navigator_tree_rows(&foundation, true, "all", &BTreeMap::<String, bool>::new());
 
         assert_eq!(projection.rows[0].key, "Cargo.toml");
         assert_eq!(projection.rows[1].key, "src");
@@ -515,14 +338,14 @@ mod tests {
 
     #[test]
     fn status_filter_prunes_tree_and_recomputes_directory_status() {
-        let rows = vec![
+        let foundation = foundation_from_legacy_rows(&[
             row("src", "equal", "directory", false),
             row("src/a.txt", "equal", "file", true),
             row("src/b.txt", "different", "file", true),
-        ];
+        ]);
 
-        let tree = build_canonical_navigator_tree(&rows);
-        let projection = project_navigator_tree_rows(&tree, true, "different", &BTreeMap::new());
+        let projection =
+            project_navigator_tree_rows(&foundation, true, "different", &BTreeMap::new());
 
         assert_eq!(projection.rows.len(), 2);
         assert_eq!(projection.rows[0].key, "src");
@@ -535,14 +358,13 @@ mod tests {
 
     #[test]
     fn hidden_files_filter_excludes_hidden_subtree_rows() {
-        let rows = vec![
+        let foundation = foundation_from_legacy_rows(&[
             row(".env", "different", "file", true),
             row("src/.cache/data.json", "different", "file", true),
             row("src/main.rs", "different", "file", true),
-        ];
+        ]);
 
-        let tree = build_canonical_navigator_tree(&rows);
-        let projection = project_navigator_tree_rows(&tree, false, "all", &BTreeMap::new());
+        let projection = project_navigator_tree_rows(&foundation, false, "all", &BTreeMap::new());
 
         assert!(
             projection
@@ -561,53 +383,33 @@ mod tests {
     }
 
     #[test]
-    fn expansion_override_can_collapse_top_level_directory_without_changing_membership() {
-        let rows = vec![
-            row("src/main.rs", "different", "file", true),
-            row("src/lib.rs", "equal", "file", true),
-        ];
-        let tree = build_canonical_navigator_tree(&rows);
-        let projection = project_navigator_tree_rows(
-            &tree,
-            true,
-            "all",
-            &BTreeMap::from([(String::from("src"), false)]),
-        );
-
-        assert_eq!(projection.rows.len(), 1);
-        assert_eq!(projection.rows[0].key, "src");
-        assert!(!projection.rows[0].is_expanded);
-        assert_eq!(
-            projection.selectable_source_indices,
-            BTreeSet::from([0usize, 1usize])
-        );
-    }
-
-    #[test]
-    fn toggle_target_accepts_missing_ancestor_directory_with_descendants() {
-        let rows = vec![
+    fn toggle_target_accepts_expandable_directory_only() {
+        let foundation = foundation_from_legacy_rows(&[
             row("src/app/main.rs", "different", "file", true),
             row("src/app/lib.rs", "equal", "file", true),
-        ];
+        ]);
 
         assert_eq!(
-            navigator_tree_toggle_target(&rows, "src/app"),
+            navigator_tree_toggle_target(&foundation, "src/app"),
             Some((String::from("src/app"), 2))
         );
-        assert_eq!(navigator_tree_toggle_target(&rows, "src/app/main.rs"), None);
+        assert_eq!(
+            navigator_tree_toggle_target(&foundation, "src/app/main.rs"),
+            None
+        );
     }
 
     #[test]
     fn reveal_targets_include_expandable_ancestors_only() {
-        let rows = vec![
+        let foundation = foundation_from_legacy_rows(&[
             row("src/app/main.rs", "different", "file", true),
             row("src/app/lib.rs", "equal", "file", true),
-        ];
+        ]);
 
         assert_eq!(
-            navigator_tree_reveal_targets(&rows, "src/app/main.rs"),
+            navigator_tree_reveal_targets(&foundation, "src/app/main.rs"),
             vec![("src".to_string(), 1), ("src/app".to_string(), 2)]
         );
-        assert!(navigator_tree_reveal_targets(&rows, "src").is_empty());
+        assert!(navigator_tree_reveal_targets(&foundation, "src").is_empty());
     }
 }

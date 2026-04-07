@@ -6,7 +6,7 @@ use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
 use crate::settings::{
     self, AppPreferences, BehaviorSettings, DefaultResultsView, ProviderSettings,
 };
-use crate::state::{AppState, NavigatorViewMode};
+use crate::state::{AppState, NavigatorViewMode, WorkspaceMode};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -283,6 +283,9 @@ impl Presenter {
             .selected_row
             .and_then(|value| state.entry_rows.get(value))
             .cloned();
+        if selected_row_vm.is_some() {
+            state.set_workspace_mode(WorkspaceMode::FileView);
+        }
         state.selected_relative_path = selected_row_vm
             .as_ref()
             .map(|row| row.relative_path.clone());
@@ -447,7 +450,7 @@ impl Presenter {
     fn execute_compare(&self) {
         let state_change_notifier = Arc::clone(&self.state_change_notifier);
         let presenter_for_restore = self.clone();
-        let (left_root, right_root, restore_relative_path, state_ref) = {
+        let (left_root, right_root, restore_relative_path, restore_compare_focus_path, state_ref) = {
             let mut state = self.state.lock().expect("state mutex poisoned");
             if state.running {
                 return;
@@ -478,6 +481,7 @@ impl Presenter {
                 state.left_root.clone(),
                 state.right_root.clone(),
                 restore_relative_path,
+                state.compare_focus_path.clone(),
                 Arc::clone(&self.state),
             )
         };
@@ -499,7 +503,9 @@ impl Presenter {
                     Ok(vm) => {
                         let count = vm.entry_rows.len();
                         state.summary_text = vm.summary_text;
+                        state.set_compare_foundation(vm.compare_foundation);
                         state.entry_rows = vm.entry_rows;
+                        state.set_compare_focus_path(restore_compare_focus_path.clone());
                         state.prune_navigator_tree_expansion_overrides();
                         state.mark_navigator_projection_revisions();
                         state.warning_lines = vm.warnings;
@@ -525,6 +531,7 @@ impl Presenter {
                     }
                     Err(message) => {
                         state.summary_text.clear();
+                        state.clear_compare_foundation();
                         state.entry_rows.clear();
                         state.prune_navigator_tree_expansion_overrides();
                         state.mark_navigator_projection_revisions();
