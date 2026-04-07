@@ -11,6 +11,8 @@ mod navigator_tree;
 mod presenter;
 mod settings;
 mod state;
+#[cfg(test)]
+mod tests;
 mod toast_controller;
 mod view_models;
 mod window_chrome;

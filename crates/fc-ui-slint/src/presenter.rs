@@ -839,6 +839,10 @@ fn settings_default_results_view(value: NavigatorViewMode) -> DefaultResultsView
 }
 
 #[cfg(test)]
+#[path = "tests/presenter_foundation_tests.rs"]
+mod foundation_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
@@ -1156,130 +1160,6 @@ mod tests {
             snapshot.diff_shell_state(),
             crate::state::DiffShellState::DetailedReady
         );
-    }
-
-    #[test]
-    fn switching_to_tree_marks_directory_selection_stale() {
-        let state = Arc::new(Mutex::new(AppState {
-            entry_rows: vec![
-                crate::view_models::CompareEntryRowViewModel {
-                    relative_path: "src".to_string(),
-                    status: "equal".to_string(),
-                    entry_kind: "directory".to_string(),
-                    ..crate::view_models::CompareEntryRowViewModel::default()
-                },
-                crate::view_models::CompareEntryRowViewModel {
-                    relative_path: "src/main.rs".to_string(),
-                    status: "different".to_string(),
-                    entry_kind: "file".to_string(),
-                    can_load_diff: true,
-                    can_load_analysis: true,
-                    ..crate::view_models::CompareEntryRowViewModel::default()
-                },
-            ],
-            selected_row: Some(0),
-            selected_relative_path: Some("src".to_string()),
-            navigator_runtime_view_mode: NavigatorViewMode::Flat,
-            ..AppState::default()
-        }));
-        let presenter = Presenter::new(state);
-
-        presenter.handle_command(UiCommand::SetNavigatorViewModeTree);
-        let snapshot = presenter.state_snapshot();
-        assert_eq!(snapshot.selected_row, None);
-        assert_eq!(snapshot.selected_relative_path.as_deref(), Some("src"));
-        assert_eq!(
-            snapshot.diff_shell_state(),
-            crate::state::DiffShellState::StaleSelection
-        );
-    }
-
-    #[test]
-    fn switching_to_tree_reveals_selected_file_and_keeps_file_view_open() {
-        let state = Arc::new(Mutex::new(AppState {
-            entry_rows: vec![crate::view_models::CompareEntryRowViewModel {
-                relative_path: "src/bin/main.rs".to_string(),
-                status: "different".to_string(),
-                entry_kind: "file".to_string(),
-                can_load_diff: true,
-                can_load_analysis: true,
-                ..crate::view_models::CompareEntryRowViewModel::default()
-            }],
-            selected_row: Some(0),
-            selected_relative_path: Some("src/bin/main.rs".to_string()),
-            selected_diff: Some(crate::view_models::DiffPanelViewModel::default()),
-            navigator_runtime_view_mode: NavigatorViewMode::Flat,
-            navigator_tree_expansion_overrides: std::collections::BTreeMap::from([(
-                "src/bin".to_string(),
-                false,
-            )]),
-            ..AppState::default()
-        }));
-        let presenter = Presenter::new(state);
-
-        presenter.handle_command(UiCommand::SetNavigatorViewModeTree);
-        let snapshot = presenter.state_snapshot();
-        assert_eq!(snapshot.selected_row, Some(0));
-        assert_eq!(
-            snapshot.selected_relative_path.as_deref(),
-            Some("src/bin/main.rs")
-        );
-        assert!(snapshot.selected_diff.is_some());
-        assert_eq!(
-            snapshot.navigator_runtime_view_mode,
-            NavigatorViewMode::Tree
-        );
-        assert!(
-            snapshot
-                .navigator_tree_row_projections()
-                .iter()
-                .any(|row| row.key == "src/bin/main.rs")
-        );
-        assert_eq!(
-            snapshot.navigator_tree_expansion_overrides.get("src/bin"),
-            Some(&true)
-        );
-        assert_eq!(snapshot.navigator_tree_scroll_request_revision, 1);
-        assert_eq!(snapshot.navigator_tree_scroll_target_source_index, Some(0));
-    }
-
-    #[test]
-    fn switching_to_flat_requests_scroll_for_visible_selected_row() {
-        let state = Arc::new(Mutex::new(AppState {
-            entry_rows: vec![
-                crate::view_models::CompareEntryRowViewModel {
-                    relative_path: "src/lib.rs".to_string(),
-                    status: "equal".to_string(),
-                    entry_kind: "file".to_string(),
-                    can_load_diff: true,
-                    can_load_analysis: true,
-                    ..crate::view_models::CompareEntryRowViewModel::default()
-                },
-                crate::view_models::CompareEntryRowViewModel {
-                    relative_path: "src/main.rs".to_string(),
-                    status: "different".to_string(),
-                    entry_kind: "file".to_string(),
-                    can_load_diff: true,
-                    can_load_analysis: true,
-                    ..crate::view_models::CompareEntryRowViewModel::default()
-                },
-            ],
-            selected_row: Some(1),
-            selected_relative_path: Some("src/main.rs".to_string()),
-            navigator_runtime_view_mode: NavigatorViewMode::Tree,
-            ..AppState::default()
-        }));
-        let presenter = Presenter::new(state);
-
-        presenter.handle_command(UiCommand::SetNavigatorViewModeFlat);
-        let snapshot = presenter.state_snapshot();
-        assert_eq!(
-            snapshot.navigator_runtime_view_mode,
-            NavigatorViewMode::Flat
-        );
-        assert_eq!(snapshot.selected_row, Some(1));
-        assert_eq!(snapshot.navigator_flat_scroll_request_revision, 1);
-        assert_eq!(snapshot.navigator_flat_scroll_target_source_index, Some(1));
     }
 
     #[test]
@@ -1922,48 +1802,6 @@ mod tests {
         });
         let snapshot = presenter.state_snapshot();
         assert!(snapshot.settings_error_message.is_some());
-    }
-
-    #[test]
-    fn save_settings_hiding_selected_row_marks_it_stale() {
-        let state = Arc::new(Mutex::new(AppState {
-            entry_rows: vec![
-                crate::view_models::CompareEntryRowViewModel {
-                    relative_path: ".env".to_string(),
-                    status: "different".to_string(),
-                    can_load_diff: true,
-                    can_load_analysis: true,
-                    ..crate::view_models::CompareEntryRowViewModel::default()
-                },
-                crate::view_models::CompareEntryRowViewModel {
-                    relative_path: "src/main.rs".to_string(),
-                    status: "different".to_string(),
-                    can_load_diff: true,
-                    can_load_analysis: true,
-                    ..crate::view_models::CompareEntryRowViewModel::default()
-                },
-            ],
-            selected_row: Some(0),
-            selected_relative_path: Some(".env".to_string()),
-            show_hidden_files: true,
-            ..AppState::default()
-        }));
-        let presenter = Presenter::new(state);
-
-        presenter.handle_command(UiCommand::SaveAppSettings {
-            provider_kind: fc_ai::AiProviderKind::Mock,
-            endpoint: String::new(),
-            api_key: String::new(),
-            model: "gpt-4o-mini".to_string(),
-            timeout_secs_text: "30".to_string(),
-            show_hidden_files: false,
-            default_results_view: NavigatorViewMode::Tree,
-        });
-
-        let snapshot = presenter.state_snapshot();
-        assert_eq!(snapshot.selected_row, None);
-        assert_eq!(snapshot.selected_relative_path.as_deref(), Some(".env"));
-        assert!(!snapshot.show_hidden_files);
     }
 
     #[test]

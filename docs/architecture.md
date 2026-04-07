@@ -569,6 +569,13 @@
 - `Phase 19B` still refers to the later Compare View surface work on top of that foundation; those surfaces are not implemented in the current baseline.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
+## Related Documents
+
+- `docs/thread-context.md`
+  - short handoff document for the next thread
+- `docs/testing-guidelines.md`
+  - test placement, fixture, and source-of-truth rules for the current repository layout
+
 ## Documentation Update Contract
 
 - Update this file whenever the stable baseline, the `Phase 18` closeout boundary, the default next-stage activation, or the active deferred list materially changes.
