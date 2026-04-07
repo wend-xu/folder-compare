@@ -1,0 +1,346 @@
+import { ListView } from "std-widgets.slint";
+import { UiPalette } from "ui_palette.slint";
+
+component CompareKindGlyph inherits Rectangle {
+    in property <string> label: "TXT";
+    in property <bool> present: true;
+
+    width: 28px;
+    height: 18px;
+    border-width: 1px;
+    border-radius: 5px;
+    border-color: root.present ? #d7e0ea : #e4eaf1;
+    background: root.present ? #f5f8fc : #fafbfd;
+
+    Text {
+        text: root.label;
+        width: parent.width;
+        height: parent.height;
+        color: root.present ? #57708a : #98a5b4;
+        font-size: 9px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component CompareEntryCell inherits Rectangle {
+    in property <string> icon;
+    in property <string> name;
+    in property <bool> present: true;
+    in property <bool> emphasized: false;
+
+    clip: true;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        CompareKindGlyph {
+            label: root.present ? root.icon : "---";
+            present: root.present;
+        }
+
+        Text {
+            text: root.name;
+            color: root.present
+                ? (root.emphasized ? #294b6b : #395164)
+                : #98a5b4;
+            font-size: 13px;
+            font-weight: root.present ? 600 : 400;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+}
+
+component CompareStatusCell inherits Rectangle {
+    in property <string> label;
+    in property <string> tone: "neutral";
+    in property <bool> emphasized: false;
+
+    clip: true;
+    background: transparent;
+
+    Text {
+        text: root.label;
+        width: parent.width;
+        height: parent.height;
+        color: root.tone == "different"
+            ? #9a5b32
+            : (root.tone == "equal"
+                ? #3f6b4d
+                : (root.tone == "left"
+                    ? #705844
+                    : (root.tone == "right"
+                        ? #375f78
+                        : (root.tone == "warn"
+                            ? #8a6464
+                            : #667789))));
+        font-size: 12px;
+        font-weight: root.emphasized ? 700 : 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component CompareViewChevron inherits Rectangle {
+    width: 12px;
+    height: 12px;
+    background: transparent;
+
+    Path {
+        x: 2px;
+        y: 2px;
+        width: 8px;
+        height: 8px;
+        viewbox-width: 8;
+        viewbox-height: 8;
+        fill: transparent;
+        stroke: UiPalette.results_row_tone_neutral_context_text;
+        stroke-width: 1.4px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+
+        MoveTo { x: 2; y: 1; }
+        LineTo { x: 5; y: 4; }
+        LineTo { x: 2; y: 7; }
+    }
+}
+
+component CompareViewRow inherits Rectangle {
+    in property <string> row_path;
+    in property <string> left_icon;
+    in property <string> left_name;
+    in property <bool> left_present: false;
+    in property <string> status_label;
+    in property <string> status_tone: "neutral";
+    in property <string> right_icon;
+    in property <string> right_name;
+    in property <bool> right_present: false;
+    in property <bool> show_chevron: false;
+    in property <int> row_index: -1;
+    in property <int> focused_row: -1;
+    in property <bool> enabled: true;
+    callback row_focused(string);
+    callback row_activated(string);
+    callback row_context_menu_requested(string, length, length);
+
+    property <bool> row_focused_state: root.row_index == root.focused_row;
+    property <bool> row_hovered: row_touch_area.has_hover;
+
+    height: 40px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: root.row_focused_state ? #d6e2ef : #edf2f7;
+    background: root.row_focused_state
+        ? rgba(235, 242, 250, 0.95)
+        : (root.row_hovered ? rgba(247, 250, 253, 0.96) : transparent);
+    opacity: root.enabled ? 1 : 0.7;
+    clip: true;
+
+    Rectangle {
+        visible: root.row_focused_state;
+        x: 0px;
+        y: 6px;
+        width: 2px;
+        height: parent.height - 12px;
+        border-radius: 1px;
+        background: #8eaed1;
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+
+        CompareEntryCell {
+            icon: root.left_icon;
+            name: root.left_name;
+            present: root.left_present;
+            emphasized: root.row_focused_state;
+            horizontal-stretch: 1;
+        }
+
+        Rectangle {
+            width: 1px;
+            height: parent.height - 10px;
+            background: #edf2f7;
+        }
+
+        CompareStatusCell {
+            width: 118px;
+            label: root.status_label;
+            tone: root.status_tone;
+            emphasized: root.row_focused_state;
+        }
+
+        Rectangle {
+            width: 1px;
+            height: parent.height - 10px;
+            background: #edf2f7;
+        }
+
+        CompareEntryCell {
+            icon: root.right_icon;
+            name: root.right_name;
+            present: root.right_present;
+            emphasized: root.row_focused_state;
+            horizontal-stretch: 1;
+        }
+
+        Rectangle {
+            width: 12px;
+            background: transparent;
+
+            CompareViewChevron {
+                visible: root.show_chevron;
+                x: 0px;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
+
+    row_touch_area := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.row_focused(root.row_path);
+        }
+        double-clicked => {
+            root.row_focused(root.row_path);
+            root.row_activated(root.row_path);
+        }
+        pointer-event(event) => {
+            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                root.row_focused(root.row_path);
+                root.row_context_menu_requested(
+                    root.row_path,
+                    self.absolute-position.x + self.mouse-x,
+                    self.absolute-position.y + self.mouse-y,
+                );
+            }
+        }
+    }
+}
+
+export component CompareView inherits Rectangle {
+    in property <[string]> row_paths;
+    in property <[string]> row_left_icons;
+    in property <[string]> row_left_names;
+    in property <[bool]> row_left_present;
+    in property <[string]> row_status_labels;
+    in property <[string]> row_status_tones;
+    in property <[string]> row_right_icons;
+    in property <[string]> row_right_names;
+    in property <[bool]> row_right_present;
+    in property <[bool]> row_show_chevrons;
+    in property <int> focused_row: -1;
+    in property <bool> interaction_enabled: true;
+    callback row_focused(string);
+    callback row_activated(string);
+    callback row_context_menu_requested(string, length, length);
+    callback back_requested();
+
+    forward-focus: compare_focus_scope;
+    clip: true;
+
+    public function ensure_row_visible(target_row: int) {
+        compare_list.ensure_row_visible(target_row);
+    }
+
+    public function focus_rows() {
+        compare_focus_scope.focus();
+    }
+
+    compare_focus_scope := FocusScope {
+        x: 0px;
+        width: 0px;
+
+        key-pressed(event) => {
+            if event.text == Key.UpArrow {
+                if root.row_paths.length > 0 {
+                    let current = root.focused_row < 0 ? 0 : max(0, root.focused_row - 1);
+                    root.row_focused(root.row_paths[current]);
+                }
+                return accept;
+            } else if event.text == Key.DownArrow {
+                if root.row_paths.length > 0 {
+                    let current = root.focused_row < 0
+                        ? 0
+                        : min(root.row_paths.length - 1, root.focused_row + 1);
+                    root.row_focused(root.row_paths[current]);
+                }
+                return accept;
+            } else if event.text == Key.Return {
+                if root.focused_row >= 0 && root.focused_row < root.row_paths.length {
+                    root.row_activated(root.row_paths[root.focused_row]);
+                }
+                return accept;
+            } else if event.text == Key.Backspace {
+                root.back_requested();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    compare_list := ListView {
+        width: parent.width;
+        height: parent.height;
+        property <length> row_height: 40px;
+        property <length> ensure_visible_padding: 14px;
+
+        function ensure_row_visible(target_row: int) {
+            if target_row < 0 || target_row >= root.row_paths.length {
+                return;
+            }
+
+            let top_limit = min(
+                self.ensure_visible_padding,
+                max(0px, self.visible-height - self.row_height),
+            );
+            let bottom_limit = max(
+                self.row_height,
+                self.visible-height - self.ensure_visible_padding,
+            );
+            let target_top = self.viewport-y + target_row * self.row_height;
+            let target_bottom = target_top + self.row_height;
+            if target_top < top_limit {
+                self.viewport-y += top_limit - target_top;
+            }
+            if target_bottom > bottom_limit {
+                self.viewport-y -= target_bottom - bottom_limit;
+            }
+        }
+
+        for row_path[index] in root.row_paths: row_item := CompareViewRow {
+            row_path: row_path;
+            row_index: index;
+            focused_row: root.focused_row;
+            enabled: root.interaction_enabled;
+            left_icon: root.row_left_icons[index];
+            left_name: root.row_left_names[index];
+            left_present: root.row_left_present[index];
+            status_label: root.row_status_labels[index];
+            status_tone: root.row_status_tones[index];
+            right_icon: root.row_right_icons[index];
+            right_name: root.row_right_names[index];
+            right_present: root.row_right_present[index];
+            show_chevron: root.row_show_chevrons[index];
+            row_focused(path) => {
+                compare_focus_scope.focus();
+                root.row_focused(path);
+            }
+            row_activated(path) => {
+                compare_focus_scope.focus();
+                root.row_activated(path);
+            }
+            row_context_menu_requested(path, anchor_x, anchor_y) => {
+                compare_focus_scope.focus();
+                root.row_context_menu_requested(path, anchor_x, anchor_y);
+            }
+        }
+    }
+}
