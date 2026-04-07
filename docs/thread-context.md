@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Post-Phase 18 Closeout + macOS font-bootstrap baseline)
+# Folder Compare Thread Context (Post-Phase 18 Closeout Handoff + macOS font-bootstrap baseline)
 
 ## 目的
 
@@ -6,34 +6,23 @@
 - 只记录当前真实事实、当前边界、下一线程入口。
 - 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
-## 本轮更新说明（2026-04-06）
+## 本轮更新说明（2026-04-07）
 
-- `Phase 18A` dual-view baseline 与 `Phase 18B` mode-linkage baseline 继续成立，并已推进到 `Phase 18C` visible-region / polish baseline。
-- `Settings -> Behavior` 现已持久化默认结果视图（`Tree` / `Flat`），并写入 `settings.toml`。
-- tree / flat 切换现会在目标 mode 仍有效时保持当前文件 selection；切换完成后，目标 row 会在当前视口内自动滚动回可见区域。
-- flat results 现已统一支持 `Locate and Open`：
-  - 搜索态 flat 与显式 flat mode 都可用
-  - 动作链路为：必要时清搜索 -> 切 tree -> 展开祖先 -> 定位并滚动到 file leaf -> 打开右侧 file-view
-- `Phase 18C fix-1` 已完成：
-  - 搜索态 `Locate and Open` 回 tree 时会同步清空 `Filter / Scope` 中的 search 文本，不再残留 UI / state 错位
-  - 非搜索 `flat -> tree` 连续性继续成立；当前文件会按既有 locate 语义展开祖先链并回到 tree 可见区域
-  - tree 名称/状态色已再收一轮减法，改为更轻、更亮、更克制的 navigator tone
-- compare rerun 不再清空 expanded-path overrides；当前会保留仍然有效的 expanded/collapsed 路径并 prune 无效项。
-- tree row 保持 lightweight navigator 语言，同时把 restrained status tone 轻量延伸到文件/目录名。
-- `UiTypography` 与 runtime font-family 中转层已删除；窗口文本面回到 Slint 默认 generic-family 路径。
-- macOS 文本兼容逻辑现集中在 `crates/fc-ui-slint/src/macos_font_bootstrap.rs`：
-  - 启动时用 CoreText 找到并注册 `PingFang SC`
-  - 作为当前 `Slint 1.15.1 + fontique 0.7.0` 栈的临时兼容 shim
-- 已确认的依赖层事实：
-  - `macOS 13.5` 时先暴露的是字体回退/选字问题，当时通过显式 `PingFang SC` 暂时规避
-  - 升级到 `macOS 15.7` 后，`fontique 0.7.0` 的字体发现问题也被暴露出来，单纯指定字体不再可靠
-  - 当前 `Slint + Parley + fontique (+ renderer)` 栈仍存在 mixed-text fallback/selection 问题，但这部分暂不归因到单一 crate
-  - `fontique 0.8.0` 已修复相关发现问题，但当前项目何时能随 Slint 升级拿到该修复仍不确定
-- `docs/thread-context.md` 与 `README.md` 已同步到当前 `18` 收口后的 handoff 入口，避免后续线程仍把 `18C fix-*` 当成默认主线。
+- 当前真实代码基线已明确收口到 `Phase 18` closeout（含 `18C fix-1`），不再把 `18C fix-*` 当默认主线。
+- 默认下一入口已切换为 `Phase 19` 草案讨论；只有遇到明确 regression，才回到 `18C fix-*` 做窄修复。
+- 当前必须继承的 navigator 事实已固定：
+  - `Results / Navigator` 已是 `tree + flat` 双视图基线
+  - 非搜索默认 view 来自 `Settings -> Behavior -> Default view`
+  - 搜索非空强制 `flat`
+  - tree / flat 已具备 locate / ensure-visible / selection continuity
+  - 目录节点只 toggle，不进入 file-view selection
+- `Compare View / File View` 双模式 workspace 仍未实现；tree 内搜索、内容搜索、目录详情、compare-core widening 仍是 deferred。
+- 字体方向维持当前集中式 macOS bootstrap shim 这一临时兼容基线；不要把它扩张成长期应用层字体策略。
+- `docs/architecture.md`、`docs/thread-context.md` 与 `README.md` 现已统一到同一 handoff 入口。
 
 ## 快照（Snapshot）
 
-- 日期：`2026-04-06`（Asia/Shanghai）
+- 日期：`2026-04-07`（Asia/Shanghai）
 - 分支：`dev`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
@@ -124,10 +113,18 @@
   - 避免在应用层继续分散引入新的字体中转逻辑
 - 不要回退到“flat-only baseline”叙事，也不要把本轮已实现内容继续当 proposal。
 
+## 当前不要做什么
+
+- 不要把继续滚动 `18C fix-*` 当成默认主线；只有明确 regression 才回去做补丁。
+- 不要顺手重开字体策略讨论；当前边界是维持 `macos_font_bootstrap.rs` 这一临时 shim，并等待上游升级窗口。
+- 不要把 `Phase 19` 未确认的设计拆分、workspace 形态或 compare-core 变更写成已实现事实。
+- 不要在没有明确目标的情况下，顺手重开 directory selection、directory detail pane、tree search、content search 或 compare-core widening。
+
 ## 仍然明确未做（Out of Scope / Deferred）
 
 - locate 动画反馈 / 额外一次性强调效果（当前只有 ensure-visible + selection highlight）
 - 目录进入右侧 file-view selection
+- 目录 selection / 目录详情面板
 - tree 内搜索 / 内容搜索 / match-span 高亮
 - 目录 secondary text / descendant counts / summary
 - Compare View / File View workspace 重构
@@ -188,7 +185,7 @@
   - status filter / hidden-files 在多层目录上的显示
   - macOS 15.x 下 `中`、`Ａ`、`（`、`中Ａ（`、左树文件行、左树目录行、diff 正文是否仍正确显示
 
-## 新线程提示词模板（Handoff Prompt）
+## Phase 19 草案讨论入口
 
 建议新线程首条消息直接使用：
 
@@ -196,8 +193,8 @@
 > 把 `Phase 17D` 之前的 shell / settings / tooltip / file-view contract 视为稳定基线。  
 > 把 `Phase 18A + 18B + 18C` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 mode 来自 `Settings -> Behavior -> Default view`；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree / flat 切换会在目标视图 ensure-scroll 当前文件；flat results（搜索态或显式 flat）都有 `Locate and Open`；compare rerun 会 prune / restore expanded-path overrides。  
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
-> 不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。  
-> 如果后续继续这个方向，默认可进入 `Phase 19` 草案讨论；只有出现明确 regression 时，才回到 `18C fix-*` 做小范围修正。不要把当前已落地的 visible-region / locate baseline 再写回 proposal，也不要混成新一轮架构改写。
+> 当前默认入口是 `Phase 19` 草案讨论，不是继续滚动 `18C fix-*`；只有出现明确 regression 时，才回到 `18C fix-*` 做小范围修正。  
+> 不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `Phase 19` 未确认设计写成已实现。
 
 ## 更新契约（Mandatory）
 

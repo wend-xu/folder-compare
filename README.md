@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-06）：
+当前项目状态（2026-04-07）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -11,12 +11,14 @@
 - `slint = 1.15.1`
 - `slint-build = 1.15.1`
 - `Phase 16A` 到 `Phase 17D` 的当前稳定基线已收口完成
-- `Phase 18A` 到 `Phase 18C` 的 navigator 稳定化基线已落地：
+- `Phase 18A` 到 `Phase 18C` 的 navigator 稳定化基线已落地并收口完成（含 `18C fix-1`）：
   - `Results / Navigator` 进入 `tree + flat` 双视图基线
   - 非搜索默认 mode 可由 `Settings -> Behavior -> Default view` 决定
   - 搜索非空强制 `flat results mode`
   - tree / flat 切换会把当前文件滚动回可见区域
   - flat results（搜索态与显式 flat）均支持 `Locate and Open`
+- 当前默认下一入口已切换为 `Phase 19` 草案讨论，而不是继续滚动 `18C fix-*`
+- 当前 workspace 仍是 attached `Diff / Analysis` file-view shell；`Phase 19` 对应的 `Compare View / File View` 双模式工作区尚未实现
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -50,7 +52,7 @@
   - `Tabs -> Header -> Content`
 - `Compare Status` 保持 summary-first，并支持块内 `Show details / Hide details` 与 `Copy Summary` / `Copy Detail`
 - 当前 `Results / Navigator` 代码基线已进入双视图：
-  - 非搜索默认 `tree mode`
+  - 非搜索默认 view 来自 `Settings -> Behavior -> Default view`
   - 搜索结果与集中扫描继续走 `flat mode`
 - 层级结果视图仍然严格局限在同一 `Results / Navigator` block 内，不引入新 IA；详细边界见 `docs/architecture.md`
 - Results row 信息层级当前稳定为：
@@ -76,7 +78,7 @@
 - `Results / Navigator`
   - 顶部摘要使用集合状态文案（`Showing visible / total ...`）
   - 标题区提供 runtime `Tree / Flat` 切换
-  - 非搜索默认进入 tree mode
+  - 非搜索默认 view 取决于 `Settings -> Behavior -> Default view`
   - 搜索高亮保持 label-level，不引入 match-span parsing
   - 搜索 contract 仍为 `path / name only`
   - 搜索非空时强制走 flat results mode
@@ -208,15 +210,15 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 18` 收口后的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 19` 草案讨论前的 handoff 入口
 - `docs/architecture.md`
-  - 当前稳定架构基线、`Phase 18` activation、边界与 deferred
+  - 当前稳定架构基线、`Phase 18` closeout 边界、deferred 与默认下一入口
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
   - 依赖升级与独立 edition 里程碑的归档背景
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的已收口 `Phase 18`，而不是继续重开旧 phase closeout。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19` 草案讨论，而不是继续滚动 `18C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - attached `Diff / Analysis` shell
@@ -228,7 +230,12 @@ cargo test --workspace
   - 搜索非空时强制 flat mode
   - tree logic 放在 Rust presenter/state，Slint 只渲染 visible rows
   - tree / flat 与 locate 的可视区域连续性已是当前基线，不再视为 deferred
-- 后续若无明确 regression，默认下一入口应转到 `Phase 19` 讨论，而不是继续滚动 `18C fix-*`
+- 当前仍未实现：
+  - `Compare View / File View` 双模式工作区
+  - tree 内搜索 / 内容搜索
+  - 目录 selection / 目录详情
+  - compare core widening
+- 后续若无明确 regression，默认下一入口应转到 `Phase 19` 草案讨论；只有出现明确 regression 时，才回到 `18C fix-*`
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

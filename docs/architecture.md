@@ -1,11 +1,12 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18C Baseline)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18C` stabilization baseline inside that shell
+  - the currently implemented `Phase 18` closeout baseline inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
+- The current default next-stage entry is `Phase 19` draft discussion, but `Phase 19` is not implemented in this document's baseline.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
 ## Stable Delivery Baseline
@@ -59,11 +60,12 @@
   - drag moved to explicit blank area inside immersive strip only
   - regression fixes closed out
 
-## Current Implemented Phase 18C Baseline
+## Current Implemented Phase 18 Closeout Baseline
 
 - `Results / Navigator` now supports dual-view operation inside the existing sidebar block:
   - non-search runtime tree view
   - flat view
+- `Phase 18A + 18B + 18C` closeout is complete on the current code baseline, including the later search-state `Locate and Open` cleanup fix.
 - Non-search state defaults to the persisted `Settings -> Behavior -> Default view` preference.
 - Search text still follows the stable `path / name only` contract and forces flat results mode.
 - Tree data/state is Rust-owned inside `fc-ui-slint` presenter/state:
@@ -95,9 +97,14 @@
 - Compare reruns now preserve expansion overrides conservatively:
   - keep still-valid expanded/collapsed directory paths
   - prune invalid paths
+- Workspace structure is still the existing attached `Diff / Analysis` file-view shell; the later `Compare View / File View` dual-mode workspace redesign is not implemented.
 - The following items are still intentionally deferred beyond this baseline:
   - animated locate feedback beyond the current ensure-visible baseline
   - directory summary/counts/secondary text
+  - directory selection / directory detail presentation in the workspace
+  - tree-internal search / content search / richer match-span semantics
+  - `Compare View / File View` workspace redesign
+  - compare-core contract widening
 
 ## Crate Responsibilities
 
@@ -333,6 +340,13 @@
   described the accepted pre-`18A` implementation boundary and should be read as historical baseline context.
 - Those statements must not be reused as a current prohibition, because `Phase 18` has now been formally reopened for hierarchical result-view evolution inside the existing Sidebar/Workspace/window contracts.
 
+## Closed Phase 18 Record Status
+
+- The `Phase 18` sections below are kept as the architectural record of what was decided and implemented across `18A / 18B / 18C`.
+- They are not the default execution entry anymore.
+- New work should default to `Phase 19` draft discussion unless a concrete regression requires a narrow `18C fix-*` follow-up.
+- Nothing below should be read as evidence that `Compare View / File View` workspace work, tree search, directory detail panes, or compare-core widening already exist.
+
 ## Why Phase 18 Does Not Rewrite Compare Core Semantics
 
 - The `Phase 18` tree is a presenter/UI navigation upgrade, not a compare-core semantic rewrite.
@@ -503,13 +517,25 @@
   - trigger: only if current filename/path label-level highlight proves insufficient
 - Tree locate animation / extra emphasis beyond ensure-visible:
   - trigger: only if the current selection highlight plus ensure-visible scroll is insufficient for real workflows
+- Tree-internal search / content search:
+  - trigger: only if later work intentionally expands beyond the current `path / name only` search contract
+- Directory selection / directory detail surface:
+  - trigger: only if later workspace work explicitly needs directories to enter a right-side detail mode
 - Window-system rework:
   - trigger: only if the current framed-window contract becomes a demonstrated blocker
+- Compare-core widening:
+  - trigger: only if later workspace/data-model work proves the current compare entry contract insufficient
 - Compare View / File View workspace split:
   - trigger: only if later work proves the current attached file-view shell insufficient
 
+## Next-Stage Activation
+
+- Default next entry is `Phase 19` draft discussion.
+- `Phase 19` still refers to future `Compare View / File View` workspace work; it has not entered implementation in the current baseline.
+- Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
+
 ## Documentation Update Contract
 
-- Update this file whenever the stable baseline, the `Phase 18` boundary, or the active deferred list materially changes.
+- Update this file whenever the stable baseline, the `Phase 18` closeout boundary, the default next-stage activation, or the active deferred list materially changes.
 - Keep stable-baseline facts separate from future-phase scope so new threads do not confuse shipped behavior with planned behavior.
 - Keep terminology aligned with `docs/thread-context.md` and `README.md`.
