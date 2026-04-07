@@ -1,7 +1,7 @@
 use super::*;
 use crate::compare_foundation::CompareFocusPath;
 use crate::tests::fixtures::{
-    file_comparison_entry, file_entry, state_from_entries, text_diff_entry,
+    directory_entry, file_comparison_entry, file_entry, state_from_entries, text_diff_entry,
 };
 use fc_core::{CompareEntry, EntryDetail, EntryKind, EntryStatus};
 
@@ -256,7 +256,7 @@ fn tree_scroll_request_requires_visible_revealed_source_row() {
 }
 
 #[test]
-fn compare_view_rows_project_immediate_children_status_and_icons() {
+fn compare_view_rows_project_visible_tree_status_and_icons() {
     let mut state = state_from_entries(vec![
         text_diff_entry("src/main.rs", EntryStatus::Different),
         file_entry("src/lib.rs", EntryStatus::Equal),
@@ -278,6 +278,7 @@ fn compare_view_rows_project_immediate_children_status_and_icons() {
     let rows = state.compare_view_row_projections();
     assert_eq!(rows.len(), 5);
     assert_eq!(rows[0].relative_path, "src/lib.rs");
+    assert_eq!(rows[0].depth, 0);
     assert_eq!(rows[0].status_label, "Identical");
     assert_eq!(rows[0].left_icon, "TXT");
     assert_eq!(rows[0].right_icon, "TXT");
@@ -305,7 +306,85 @@ fn compare_view_rows_project_immediate_children_status_and_icons() {
     assert_eq!(mismatch.status_label, "Type mismatch");
     assert_eq!(mismatch.left_icon, "TXT");
     assert_eq!(mismatch.right_icon, "DIR");
-    assert!(!mismatch.show_chevron);
+    assert!(!mismatch.is_expandable);
+}
+
+#[test]
+fn compare_view_tree_toggle_reveals_nested_rows_in_place() {
+    let mut state = state_from_entries(vec![
+        directory_entry("src/bin", EntryStatus::Different),
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+        file_entry("src/bin/lib.rs", EntryStatus::Equal),
+        text_diff_entry("src/root.rs", EntryStatus::Different),
+    ]);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    let rows = state.compare_view_row_projections();
+    assert_eq!(
+        rows.iter()
+            .map(|row| row.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/bin", "src/root.rs"]
+    );
+    assert!(rows[0].is_expandable);
+    assert!(!rows[0].is_expanded);
+
+    assert!(state.toggle_compare_view_node("src/bin"));
+    let expanded_rows = state.compare_view_row_projections();
+    assert_eq!(
+        expanded_rows
+            .iter()
+            .map(|row| row.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "src/bin",
+            "src/bin/lib.rs",
+            "src/bin/main.rs",
+            "src/root.rs"
+        ]
+    );
+    assert_eq!(expanded_rows[1].depth, 1);
+    assert_eq!(expanded_rows[2].depth, 1);
+}
+
+#[test]
+fn reveal_compare_view_path_expands_nested_ancestors() {
+    let mut state = state_from_entries(vec![
+        directory_entry("src/bin", EntryStatus::Different),
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+    ]);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    assert!(state.reveal_compare_view_path("src/bin/main.rs"));
+    assert_eq!(
+        state.compare_view_expansion_overrides.get("src/bin"),
+        Some(&true)
+    );
+    assert!(
+        state
+            .compare_view_row_projections()
+            .iter()
+            .any(|row| row.relative_path == "src/bin/main.rs")
+    );
+}
+
+#[test]
+fn compare_view_row_action_uses_tree_toggle_for_directories() {
+    let mut state = state_from_entries(vec![
+        directory_entry("src/bin", EntryStatus::Different),
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+        text_diff_entry("src/root.rs", EntryStatus::Different),
+    ]);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    assert_eq!(
+        state.compare_view_row_action("src/bin"),
+        Some(CompareViewRowAction::ToggleDirectory)
+    );
+    assert_eq!(
+        state.compare_view_row_action("src/root.rs"),
+        Some(CompareViewRowAction::OpenFileView)
+    );
 }
 
 #[test]

@@ -159,8 +159,19 @@ impl Presenter {
                 if state.can_return_to_compare_view {
                     state.set_workspace_mode(WorkspaceMode::CompareView);
                     if let Some(path) = state.compare_row_focus_path.clone() {
+                        state.reveal_compare_view_path(path.as_str());
+                        state.set_compare_row_focus_path(Some(path.as_str()));
                         state.request_compare_view_scroll_to_path(path.as_str());
                     }
+                }
+            }
+            UiCommand::ToggleCompareTreeNode(relative_path) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                let toggled = state.toggle_compare_view_node(relative_path.as_str());
+                let focused = state.set_compare_row_focus_path(Some(relative_path.as_str()));
+                let scrolled = state.request_compare_view_scroll_to_path(relative_path.as_str());
+                if !toggled && !focused && !scrolled {
+                    return;
                 }
             }
             UiCommand::FocusCompareRow(relative_path) => {
@@ -359,9 +370,12 @@ impl Presenter {
             state.can_return_to_compare_view = false;
         }
         if let Some(preferred) = preferred_row_focus {
+            state.reveal_compare_view_path(preferred);
             state.set_compare_row_focus_path(Some(preferred));
         }
         if let Some(path) = state.compare_row_focus_path.clone() {
+            state.reveal_compare_view_path(path.as_str());
+            state.set_compare_row_focus_path(Some(path.as_str()));
             state.request_compare_view_scroll_to_path(path.as_str());
         }
     }

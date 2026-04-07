@@ -4,6 +4,10 @@ use crate::compare_foundation::{
     CompareBaseStatus, CompareFocusPath, CompareFoundation, CompareFoundationDetail,
     CompareFoundationNode, CompareNodeKind,
 };
+use crate::compare_tree::{
+    compare_tree_expansion_state, compare_tree_reveal_targets, compare_tree_toggle_target,
+    project_compare_tree_rows,
+};
 use crate::navigator_tree::{
     NavigatorTreeProjection, NavigatorTreeRowProjection, navigator_tree_reveal_targets,
     navigator_tree_toggle_target, project_navigator_tree_rows,
@@ -87,11 +91,13 @@ pub struct NavigatorRowProjection {
     pub parent_path_matches_filter: bool,
 }
 
-/// One Compare View immediate-child row projected from `compare_foundation`.
+/// One visible Compare View tree row projected from `compare_foundation`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompareViewRowProjection {
-    /// Canonical child relative path.
+    /// Canonical node relative path.
     pub relative_path: String,
+    /// Visible depth inside the current compare anchor subtree.
+    pub depth: u16,
     /// Whether the left/base side exists for this child key.
     pub left_present: bool,
     /// Lightweight left-side icon token.
@@ -108,15 +114,19 @@ pub struct CompareViewRowProjection {
     pub right_icon: String,
     /// Right-side display name or placeholder.
     pub right_name: String,
-    /// Whether this row should show the compare-view directory chevron.
-    pub show_chevron: bool,
+    /// Whether the row represents one directory target.
+    pub is_directory: bool,
+    /// Whether this row should show the compare-view disclosure affordance.
+    pub is_expandable: bool,
+    /// Whether the row's descendant subtree is currently expanded.
+    pub is_expanded: bool,
 }
 
 /// Execution target for one Compare View row activation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompareViewRowAction {
-    /// Open the child directory in Compare View.
-    OpenCompareView,
+    /// Toggle the child directory subtree in Compare View.
+    ToggleDirectory,
     /// Open the child file/special entry in File View.
     OpenFileView,
     /// Row is a type mismatch and cannot open yet.
@@ -197,9 +207,9 @@ pub struct AppState {
     pub workspace_mode: WorkspaceMode,
     /// Compare-view focus anchor independent from file selection.
     pub compare_focus_path: CompareFocusPath,
-    /// Focused immediate-child row inside Compare View, independent from file selection.
+    /// Focused visible compare-tree row inside Compare View, independent from file selection.
     pub compare_row_focus_path: Option<String>,
-    /// Revision for Compare View immediate-children projection refreshes.
+    /// Revision for Compare View visible-tree projection refreshes.
     pub compare_view_projection_revision: u64,
     /// Revision for Compare View one-shot ensure-visible requests.
     pub compare_view_scroll_request_revision: u64,
@@ -207,6 +217,8 @@ pub struct AppState {
     pub compare_view_scroll_target_relative_path: Option<String>,
     /// Whether current File View session should show Back to Compare View.
     pub can_return_to_compare_view: bool,
+    /// Expansion overrides for compare-tree directory nodes.
+    pub compare_view_expansion_overrides: BTreeMap<String, bool>,
     /// Expansion overrides for directory nodes in tree mode.
     pub navigator_tree_expansion_overrides: BTreeMap<String, bool>,
     /// Warning lines from compare report.
@@ -282,6 +294,7 @@ impl Default for AppState {
             compare_view_scroll_request_revision: 0,
             compare_view_scroll_target_relative_path: None,
             can_return_to_compare_view: false,
+            compare_view_expansion_overrides: BTreeMap::new(),
             navigator_tree_expansion_overrides: BTreeMap::new(),
             warning_lines: Vec::new(),
             error_message: None,
@@ -884,57 +897,61 @@ impl AppState {
         self.compare_focus_path.raw_text()
     }
 
-    /// Returns the current Compare View row projections derived from immediate children.
+    /// Returns the current Compare View row projections derived from the visible compare tree.
     pub fn compare_view_row_projections(&self) -> Vec<CompareViewRowProjection> {
         let foundation = self.compare_foundation_for_projections();
-        foundation
-            .as_ref()
-            .immediate_children(&self.compare_focus_path)
-            .into_iter()
-            .map(|child| {
-                let node = foundation
-                    .as_ref()
-                    .node(child.relative_path.as_str())
-                    .expect("compare-view child node must exist");
-                let action = compare_view_row_action_from_node(node);
-                let (left_kind, right_kind) = compare_view_side_kinds(node);
-                let left_present = child.side_presence.left;
-                let right_present = child.side_presence.right;
-                let (status_label, status_tone) = compare_display_status(node);
+        project_compare_tree_rows(
+            foundation.as_ref(),
+            &self.compare_focus_path,
+            &self.compare_view_expansion_overrides,
+        )
+        .into_iter()
+        .map(|row| {
+            let node = foundation
+                .as_ref()
+                .node(row.relative_path.as_str())
+                .expect("compare-view node must exist");
+            let (left_kind, right_kind) = compare_view_side_kinds(node);
+            let left_present = node.side_presence.left;
+            let right_present = node.side_presence.right;
+            let (status_label, status_tone) = compare_display_status(node);
 
-                CompareViewRowProjection {
-                    relative_path: child.relative_path.clone(),
-                    left_present,
-                    left_icon: if left_present {
-                        compare_view_icon_token(left_kind, &node.detail).to_string()
-                    } else {
-                        String::new()
-                    },
-                    left_name: if left_present {
-                        child.display_name.clone()
-                    } else {
-                        "-".to_string()
-                    },
-                    status_label: status_label.to_string(),
-                    status_tone: status_tone.to_string(),
-                    right_present,
-                    right_icon: if right_present {
-                        compare_view_icon_token(right_kind, &node.detail).to_string()
-                    } else {
-                        String::new()
-                    },
-                    right_name: if right_present {
-                        child.display_name
-                    } else {
-                        "-".to_string()
-                    },
-                    show_chevron: action == Some(CompareViewRowAction::OpenCompareView),
-                }
-            })
-            .collect()
+            CompareViewRowProjection {
+                relative_path: row.relative_path.clone(),
+                depth: row.depth,
+                left_present,
+                left_icon: if left_present {
+                    compare_view_icon_token(left_kind, &node.detail).to_string()
+                } else {
+                    String::new()
+                },
+                left_name: if left_present {
+                    node.display_name.clone()
+                } else {
+                    "-".to_string()
+                },
+                status_label: status_label.to_string(),
+                status_tone: status_tone.to_string(),
+                right_present,
+                right_icon: if right_present {
+                    compare_view_icon_token(right_kind, &node.detail).to_string()
+                } else {
+                    String::new()
+                },
+                right_name: if right_present {
+                    node.display_name.clone()
+                } else {
+                    "-".to_string()
+                },
+                is_directory: row.is_directory,
+                is_expandable: row.is_expandable,
+                is_expanded: row.is_expanded,
+            }
+        })
+        .collect()
     }
 
-    /// Resolves one Compare View visual row index by immediate-child relative path.
+    /// Resolves one Compare View visual row index by visible relative path.
     pub fn compare_view_visual_row_index_for_path(&self, relative_path: &str) -> Option<usize> {
         let normalized = relative_path.trim();
         if normalized.is_empty() {
@@ -952,23 +969,26 @@ impl AppState {
             .and_then(|path| self.compare_view_visual_row_index_for_path(path))
     }
 
-    /// Resolves activation behavior for one Compare View row under the current target.
+    /// Resolves activation behavior for one visible Compare View row.
     pub fn compare_view_row_action(&self, relative_path: &str) -> Option<CompareViewRowAction> {
         let normalized = relative_path.trim();
         if normalized.is_empty() {
             return None;
         }
+        let row = self
+            .compare_view_row_projections()
+            .into_iter()
+            .find(|row| row.relative_path == normalized)?;
         let foundation = self.compare_foundation_for_projections();
-        if !foundation
-            .as_ref()
-            .immediate_children(&self.compare_focus_path)
-            .iter()
-            .any(|child| child.relative_path == normalized)
-        {
-            return None;
-        }
         let node = foundation.as_ref().node(normalized)?;
-        compare_view_row_action_from_node(node)
+        if matches!(node.detail, CompareFoundationDetail::TypeMismatch { .. }) {
+            return Some(CompareViewRowAction::TypeMismatch);
+        }
+        if row.is_expandable {
+            return Some(CompareViewRowAction::ToggleDirectory);
+        }
+        node.source_index
+            .map(|_| CompareViewRowAction::OpenFileView)
     }
 
     /// Returns true when the current Compare View target can move to a parent directory.
@@ -1039,8 +1059,7 @@ impl AppState {
             "Run Compare from the sidebar, then open one directory from Results / Navigator."
                 .to_string()
         } else {
-            "The current compare target has no immediate children to render in Compare View."
-                .to_string()
+            "The current compare target has no visible compare tree rows to render.".to_string()
         }
     }
 
@@ -1157,7 +1176,69 @@ impl AppState {
         self.set_compare_focus_path(parent)
     }
 
-    /// Focuses one Compare View row when it is an immediate child of the current target.
+    /// Toggles one Compare View directory row when it is expandable.
+    pub fn toggle_compare_view_node(&mut self, key: &str) -> bool {
+        let foundation = self.compare_foundation_for_projections();
+        let Some((normalized_key, path_depth)) =
+            compare_tree_toggle_target(foundation.as_ref(), key)
+        else {
+            return false;
+        };
+
+        let default_expanded =
+            compare_tree_expansion_state(normalized_key.as_str(), path_depth, &BTreeMap::new());
+        let current = self
+            .compare_view_expansion_overrides
+            .get(normalized_key.as_str())
+            .copied()
+            .unwrap_or(default_expanded);
+        let next = !current;
+        if next == default_expanded {
+            self.compare_view_expansion_overrides
+                .remove(normalized_key.as_str());
+        } else {
+            self.compare_view_expansion_overrides
+                .insert(normalized_key, next);
+        }
+        self.bump_compare_view_projection_revision();
+        self.reconcile_compare_row_focus(Some(key));
+        true
+    }
+
+    /// Expands compare-tree ancestors needed to reveal one nested path under the current anchor.
+    pub fn reveal_compare_view_path(&mut self, relative_path: &str) -> bool {
+        let foundation = self.compare_foundation_for_projections();
+        let mut changed = false;
+        for (key, path_depth) in compare_tree_reveal_targets(
+            foundation.as_ref(),
+            &self.compare_focus_path,
+            relative_path,
+        ) {
+            let default_expanded =
+                compare_tree_expansion_state(key.as_str(), path_depth, &BTreeMap::new());
+            if default_expanded {
+                changed |= self
+                    .compare_view_expansion_overrides
+                    .remove(key.as_str())
+                    .is_some();
+            } else if self
+                .compare_view_expansion_overrides
+                .get(key.as_str())
+                .copied()
+                != Some(true)
+            {
+                self.compare_view_expansion_overrides.insert(key, true);
+                changed = true;
+            }
+        }
+
+        if changed {
+            self.bump_compare_view_projection_revision();
+        }
+        changed
+    }
+
+    /// Focuses one Compare View row when it is visible in the current compare tree.
     pub fn set_compare_row_focus_path(&mut self, relative_path: Option<&str>) -> bool {
         let next = self.resolve_compare_row_focus_path(relative_path);
         if self.compare_row_focus_path == next {
@@ -1181,6 +1262,22 @@ impl AppState {
         self.compare_view_scroll_request_revision =
             self.compare_view_scroll_request_revision.wrapping_add(1);
         true
+    }
+
+    /// Removes compare-tree expansion overrides that no longer map to expandable directories.
+    pub fn prune_compare_view_expansion_overrides(&mut self) -> bool {
+        let foundation = self.compare_foundation_for_projections().into_owned();
+        let previous = self.compare_view_expansion_overrides.clone();
+        self.compare_view_expansion_overrides
+            .retain(
+                |key, expanded| match compare_tree_toggle_target(&foundation, key) {
+                    Some((_, path_depth)) => {
+                        *expanded != compare_tree_expansion_state(key, path_depth, &BTreeMap::new())
+                    }
+                    None => false,
+                },
+            );
+        previous != self.compare_view_expansion_overrides
     }
 
     /// Updates the persisted non-search default mode.
@@ -2359,11 +2456,16 @@ impl AppState {
     }
 
     pub fn set_compare_foundation(&mut self, foundation: CompareFoundation) {
+        let previous_focus = self.compare_row_focus_path.clone();
         self.compare_foundation = foundation;
         self.compare_focus_path = self
             .compare_foundation
             .clamp_compare_focus_path(&self.compare_focus_path);
-        self.reconcile_compare_row_focus(None);
+        self.prune_compare_view_expansion_overrides();
+        if let Some(path) = previous_focus.as_deref() {
+            self.reveal_compare_view_path(path);
+        }
+        self.reconcile_compare_row_focus(previous_focus.as_deref());
         self.bump_compare_view_projection_revision();
     }
 
@@ -2371,6 +2473,7 @@ impl AppState {
         self.compare_foundation = CompareFoundation::default();
         self.compare_focus_path = CompareFocusPath::root();
         self.compare_row_focus_path = None;
+        self.compare_view_expansion_overrides.clear();
         self.bump_compare_view_projection_revision();
     }
 
@@ -2419,17 +2522,6 @@ fn compare_display_status(node: &CompareFoundationNode) -> (&'static str, &'stat
             ("Modified", "different")
         }
     }
-}
-
-fn compare_view_row_action_from_node(node: &CompareFoundationNode) -> Option<CompareViewRowAction> {
-    if matches!(node.detail, CompareFoundationDetail::TypeMismatch { .. }) {
-        return Some(CompareViewRowAction::TypeMismatch);
-    }
-    if node.kind.is_directory_target() {
-        return Some(CompareViewRowAction::OpenCompareView);
-    }
-    node.source_index
-        .map(|_| CompareViewRowAction::OpenFileView)
 }
 
 fn compare_view_side_kinds(node: &CompareFoundationNode) -> (CompareNodeKind, CompareNodeKind) {

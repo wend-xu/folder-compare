@@ -244,3 +244,31 @@ fn compare_view_up_one_level_focuses_previous_child_directory() {
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
     assert_eq!(snapshot.compare_row_focus_path.as_deref(), Some("src/bin"));
 }
+
+#[test]
+fn toggling_compare_tree_node_expands_directory_without_reanchoring_compare_view() {
+    let mut state = state_from_entries(vec![
+        directory_entry("src/bin", EntryStatus::Different),
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+        text_diff_entry("src/root.rs", EntryStatus::Different),
+    ]);
+    state.set_workspace_mode(WorkspaceMode::CompareView);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::ToggleCompareTreeNode("src/bin".to_string()));
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(snapshot.compare_row_focus_path.as_deref(), Some("src/bin"));
+    assert_eq!(
+        snapshot.compare_view_expansion_overrides.get("src/bin"),
+        Some(&true)
+    );
+    assert!(
+        snapshot
+            .compare_view_row_projections()
+            .iter()
+            .any(|row| row.relative_path == "src/bin/main.rs")
+    );
+}

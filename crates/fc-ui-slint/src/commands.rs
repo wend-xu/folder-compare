@@ -43,7 +43,9 @@ pub enum UiCommand {
     ExitCompareViewToResults,
     /// Restores Compare View from File View when the current session came from Compare View.
     ReturnToCompareView,
-    /// Focuses one immediate-child row inside Compare View.
+    /// Toggles one expandable directory row inside Compare View.
+    ToggleCompareTreeNode(String),
+    /// Focuses one visible row inside Compare View.
     FocusCompareRow(String),
     /// Opens one file/special-entry row in File View while preserving Compare View return context.
     OpenFileViewFromCompare(String),

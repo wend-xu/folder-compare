@@ -1,12 +1,12 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A/19B Workspace Baseline)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-1)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18` closeout baseline plus `Phase 19A / 19B` compare-workspace baseline inside that shell
+  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation and the in-progress `Phase 19B fix-1` compare-workspace correction inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
-- The current default next-stage entry is `Phase 19C` follow-up work on top of the implemented `Phase 19A / 19B` workspace baseline.
+- The current default next-stage entry is still `Phase 19B fix-1` closeout; do not treat `Phase 19C` as active until this compare-tree MVP is accepted without regression.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
 ## Stable Delivery Baseline
@@ -107,18 +107,19 @@
   - tree-internal search / content search / richer match-span semantics
   - compare-core contract widening
 
-## Current Implemented Phase 19A / 19B Baseline
+## Current Phase 19 Status (`19A` landed, `19B fix-1` active)
 
-- `Phase 19A` foundation work and `Phase 19B` Compare View MVP are both now implemented.
+- `Phase 19A` foundation work is landed.
+- `Phase 19B` is not yet an accepted baseline; the current work is `19B fix-1`, which corrects the previously shipped immediate-children surface into a compare-tree MVP and removes File View shell regressions.
 - Workspace-level outer mode is now Rust-owned inside `fc-ui-slint` state:
   - `FileView`
   - `CompareView`
 - Current visible workspace behavior is now dual-mode:
-  - `Compare View` renders one immediate-children three-column compare surface for the current directory target
-  - `File View` keeps the existing attached `Diff / Analysis` shell and adds `Back to Compare View` context when opened from Compare View
+  - `Compare View` now renders one anchored compare-tree workspace for the current directory target
+  - `File View` keeps the existing attached `Diff / Analysis` shell and only adds `Back to Compare View` context when the current file session was opened from Compare View
 - Compare workspace target anchoring is now split explicitly:
   - `compare_focus_path` is the compare-side anchor for current Compare View navigation
-  - `compare_row_focus_path` is the immediate-child row focus inside the current Compare View target
+  - `compare_row_focus_path` is the visible compare-tree row focus inside the current Compare View target
   - `selected_row / selected_relative_path` remain the current File View file anchor
   - these anchors interact for navigation, but they are still not the same state
 - `fc-ui-slint` now owns one independent `compare_foundation` as normalized compare source data:
@@ -130,14 +131,15 @@
 - Foundation is now the intended source-of-truth direction for migration:
   - `compare_foundation -> navigator tree projection`
   - `compare_foundation -> legacy flat/file-view row projection`
-  - `compare_foundation.immediate_children(...) -> Compare View row projection`
+  - `compare_foundation -> Compare View compare-tree projection`
   - migration-era `entry_rows` still exist, but they are now a projection rather than the intended long-term source of truth
 - The current tree projection is now built from that foundation rather than reconstituting long-lived compare structure from flat row strings.
-- `Phase 19B` now uses that foundation directly for Compare View:
+- `19B fix-1` now uses that foundation directly for Compare View:
   - explicit `Open in Compare View` entry from `Results / Navigator`
   - `Back to Results`
   - `Up one level`
   - Compare View -> File View -> Back to Compare View closed-loop navigation
+  - in-place directory expand / collapse inside Compare View
   - focused-row and ensure-visible preservation for Compare View
   - `Type mismatch` rows stay non-openable and only emit a restrained toast
 
@@ -393,7 +395,7 @@
 
 - The `Phase 18` sections below are kept as the architectural record of what was decided and implemented across `18A / 18B / 18C`.
 - They are not the default execution entry anymore.
-- New work should default to `Phase 19C` follow-up work on top of the landed `Phase 19A / 19B` baseline unless a concrete regression requires a narrow `18C fix-*` follow-up.
+- New work should default to `Phase 19B fix-1` closeout on top of the landed `Phase 18 / 19A` baseline unless a concrete regression requires a narrow `18C fix-*` follow-up.
 - Nothing below should be read as evidence that richer Compare View descendants, tree search, directory detail panes, or compare-core widening already exist.
 
 ## Why Phase 18 Does Not Rewrite Compare Core Semantics
@@ -579,16 +581,17 @@
 
 ## Next-Stage Activation
 
-- Default next entry is `Phase 19C`.
-- `Phase 19A / 19B` have already landed:
+- Default next entry remains `Phase 19B fix-1` verification and closeout.
+- `Phase 19A` has landed:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`
   - independent `compare_row_focus_path`
   - structured `compare_foundation`
-- `Phase 19B` now covers the landed Compare View MVP:
+- Current `19B fix-1` implementation target is:
   - explicit entry from `Results / Navigator`
-  - immediate-children three-column compare surface
+  - anchored compare-tree workspace with in-place expand / collapse
   - Compare View / File View / Results navigation loop
+- Do not move default planning to `Phase 19C` until this compare-tree MVP is accepted without File View regressions.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
 ## Related Documents

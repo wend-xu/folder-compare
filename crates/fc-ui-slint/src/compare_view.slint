@@ -1,4 +1,5 @@
 import { ListView } from "std-widgets.slint";
+import { NavigatorDisclosureChevron } from "navigator_tree.slint";
 import { UiPalette } from "ui_palette.slint";
 
 component CompareKindGlyph inherits Rectangle {
@@ -24,7 +25,83 @@ component CompareKindGlyph inherits Rectangle {
     }
 }
 
-component CompareEntryCell inherits Rectangle {
+component CompareTreeEntryCell inherits Rectangle {
+    in property <int> depth: 0;
+    in property <string> icon;
+    in property <string> name;
+    in property <bool> present: true;
+    in property <bool> directory: false;
+    in property <bool> expandable: false;
+    in property <bool> expanded: false;
+    in property <bool> emphasized: false;
+    callback toggle_requested();
+
+    property <length> indent_width: 12px * root.depth;
+    clip: true;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 6px;
+
+        Rectangle {
+            width: root.indent_width;
+            background: transparent;
+        }
+
+        disclosure_slot := Rectangle {
+            width: 12px;
+            background: transparent;
+
+            NavigatorDisclosureChevron {
+                visible: root.expandable;
+                expanded: root.expanded;
+                stroke: root.emphasized
+                    ? UiPalette.results_row_selected_context_text
+                    : UiPalette.results_row_tone_neutral_context_text;
+                x: 0px;
+                y: (parent.height - self.height) / 2;
+            }
+
+            TouchArea {
+                enabled: root.expandable;
+                clicked => {
+                    root.toggle_requested();
+                }
+            }
+        }
+
+        CompareKindGlyph {
+            label: root.present ? root.icon : "---";
+            present: root.present;
+        }
+
+        label_clip := Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            background: transparent;
+
+            Text {
+                width: parent.width;
+                text: root.name;
+                color: root.present
+                    ? (root.emphasized
+                        ? UiPalette.results_row_selected_path_text
+                        : (root.directory
+                            ? #38556d
+                            : #4e6477))
+                    : #98a5b4;
+                font-size: 13px;
+                font-weight: root.present
+                    ? (root.directory ? 600 : 500)
+                    : 400;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component CompareFlatEntryCell inherits Rectangle {
     in property <string> icon;
     in property <string> name;
     in property <bool> present: true;
@@ -41,16 +118,22 @@ component CompareEntryCell inherits Rectangle {
             present: root.present;
         }
 
-        Text {
-            text: root.name;
-            color: root.present
-                ? (root.emphasized ? #294b6b : #395164)
-                : #98a5b4;
-            font-size: 13px;
-            font-weight: root.present ? 600 : 400;
-            vertical-alignment: center;
+        Rectangle {
             horizontal-stretch: 1;
-            overflow: elide;
+            clip: true;
+            background: transparent;
+
+            Text {
+                width: parent.width;
+                text: root.name;
+                color: root.present
+                    ? (root.emphasized ? #294b6b : #395164)
+                    : #98a5b4;
+                font-size: 13px;
+                font-weight: root.present ? 500 : 400;
+                vertical-alignment: center;
+                overflow: elide;
+            }
         }
     }
 }
@@ -68,17 +151,17 @@ component CompareStatusCell inherits Rectangle {
         width: parent.width;
         height: parent.height;
         color: root.tone == "different"
-            ? #9a5b32
+            ? UiPalette.navigator_tree_tone_different_text
             : (root.tone == "equal"
-                ? #3f6b4d
+                ? UiPalette.navigator_tree_tone_equal_text
                 : (root.tone == "left"
-                    ? #705844
+                    ? UiPalette.navigator_tree_tone_left_text
                     : (root.tone == "right"
-                        ? #375f78
+                        ? UiPalette.navigator_tree_tone_right_text
                         : (root.tone == "warn"
                             ? #8a6464
-                            : #667789))));
-        font-size: 12px;
+                            : UiPalette.navigator_tree_tone_neutral_text))));
+        font-size: 11px;
         font-weight: root.emphasized ? 700 : 600;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -86,32 +169,9 @@ component CompareStatusCell inherits Rectangle {
     }
 }
 
-component CompareViewChevron inherits Rectangle {
-    width: 12px;
-    height: 12px;
-    background: transparent;
-
-    Path {
-        x: 2px;
-        y: 2px;
-        width: 8px;
-        height: 8px;
-        viewbox-width: 8;
-        viewbox-height: 8;
-        fill: transparent;
-        stroke: UiPalette.results_row_tone_neutral_context_text;
-        stroke-width: 1.4px;
-        stroke-line-cap: round;
-        stroke-line-join: round;
-
-        MoveTo { x: 2; y: 1; }
-        LineTo { x: 5; y: 4; }
-        LineTo { x: 2; y: 7; }
-    }
-}
-
 component CompareViewRow inherits Rectangle {
     in property <string> row_path;
+    in property <int> row_depth: 0;
     in property <string> left_icon;
     in property <string> left_name;
     in property <bool> left_present: false;
@@ -120,86 +180,129 @@ component CompareViewRow inherits Rectangle {
     in property <string> right_icon;
     in property <string> right_name;
     in property <bool> right_present: false;
-    in property <bool> show_chevron: false;
+    in property <bool> is_directory: false;
+    in property <bool> is_expandable: false;
+    in property <bool> is_expanded: false;
+    in property <length> column_inset: 10px;
+    in property <length> column_divider_width: 1px;
+    in property <length> status_column_width: 132px;
     in property <int> row_index: -1;
     in property <int> focused_row: -1;
     in property <bool> enabled: true;
     callback row_focused(string);
+    callback row_toggle_requested(string);
     callback row_activated(string);
     callback row_context_menu_requested(string, length, length);
 
     property <bool> row_focused_state: root.row_index == root.focused_row;
     property <bool> row_hovered: row_touch_area.has_hover;
+    property <length> content_width: max(0px, self.width - root.column_inset * 2);
+    property <length> side_column_width: max(
+        0px,
+        (self.content_width - root.status_column_width - root.column_divider_width * 2) / 2,
+    );
+    property <length> left_column_x: root.column_inset;
+    property <length> left_divider_x: root.left_column_x + root.side_column_width;
+    property <length> status_column_x: root.left_divider_x + root.column_divider_width;
+    property <length> right_divider_x: root.status_column_x + root.status_column_width;
+    property <length> right_column_x: root.right_divider_x + root.column_divider_width;
 
-    height: 40px;
-    border-width: 1px;
-    border-radius: 4px;
-    border-color: root.row_focused_state ? #d6e2ef : #edf2f7;
+    height: 34px;
     background: root.row_focused_state
-        ? rgba(235, 242, 250, 0.95)
-        : (root.row_hovered ? rgba(247, 250, 253, 0.96) : transparent);
-    opacity: root.enabled ? 1 : 0.7;
+        ? rgba(219, 233, 251, 0.62)
+        : (root.row_hovered ? rgba(244, 247, 251, 0.88) : transparent);
+    opacity: root.enabled ? 1 : 0.72;
     clip: true;
 
     Rectangle {
-        visible: root.row_focused_state;
         x: 0px;
-        y: 6px;
+        y: 5px;
         width: 2px;
-        height: parent.height - 12px;
+        height: parent.height - 10px;
         border-radius: 1px;
-        background: #8eaed1;
+        background: UiPalette.results_row_selected_border;
+        visible: root.row_focused_state;
     }
 
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 10px;
+    Rectangle {
+        x: 0px;
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: #e7edf4;
+    }
 
-        CompareEntryCell {
+    Rectangle {
+        x: root.left_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: transparent;
+
+        CompareTreeEntryCell {
+            width: parent.width;
+            height: parent.height;
+            depth: root.row_depth;
             icon: root.left_icon;
             name: root.left_name;
             present: root.left_present;
+            directory: root.is_directory;
+            expandable: root.is_expandable;
+            expanded: root.is_expanded;
             emphasized: root.row_focused_state;
-            horizontal-stretch: 1;
+            toggle_requested => {
+                root.row_focused(root.row_path);
+                root.row_toggle_requested(root.row_path);
+            }
         }
+    }
 
-        Rectangle {
-            width: 1px;
-            height: parent.height - 10px;
-            background: #edf2f7;
-        }
+    Rectangle {
+        x: root.left_divider_x;
+        y: 4px;
+        width: root.column_divider_width;
+        height: parent.height - 8px;
+        background: #e4ebf3;
+    }
+
+    Rectangle {
+        x: root.status_column_x;
+        y: 0px;
+        width: root.status_column_width;
+        height: parent.height;
+        background: transparent;
 
         CompareStatusCell {
-            width: 118px;
+            width: parent.width;
+            height: parent.height;
             label: root.status_label;
             tone: root.status_tone;
             emphasized: root.row_focused_state;
         }
+    }
 
-        Rectangle {
-            width: 1px;
-            height: parent.height - 10px;
-            background: #edf2f7;
-        }
+    Rectangle {
+        x: root.right_divider_x;
+        y: 4px;
+        width: root.column_divider_width;
+        height: parent.height - 8px;
+        background: #e4ebf3;
+    }
 
-        CompareEntryCell {
+    Rectangle {
+        x: root.right_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: transparent;
+
+        CompareFlatEntryCell {
+            width: parent.width;
+            height: parent.height;
             icon: root.right_icon;
             name: root.right_name;
             present: root.right_present;
             emphasized: root.row_focused_state;
-            horizontal-stretch: 1;
-        }
-
-        Rectangle {
-            width: 12px;
-            background: transparent;
-
-            CompareViewChevron {
-                visible: root.show_chevron;
-                x: 0px;
-                y: (parent.height - self.height) / 2;
-            }
         }
     }
 
@@ -227,6 +330,7 @@ component CompareViewRow inherits Rectangle {
 
 export component CompareView inherits Rectangle {
     in property <[string]> row_paths;
+    in property <[int]> row_depths;
     in property <[string]> row_left_icons;
     in property <[string]> row_left_names;
     in property <[bool]> row_left_present;
@@ -235,16 +339,32 @@ export component CompareView inherits Rectangle {
     in property <[string]> row_right_icons;
     in property <[string]> row_right_names;
     in property <[bool]> row_right_present;
-    in property <[bool]> row_show_chevrons;
+    in property <[bool]> row_is_directories;
+    in property <[bool]> row_is_expandable;
+    in property <[bool]> row_is_expanded;
+    in property <length> column_inset: 10px;
+    in property <length> column_divider_width: 1px;
+    in property <length> status_column_width: 132px;
     in property <int> focused_row: -1;
     in property <bool> interaction_enabled: true;
     callback row_focused(string);
+    callback row_toggle_requested(string);
     callback row_activated(string);
     callback row_context_menu_requested(string, length, length);
     callback back_requested();
 
     forward-focus: compare_focus_scope;
     clip: true;
+    property <length> content_width: max(0px, self.width - root.column_inset * 2);
+    property <length> side_column_width: max(
+        0px,
+        (self.content_width - root.status_column_width - root.column_divider_width * 2) / 2,
+    );
+    property <length> left_column_x: root.column_inset;
+    property <length> left_divider_x: root.left_column_x + root.side_column_width;
+    property <length> status_column_x: root.left_divider_x + root.column_divider_width;
+    property <length> right_divider_x: root.status_column_x + root.status_column_width;
+    property <length> right_column_x: root.right_divider_x + root.column_divider_width;
 
     public function ensure_row_visible(target_row: int) {
         compare_list.ensure_row_visible(target_row);
@@ -273,6 +393,14 @@ export component CompareView inherits Rectangle {
                     root.row_focused(root.row_paths[current]);
                 }
                 return accept;
+            } else if event.text == Key.RightArrow || event.text == Key.LeftArrow || event.text == " " {
+                if root.focused_row >= 0
+                    && root.focused_row < root.row_paths.length
+                    && root.row_is_expandable[root.focused_row]
+                {
+                    root.row_toggle_requested(root.row_paths[root.focused_row]);
+                }
+                return accept;
             } else if event.text == Key.Return {
                 if root.focused_row >= 0 && root.focused_row < root.row_paths.length {
                     root.row_activated(root.row_paths[root.focused_row]);
@@ -286,11 +414,51 @@ export component CompareView inherits Rectangle {
         }
     }
 
+    Rectangle {
+        x: root.left_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: #fcfdff;
+    }
+
+    Rectangle {
+        x: root.status_column_x;
+        y: 0px;
+        width: root.status_column_width;
+        height: parent.height;
+        background: #f8fbfd;
+    }
+
+    Rectangle {
+        x: root.right_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: #fcfdff;
+    }
+
+    Rectangle {
+        x: root.left_divider_x;
+        y: 0px;
+        width: root.column_divider_width;
+        height: parent.height;
+        background: #dde6f0;
+    }
+
+    Rectangle {
+        x: root.right_divider_x;
+        y: 0px;
+        width: root.column_divider_width;
+        height: parent.height;
+        background: #dde6f0;
+    }
+
     compare_list := ListView {
         width: parent.width;
         height: parent.height;
-        property <length> row_height: 40px;
-        property <length> ensure_visible_padding: 14px;
+        property <length> row_height: 34px;
+        property <length> ensure_visible_padding: 10px;
 
         function ensure_row_visible(target_row: int) {
             if target_row < 0 || target_row >= root.row_paths.length {
@@ -320,6 +488,7 @@ export component CompareView inherits Rectangle {
             row_index: index;
             focused_row: root.focused_row;
             enabled: root.interaction_enabled;
+            row_depth: root.row_depths[index];
             left_icon: root.row_left_icons[index];
             left_name: root.row_left_names[index];
             left_present: root.row_left_present[index];
@@ -328,10 +497,19 @@ export component CompareView inherits Rectangle {
             right_icon: root.row_right_icons[index];
             right_name: root.row_right_names[index];
             right_present: root.row_right_present[index];
-            show_chevron: root.row_show_chevrons[index];
+            is_directory: root.row_is_directories[index];
+            is_expandable: root.row_is_expandable[index];
+            is_expanded: root.row_is_expanded[index];
+            column_inset: root.column_inset;
+            column_divider_width: root.column_divider_width;
+            status_column_width: root.status_column_width;
             row_focused(path) => {
                 compare_focus_scope.focus();
                 root.row_focused(path);
+            }
+            row_toggle_requested(path) => {
+                compare_focus_scope.focus();
+                root.row_toggle_requested(path);
             }
             row_activated(path) => {
                 compare_focus_scope.focus();
