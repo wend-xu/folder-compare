@@ -903,6 +903,7 @@ impl AppState {
         project_compare_tree_rows(
             foundation.as_ref(),
             &self.compare_focus_path,
+            self.show_hidden_files,
             &self.compare_view_expansion_overrides,
         )
         .into_iter()
@@ -914,7 +915,7 @@ impl AppState {
             let (left_kind, right_kind) = compare_view_side_kinds(node);
             let left_present = node.side_presence.left;
             let right_present = node.side_presence.right;
-            let (status_label, status_tone) = compare_display_status(node);
+            let (status_label, status_tone) = compare_relation_display(node);
 
             CompareViewRowProjection {
                 relative_path: row.relative_path.clone(),
@@ -1059,7 +1060,8 @@ impl AppState {
             "Run Compare from the sidebar, then open one directory from Results / Navigator."
                 .to_string()
         } else {
-            "The current compare target has no visible compare tree rows to render.".to_string()
+            "The current compare target has no visible compare tree rows under the current view settings."
+                .to_string()
         }
     }
 
@@ -1151,10 +1153,12 @@ impl AppState {
             .compare_foundation_for_projections()
             .as_ref()
             .clamp_compare_focus_path(&focus);
-        if self.compare_focus_path == normalized {
+        let previous_focus = self.compare_focus_path.clone();
+        self.compare_focus_path = normalized;
+        self.reconcile_compare_focus_visibility();
+        if self.compare_focus_path == previous_focus {
             return false;
         }
-        self.compare_focus_path = normalized;
         self.reconcile_compare_row_focus(None);
         self.bump_compare_view_projection_revision();
         true
@@ -1427,7 +1431,14 @@ impl AppState {
             return;
         }
         self.show_hidden_files = show_hidden_files;
+        self.reconcile_compare_focus_visibility();
+        let preferred_focus = self.compare_row_focus_path.clone();
+        self.reconcile_compare_row_focus(preferred_focus.as_deref());
+        if let Some(path) = self.compare_row_focus_path.clone() {
+            self.request_compare_view_scroll_to_path(path.as_str());
+        }
         self.bump_navigator_projection_revisions();
+        self.bump_compare_view_projection_revision();
     }
 
     /// Marks both flat/tree navigator projections dirty after compare data changes.
@@ -2324,7 +2335,7 @@ impl AppState {
                 .as_relative_path()
                 .unwrap_or_default(),
         )?;
-        Some(compare_display_status(node))
+        Some(compare_relation_display(node))
     }
 
     fn selected_entry_compare_node(&self) -> Option<CompareFoundationNode> {
@@ -2340,7 +2351,7 @@ impl AppState {
 
     fn selected_entry_compare_status(&self) -> Option<(&'static str, &'static str)> {
         let node = self.selected_entry_compare_node()?;
-        Some(compare_display_status(&node))
+        Some(compare_file_view_status(&node))
     }
 
     fn resolve_compare_row_focus_path(&self, preferred: Option<&str>) -> Option<String> {
@@ -2379,6 +2390,27 @@ impl AppState {
             return false;
         }
         self.compare_row_focus_path = next;
+        true
+    }
+
+    fn reconcile_compare_focus_visibility(&mut self) -> bool {
+        if self.show_hidden_files {
+            return false;
+        }
+
+        let foundation = self.compare_foundation_for_projections();
+        let mut next_focus = foundation.clamp_compare_focus_path(&self.compare_focus_path);
+        while next_focus
+            .as_relative_path()
+            .is_some_and(is_hidden_relative_path)
+        {
+            next_focus = foundation.parent_compare_focus_path(&next_focus);
+        }
+
+        if self.compare_focus_path == next_focus {
+            return false;
+        }
+        self.compare_focus_path = next_focus;
         true
     }
 
@@ -2461,6 +2493,7 @@ impl AppState {
         self.compare_focus_path = self
             .compare_foundation
             .clamp_compare_focus_path(&self.compare_focus_path);
+        self.reconcile_compare_focus_visibility();
         self.prune_compare_view_expansion_overrides();
         if let Some(path) = previous_focus.as_deref() {
             self.reveal_compare_view_path(path);
@@ -2509,7 +2542,22 @@ impl AppState {
     }
 }
 
-fn compare_display_status(node: &CompareFoundationNode) -> (&'static str, &'static str) {
+fn compare_relation_display(node: &CompareFoundationNode) -> (&'static str, &'static str) {
+    if matches!(node.detail, CompareFoundationDetail::TypeMismatch { .. }) {
+        return ("Mismatch", "warn");
+    }
+
+    match node.base_status {
+        CompareBaseStatus::LeftOnly => ("Left", "left"),
+        CompareBaseStatus::RightOnly => ("Right", "right"),
+        CompareBaseStatus::Equal => ("Equal", "equal"),
+        CompareBaseStatus::Different | CompareBaseStatus::Pending | CompareBaseStatus::Skipped => {
+            ("Diff", "different")
+        }
+    }
+}
+
+fn compare_file_view_status(node: &CompareFoundationNode) -> (&'static str, &'static str) {
     if matches!(node.detail, CompareFoundationDetail::TypeMismatch { .. }) {
         return ("Type mismatch", "warn");
     }

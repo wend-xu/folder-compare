@@ -279,7 +279,7 @@ fn compare_view_rows_project_visible_tree_status_and_icons() {
     assert_eq!(rows.len(), 5);
     assert_eq!(rows[0].relative_path, "src/lib.rs");
     assert_eq!(rows[0].depth, 0);
-    assert_eq!(rows[0].status_label, "Identical");
+    assert_eq!(rows[0].status_label, "Equal");
     assert_eq!(rows[0].left_icon, "TXT");
     assert_eq!(rows[0].right_icon, "TXT");
 
@@ -287,7 +287,7 @@ fn compare_view_rows_project_visible_tree_status_and_icons() {
         .iter()
         .find(|row| row.relative_path == "src/only_left.txt")
         .expect("deleted row should exist");
-    assert_eq!(deleted.status_label, "Deleted");
+    assert_eq!(deleted.status_label, "Left");
     assert_eq!(deleted.status_tone, "left");
     assert_eq!(deleted.right_name, "-");
 
@@ -295,7 +295,7 @@ fn compare_view_rows_project_visible_tree_status_and_icons() {
         .iter()
         .find(|row| row.relative_path == "src/only_right.txt")
         .expect("added row should exist");
-    assert_eq!(added.status_label, "Added");
+    assert_eq!(added.status_label, "Right");
     assert_eq!(added.status_tone, "right");
     assert_eq!(added.left_name, "-");
 
@@ -303,7 +303,7 @@ fn compare_view_rows_project_visible_tree_status_and_icons() {
         .iter()
         .find(|row| row.relative_path == "src/mismatch")
         .expect("mismatch row should exist");
-    assert_eq!(mismatch.status_label, "Type mismatch");
+    assert_eq!(mismatch.status_label, "Mismatch");
     assert_eq!(mismatch.left_icon, "TXT");
     assert_eq!(mismatch.right_icon, "DIR");
     assert!(!mismatch.is_expandable);
@@ -384,6 +384,58 @@ fn compare_view_row_action_uses_tree_toggle_for_directories() {
     assert_eq!(
         state.compare_view_row_action("src/root.rs"),
         Some(CompareViewRowAction::OpenFileView)
+    );
+}
+
+#[test]
+fn compare_view_hidden_files_preference_filters_hidden_subtrees() {
+    let mut state = state_from_entries(vec![
+        directory_entry("src/.cache", EntryStatus::Different),
+        text_diff_entry("src/.cache/secret.txt", EntryStatus::Different),
+        text_diff_entry("src/visible.txt", EntryStatus::Different),
+    ]);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    state.set_show_hidden_files(false);
+    assert_eq!(
+        state
+            .compare_view_row_projections()
+            .iter()
+            .map(|row| row.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/visible.txt"]
+    );
+
+    state.set_show_hidden_files(true);
+    assert_eq!(
+        state
+            .compare_view_row_projections()
+            .iter()
+            .map(|row| row.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/.cache", "src/visible.txt"]
+    );
+}
+
+#[test]
+fn hiding_hidden_files_reanchors_compare_focus_to_visible_parent() {
+    let mut state = state_from_entries(vec![
+        directory_entry("src/.cache", EntryStatus::Different),
+        text_diff_entry("src/.cache/secret.txt", EntryStatus::Different),
+        text_diff_entry("src/visible.txt", EntryStatus::Different),
+    ]);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src/.cache")));
+    assert_eq!(state.compare_focus_path_raw_text(), "src/.cache");
+    assert_eq!(
+        state.compare_row_focus_path.as_deref(),
+        Some("src/.cache/secret.txt")
+    );
+
+    state.set_show_hidden_files(false);
+    assert_eq!(state.compare_focus_path_raw_text(), "src");
+    assert_eq!(
+        state.compare_row_focus_path.as_deref(),
+        Some("src/visible.txt")
     );
 }
 

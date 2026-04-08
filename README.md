@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-07）：
+当前项目状态（2026-04-08）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -22,12 +22,14 @@
   - 独立 `compare_focus_path`
   - 独立 `compare_foundation`
   - foundation -> navigator / legacy file-view projection 迁移方向
-- `Phase 19B` 当前不视为已通过 baseline；当前主线是 `19B fix-1`：
+- `Phase 19B fix-2` 已成为 accepted baseline：
   - `Compare View` workspace mode
   - anchored compare tree workspace
   - 独立 `compare_row_focus_path`
   - Compare View / File View / Results 基础导航闭环
-- 当前默认下一入口仍是 `Phase 19B fix-1` 收口，不是直接进入 `Phase 19C`
+  - File View compare-context header 回归已修复，`Back to Compare View` 已恢复可点击
+  - Compare View 跟随 `Hidden files`
+- 当前不要默认直接进入 `Phase 19C`
 - 当前 workspace 已进入 `Compare View / File View` 双模式：
   - `Compare View` 是目录 compare tree MVP surface
   - `File View` 继续复用 attached `Diff / Analysis` shell
@@ -108,9 +110,11 @@
   - row tooltip 只做完整 filename + parent path completion
 - `Compare View`
   - 基于 `compare_foundation` 的 anchored compare tree 投影渲染
-  - 使用 `Source / Base | Status / Relation | Target / Modified` 三列布局
+  - 使用稳定 `Base | Relation | Target` 三列布局，header/body 共用同一套列几何
   - 目录主交互是树内 expand / collapse，不再以列表钻取作为主模型
   - `Back to Results`、`Up one level`、`Back to Compare View` 已接线
+  - 轻量类型标识复用 navigator 风格，不再使用 compare tree 内的 pill 风格类型 badge
+  - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
 - `Diff`
   - 状态机：`no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
@@ -138,6 +142,7 @@
   - 默认结果视图 `Tree / Flat`
 - `Hidden files` 当前只是 UI / presentation preference：
   - 影响 `Results / Navigator` 默认可见集合
+  - 影响 `Compare View` visible rows
   - 影响顶部摘要文案
   - 不改 compare request
   - 不改 compare-summary source counts
@@ -235,7 +240,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 19B fix-1` 的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 19B fix-2` 的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` closeout 边界、deferred 与默认下一入口
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -243,7 +248,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19B fix-1`，不是直接进入 `Phase 19C`，也不是继续滚动 `18C fix-*`。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19B fix-2`，不是直接进入 `Phase 19C`，也不是继续滚动 `18C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - attached `Diff / Analysis` shell
@@ -265,7 +270,7 @@ cargo test --workspace
   - 目录 selection / 目录详情
   - compare core widening
   - 超出 MVP 的更深层 `Compare View / File View` 重构
-- 当前不要默认切到 `Phase 19C`；只有在 `19B fix-1` compare tree MVP 被验收且无回归后，才进入下一阶段。
+- 当前不要默认切到 `Phase 19C`；`19B fix-2` 已是 accepted baseline，只有在后续线程明确激活时才进入下一阶段。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）
@@ -282,7 +287,7 @@ cargo test --workspace
 - `Phase 18`
   - 层级结果视图 / tree component / flat results 双视图
 - `Phase 19`
-  - Compare View / File View 双模式工作区（`19A` foundation 已落地，`19B` 当前在 compare tree MVP 的 `fix-1` 收口中）
+  - Compare View / File View 双模式工作区（`19A` foundation 已落地，`19B fix-2` 已收口 compare tree MVP 基线）
 - `Phase 20`
   - AI 分析增强（多任务 / hunk 关联 / 缓存）
 - `Phase 21`

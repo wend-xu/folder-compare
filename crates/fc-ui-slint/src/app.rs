@@ -1488,12 +1488,13 @@ slint::slint! {
         property <length> diff_header_separator_inset: 4px;
         property <length> diff_scrollbar_safe_inset: 18px;
         property <length> workbench_header_height: 66px;
+        property <length> workbench_compare_context_header_height: 78px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
+        property <length> compare_navigation_lane_width: 132px;
         property <length> compare_view_column_inset: 10px;
         property <length> compare_view_column_divider_width: 1px;
-        property <length> compare_view_status_column_width: 132px;
-        property <length> compare_view_action_button_width: 136px;
+        property <length> compare_view_relation_column_width: 108px;
         property <string> diff_helper_strip_text: root.diff_shell_ready && root.diff_has_rows
             ? ("Select text or double-click a line number to copy the full row."
                 + (root.diff_content_char_capacity > 112
@@ -2537,7 +2538,9 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: root.workbench_header_height;
+                                                height: root.can_return_to_compare_view
+                                                    ? root.workbench_compare_context_header_height
+                                                    : root.workbench_header_height;
                                                 background: #f9fbfe;
                                                 Rectangle {
                                                     x: 0px;
@@ -2552,7 +2555,7 @@ slint::slint! {
                                                     spacing: 12px;
 
                                                     Rectangle {
-                                                        width: 140px;
+                                                        width: root.compare_navigation_lane_width;
                                                         background: transparent;
 
                                                         VerticalLayout {
@@ -2630,6 +2633,24 @@ slint::slint! {
                                                                 }
                                                             }
                                                         }
+
+                                                        TouchArea {
+                                                            width: parent.width;
+                                                            height: parent.height;
+                                                            pointer-event(event) => {
+                                                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                    root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                    root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                    root.workspace_header_context_menu_requested(
+                                                                        root.selected_relative_path_raw,
+                                                                        root.diff_mode_label,
+                                                                        root.file_view_compare_status_label,
+                                                                        root.file_view_path_context_text,
+                                                                        root.compare_root_pair_text,
+                                                                    );
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
 
@@ -2678,22 +2699,6 @@ slint::slint! {
                                                             vertical-alignment: center;
                                                             horizontal-stretch: 1;
                                                             overflow: elide;
-                                                        }
-                                                    }
-                                                }
-
-                                                if root.can_return_to_compare_view : TouchArea {
-                                                    pointer-event(event) => {
-                                                        if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                                                            root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
-                                                            root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
-                                                            root.workspace_header_context_menu_requested(
-                                                                root.selected_relative_path_raw,
-                                                                root.diff_mode_label,
-                                                                root.file_view_compare_status_label,
-                                                                root.file_view_path_context_text,
-                                                                root.compare_root_pair_text,
-                                                            );
                                                         }
                                                     }
                                                 }
@@ -2991,7 +2996,9 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: root.workbench_header_height;
+                                                height: root.can_return_to_compare_view
+                                                    ? root.workbench_compare_context_header_height
+                                                    : root.workbench_header_height;
                                                 background: #f9fbfe;
                                                 Rectangle {
                                                     x: 0px;
@@ -3006,7 +3013,7 @@ slint::slint! {
                                                     spacing: 10px;
 
                                                     if root.can_return_to_compare_view : Rectangle {
-                                                        width: 140px;
+                                                        width: root.compare_navigation_lane_width;
                                                         background: transparent;
 
                                                         VerticalLayout {
@@ -3118,6 +3125,8 @@ slint::slint! {
                                                         }
 
                                                         if root.can_return_to_compare_view : TouchArea {
+                                                            width: parent.width;
+                                                            height: parent.height;
                                                             pointer-event(event) => {
                                                                 if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
                                                                     root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
@@ -3546,7 +3555,7 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: 92px;
+                                                height: 80px;
                                                 background: #f9fbfe;
 
                                                 Rectangle {
@@ -3562,25 +3571,21 @@ slint::slint! {
                                                     spacing: 12px;
 
                                                     Rectangle {
-                                                        width: root.compare_view_action_button_width;
+                                                        width: root.compare_navigation_lane_width;
                                                         background: transparent;
 
                                                         VerticalLayout {
-                                                            spacing: 8px;
+                                                            spacing: 6px;
 
-                                                            ToolButton {
+                                                            TextAction {
                                                                 label: "Back to Results";
-                                                                button_min_width: root.compare_view_action_button_width;
-                                                                control_height: 30px;
                                                                 tapped => {
                                                                     root.compare_view_back_to_results_requested();
                                                                 }
                                                             }
 
-                                                            ToolButton {
+                                                            TextAction {
                                                                 label: "Up one level";
-                                                                button_min_width: root.compare_view_action_button_width;
-                                                                control_height: 30px;
                                                                 enabled: root.compare_view_can_go_up;
                                                                 tapped => {
                                                                     root.compare_view_up_requested();
@@ -3591,7 +3596,7 @@ slint::slint! {
 
                                                     Rectangle {
                                                         width: 1px;
-                                                        height: parent.height - 8px;
+                                                        height: parent.height - 10px;
                                                         background: #e2e9f1;
                                                     }
 
@@ -3668,14 +3673,14 @@ slint::slint! {
                                                     property <length> side_column_width: max(
                                                         0px,
                                                         (self.inner_width
-                                                            - root.compare_view_status_column_width
+                                                            - root.compare_view_relation_column_width
                                                             - root.compare_view_column_divider_width * 2)
                                                             / 2,
                                                     );
                                                     property <length> left_column_x: root.compare_view_column_inset;
                                                     property <length> left_divider_x: self.left_column_x + self.side_column_width;
                                                     property <length> status_column_x: self.left_divider_x + root.compare_view_column_divider_width;
-                                                    property <length> right_divider_x: self.status_column_x + root.compare_view_status_column_width;
+                                                    property <length> right_divider_x: self.status_column_x + root.compare_view_relation_column_width;
                                                     property <length> right_column_x: self.right_divider_x + root.compare_view_column_divider_width;
 
                                                     Rectangle {
@@ -3694,42 +3699,42 @@ slint::slint! {
                                                         background: #d8e1ec;
                                                     }
 
-                                                    Text {
-                                                        x: compare_column_header.left_column_x;
-                                                        y: 0px;
-                                                        width: compare_column_header.side_column_width;
-                                                        height: parent.height;
-                                                        text: "Source / Base";
-                                                        color: #6a7c8f;
-                                                        font-size: 11px;
-                                                        font-weight: 600;
+                                                        Text {
+                                                            x: compare_column_header.left_column_x;
+                                                            y: 0px;
+                                                            width: compare_column_header.side_column_width;
+                                                            height: parent.height;
+                                                            text: "Base";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
                                                         vertical-alignment: center;
                                                         overflow: elide;
                                                     }
 
-                                                    Text {
-                                                        x: compare_column_header.status_column_x;
-                                                        y: 0px;
-                                                        width: root.compare_view_status_column_width;
-                                                        height: parent.height;
-                                                        text: "Status / Relation";
-                                                        color: #6a7c8f;
-                                                        font-size: 11px;
-                                                        font-weight: 600;
+                                                        Text {
+                                                            x: compare_column_header.status_column_x;
+                                                            y: 0px;
+                                                            width: root.compare_view_relation_column_width;
+                                                            height: parent.height;
+                                                            text: "Relation";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
                                                         horizontal-alignment: center;
                                                         vertical-alignment: center;
                                                         overflow: elide;
                                                     }
 
-                                                    Text {
-                                                        x: compare_column_header.right_column_x;
-                                                        y: 0px;
-                                                        width: compare_column_header.side_column_width;
-                                                        height: parent.height;
-                                                        text: "Target / Modified";
-                                                        color: #6a7c8f;
-                                                        font-size: 11px;
-                                                        font-weight: 600;
+                                                        Text {
+                                                            x: compare_column_header.right_column_x;
+                                                            y: 0px;
+                                                            width: compare_column_header.side_column_width;
+                                                            height: parent.height;
+                                                            text: "Target";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
                                                         horizontal-alignment: left;
                                                         vertical-alignment: center;
                                                         overflow: elide;
@@ -3762,7 +3767,7 @@ slint::slint! {
                                                     row_is_expanded: root.compare_row_is_expanded;
                                                     column_inset: root.compare_view_column_inset;
                                                     column_divider_width: root.compare_view_column_divider_width;
-                                                    status_column_width: root.compare_view_status_column_width;
+                                                    status_column_width: root.compare_view_relation_column_width;
                                                     focused_row: root.compare_row_focused_index;
                                                     interaction_enabled: !root.running && !root.diff_loading;
                                                     row_focused(path) => {

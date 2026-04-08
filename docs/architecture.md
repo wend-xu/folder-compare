@@ -1,12 +1,13 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-1)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation and the in-progress `Phase 19B fix-1` compare-workspace correction inside that shell
+  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation and the accepted `Phase 19B fix-2` compare-tree MVP closeout inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
-- The current default next-stage entry is still `Phase 19B fix-1` closeout; do not treat `Phase 19C` as active until this compare-tree MVP is accepted without regression.
+- `Phase 19B fix-2` is now the accepted compare-workspace MVP baseline.
+- Do not treat `Phase 19C` as active until a later thread explicitly activates it.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
 ## Stable Delivery Baseline
@@ -107,16 +108,16 @@
   - tree-internal search / content search / richer match-span semantics
   - compare-core contract widening
 
-## Current Phase 19 Status (`19A` landed, `19B fix-1` active)
+## Current Phase 19 Status (`19A` landed, `19B fix-2` accepted)
 
 - `Phase 19A` foundation work is landed.
-- `Phase 19B` is not yet an accepted baseline; the current work is `19B fix-1`, which corrects the previously shipped immediate-children surface into a compare-tree MVP and removes File View shell regressions.
+- `Phase 19B fix-2` is now the accepted compare-tree MVP baseline.
 - Workspace-level outer mode is now Rust-owned inside `fc-ui-slint` state:
   - `FileView`
   - `CompareView`
 - Current visible workspace behavior is now dual-mode:
   - `Compare View` now renders one anchored compare-tree workspace for the current directory target
-  - `File View` keeps the existing attached `Diff / Analysis` shell and only adds `Back to Compare View` context when the current file session was opened from Compare View
+  - `File View` keeps the existing attached `Diff / Analysis` shell and adds stable compare-context header support when the current file session was opened from Compare View
 - Compare workspace target anchoring is now split explicitly:
   - `compare_focus_path` is the compare-side anchor for current Compare View navigation
   - `compare_row_focus_path` is the visible compare-tree row focus inside the current Compare View target
@@ -134,13 +135,17 @@
   - `compare_foundation -> Compare View compare-tree projection`
   - migration-era `entry_rows` still exist, but they are now a projection rather than the intended long-term source of truth
 - The current tree projection is now built from that foundation rather than reconstituting long-lived compare structure from flat row strings.
-- `19B fix-1` now uses that foundation directly for Compare View:
+- `19B fix-2` now uses that foundation directly for Compare View:
   - explicit `Open in Compare View` entry from `Results / Navigator`
   - `Back to Results`
   - `Up one level`
   - Compare View -> File View -> Back to Compare View closed-loop navigation
   - in-place directory expand / collapse inside Compare View
   - focused-row and ensure-visible preservation for Compare View
+  - stable `Base | Relation | Target` geometry with header/body alignment and a narrower middle relation lane
+  - lightweight type glyphs aligned with navigator tree language rather than pill-style type badges
+  - relation labels and tones aligned to navigator semantics (`Diff / Equal / Left / Right`)
+  - `Hidden files` now applies to Compare View visible-row projection, with compare focus clamped back to the nearest visible parent when needed
   - `Type mismatch` rows stay non-openable and only emit a restrained toast
 
 ## Crate Responsibilities
@@ -218,6 +223,7 @@
   - emphasized current filename
   - compact compare-status badge
   - compare-path context
+  - stable header height/layout with the compare-return lane kept clickable
 
 ## Stable UI / Interaction Contract
 
@@ -231,6 +237,20 @@
 - `Filter / Scope` owns visible-set narrowing.
 - `Results / Navigator` owns row scanability, selection, and stale-selection transitions.
 - Workspace owns Compare View plus file-level view and analysis.
+
+### Compare View Contract
+
+- Compare View keeps the current workspace IA; it is not a hidden-sidebar or whole-window compare mode.
+- Compare View uses one stable three-way geometry:
+  - left `Base`
+  - narrow middle `Relation`
+  - right `Target`
+- Header and body share the same column geometry.
+- Left/right columns remain visually symmetric.
+- Type markers use lightweight drawn glyphs, not status-pill surfaces.
+- Compare View follows `Settings -> Behavior -> Hidden files` with the same product boundary as navigator:
+  - no `fc-core` change
+  - no compare-summary source-count change
 
 ### Results Row and Search Contract
 
@@ -395,7 +415,7 @@
 
 - The `Phase 18` sections below are kept as the architectural record of what was decided and implemented across `18A / 18B / 18C`.
 - They are not the default execution entry anymore.
-- New work should default to `Phase 19B fix-1` closeout on top of the landed `Phase 18 / 19A` baseline unless a concrete regression requires a narrow `18C fix-*` follow-up.
+- New work should start from the accepted `Phase 19B fix-2` baseline on top of the landed `Phase 18 / 19A` work unless a concrete regression requires a narrow `18C fix-*` or `19B` follow-up.
 - Nothing below should be read as evidence that richer Compare View descendants, tree search, directory detail panes, or compare-core widening already exist.
 
 ## Why Phase 18 Does Not Rewrite Compare Core Semantics
@@ -581,17 +601,19 @@
 
 ## Next-Stage Activation
 
-- Default next entry remains `Phase 19B fix-1` verification and closeout.
+- Default baseline is now `Phase 19B fix-2` accepted closeout.
 - `Phase 19A` has landed:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`
   - independent `compare_row_focus_path`
   - structured `compare_foundation`
-- Current `19B fix-1` implementation target is:
+- Current accepted `19B fix-2` product contract is:
   - explicit entry from `Results / Navigator`
   - anchored compare-tree workspace with in-place expand / collapse
   - Compare View / File View / Results navigation loop
-- Do not move default planning to `Phase 19C` until this compare-tree MVP is accepted without File View regressions.
+  - stable compare-context File View header with clickable `Back to Compare View`
+  - compare-visible rows following `Hidden files`
+- Do not move default planning to `Phase 19C` unless a later thread explicitly scopes and activates it.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
 ## Related Documents

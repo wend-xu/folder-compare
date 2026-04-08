@@ -15,6 +15,7 @@ pub struct CompareTreeVisibleRow {
 pub fn project_compare_tree_rows(
     foundation: &CompareFoundation,
     focus: &CompareFocusPath,
+    show_hidden_files: bool,
     expansion_overrides: &BTreeMap<String, bool>,
 ) -> Vec<CompareTreeVisibleRow> {
     let focus = foundation.clamp_compare_focus_path(focus);
@@ -32,6 +33,7 @@ pub fn project_compare_tree_rows(
             foundation,
             child_node.relative_path.as_str(),
             anchor_node.path_depth,
+            show_hidden_files,
             expansion_overrides,
             &mut rows,
         );
@@ -43,12 +45,16 @@ fn flatten_compare_tree(
     foundation: &CompareFoundation,
     key: &str,
     anchor_depth: u16,
+    show_hidden_files: bool,
     expansion_overrides: &BTreeMap<String, bool>,
     out: &mut Vec<CompareTreeVisibleRow>,
 ) {
     let Some(node) = foundation.node(key) else {
         return;
     };
+    if !show_hidden_files && is_hidden_relative_path(&node.relative_path) {
+        return;
+    }
 
     let is_directory = node.is_directory_target();
     let is_expandable = is_directory && !node.child_relative_paths.is_empty();
@@ -73,6 +79,7 @@ fn flatten_compare_tree(
             foundation,
             child_key.as_str(),
             anchor_depth,
+            show_hidden_files,
             expansion_overrides,
             out,
         );
@@ -161,4 +168,13 @@ pub(crate) fn compare_tree_expansion_state(
         .get(key)
         .copied()
         .unwrap_or(path_depth <= 1)
+}
+
+fn is_hidden_relative_path(relative_path: &str) -> bool {
+    relative_path
+        .trim_matches(|ch| ch == '/' || ch == '\\')
+        .split(['/', '\\'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .any(|part| part.starts_with('.'))
 }
