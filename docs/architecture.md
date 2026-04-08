@@ -240,7 +240,8 @@
 
 ### Compare View Contract
 
-- Compare View keeps the current workspace IA; it is not a hidden-sidebar or whole-window compare mode.
+- Current implemented baseline: Compare View renders inside the existing `Sidebar + Workspace` IA.
+- `19B fix-2` does not auto-hide the sidebar or enter a whole-window compare mode.
 - Compare View uses one stable three-way geometry:
   - left `Base`
   - narrow middle `Relation`
@@ -599,6 +600,31 @@
 - Deeper Compare View / File View redesign beyond the MVP split:
   - trigger: only if later work proves the current `19B` MVP shell insufficient
 
+## Phase 19C Draft Boundary
+
+- `Phase 19C` is now defined as one explicit draft boundary for the next compare-workspace pass.
+- This section describes intended scope only; it does not mean `19C` is already implemented.
+- `19C` should stay inside `fc-ui-slint` product/presentation work and inherit the accepted `19B fix-2` baseline.
+- Primary `19C` scope:
+  - compare workspace polish on top of the current anchored compare-tree surface
+  - disclosure / divider / icon alignment / relation-column visual closeout
+  - narrow-width minimum-usable behavior for the compare tree surface
+  - minimal horizontal-overflow plan for left/right compare columns when content exceeds available width
+- Sidebar direction for `19C`:
+  - treat sidebar hide / restore as one top-level IA decision, not as a local compare-tree tweak
+  - if activated, prefer one explicit user-controlled hide / restore pattern aligned with existing desktop workbench conventions
+  - do not make Compare View entry auto-hide the sidebar by default in `19C`
+  - whole-window compare takeover remains out of scope for `19C`
+- Explicitly out of `19C`:
+  - true `File Compare View` implementation
+  - sync scroll / reset / recenter
+  - richer compare actions
+  - compare search
+  - `fc-core` widening
+- Candidate follow-on split after `19C`:
+  - `19D`: true `File Compare View MVP`
+  - `19E`: advanced compare interaction layer
+
 ## Next-Stage Activation
 
 - Default baseline is now `Phase 19B fix-2` accepted closeout.
@@ -613,6 +639,7 @@
   - Compare View / File View / Results navigation loop
   - stable compare-context File View header with clickable `Back to Compare View`
   - compare-visible rows following `Hidden files`
+- If a later thread explicitly activates `Phase 19C`, use the `Phase 19C Draft Boundary` section above as the planning boundary rather than reopening `19B fix-*`.
 - Do not move default planning to `Phase 19C` unless a later thread explicitly scopes and activates it.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
