@@ -1,0 +1,572 @@
+import { ListView } from "std-widgets.slint";
+import { NavigatorDisclosureChevron } from "navigator_tree.slint";
+import { UiPalette } from "ui_palette.slint";
+
+component CompareKindGlyph inherits Rectangle {
+    in property <string> label: "TXT";
+    in property <bool> present: true;
+    in property <bool> emphasized: false;
+
+    property <brush> stroke: root.present
+        ? (root.emphasized
+            ? UiPalette.results_row_selected_context_text
+            : UiPalette.results_row_tone_neutral_context_text)
+        : #9eb0bf;
+
+    width: 14px;
+    height: 14px;
+    background: transparent;
+
+    if !root.present : Rectangle {
+        x: 2px;
+        y: 6px;
+        width: 10px;
+        height: 1px;
+        border-radius: 1px;
+        background: root.stroke;
+        opacity: 0.8;
+    }
+
+    if root.present && root.label == "DIR" : Rectangle {
+        x: 1px;
+        y: 3px;
+        width: 5px;
+        height: 3px;
+        border-width: 1px;
+        border-radius: 1px;
+        border-color: root.stroke;
+        background: transparent;
+    }
+
+    if root.present && root.label == "DIR" : Rectangle {
+        x: 1px;
+        y: 5px;
+        width: 12px;
+        height: 7px;
+        border-width: 1px;
+        border-radius: 2px;
+        border-color: root.stroke;
+        background: transparent;
+    }
+
+    if root.present && root.label != "DIR" : Rectangle {
+        x: 2px;
+        y: 1px;
+        width: 9px;
+        height: 12px;
+        border-width: 1px;
+        border-radius: 1px;
+        border-color: root.stroke;
+        background: transparent;
+    }
+
+    if root.present && root.label == "TXT" : Rectangle {
+        x: 4px;
+        y: 5px;
+        width: 5px;
+        height: 1px;
+        background: root.stroke;
+    }
+
+    if root.present && root.label == "TXT" : Rectangle {
+        x: 4px;
+        y: 8px;
+        width: 5px;
+        height: 1px;
+        background: root.stroke;
+    }
+
+    if root.present && root.label == "BIN" : Rectangle {
+        x: 4px;
+        y: 4px;
+        width: 2px;
+        height: 2px;
+        border-width: 1px;
+        border-radius: 1px;
+        border-color: root.stroke;
+        background: transparent;
+    }
+
+    if root.present && root.label == "BIN" : Rectangle {
+        x: 7px;
+        y: 7px;
+        width: 2px;
+        height: 2px;
+        border-width: 1px;
+        border-radius: 1px;
+        border-color: root.stroke;
+        background: transparent;
+    }
+}
+
+component CompareSideEntryCell inherits Rectangle {
+    in property <int> depth: 0;
+    in property <string> icon;
+    in property <string> name;
+    in property <bool> present: true;
+    in property <bool> directory: false;
+    in property <bool> expandable: false;
+    in property <bool> expanded: false;
+    in property <bool> emphasized: false;
+    in property <bool> toggle_enabled: false;
+    callback toggle_requested();
+
+    property <length> indent_width: 12px * root.depth;
+    clip: true;
+    background: transparent;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 6px;
+
+        Rectangle {
+            width: root.indent_width;
+            background: transparent;
+        }
+
+        disclosure_slot := Rectangle {
+            width: 12px;
+            background: transparent;
+
+            NavigatorDisclosureChevron {
+                visible: root.expandable && root.toggle_enabled;
+                expanded: root.expanded;
+                stroke: root.emphasized
+                    ? UiPalette.results_row_selected_context_text
+                    : UiPalette.results_row_tone_neutral_context_text;
+                x: 0px;
+                y: (parent.height - self.height) / 2;
+            }
+
+            TouchArea {
+                width: parent.width;
+                height: parent.height;
+                enabled: root.expandable && root.toggle_enabled;
+                clicked => {
+                    root.toggle_requested();
+                }
+            }
+        }
+
+        CompareKindGlyph {
+            label: root.icon;
+            present: root.present;
+            emphasized: root.emphasized;
+        }
+
+        label_clip := Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            background: transparent;
+
+            Text {
+                width: parent.width;
+                text: root.name;
+                color: root.present
+                    ? (root.emphasized
+                        ? UiPalette.results_row_selected_path_text
+                        : (root.directory
+                            ? #38556d
+                            : UiPalette.results_row_tone_neutral_path_text))
+                    : #98a5b4;
+                font-size: 13px;
+                font-weight: root.present
+                    ? (root.directory ? 600 : 500)
+                    : 400;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component CompareStatusCell inherits Rectangle {
+    in property <string> label;
+    in property <string> tone: "neutral";
+    in property <bool> emphasized: false;
+
+    clip: true;
+    background: transparent;
+
+    Text {
+        text: root.label;
+        width: parent.width;
+        height: parent.height;
+        color: root.tone == "different"
+            ? UiPalette.navigator_tree_tone_different_text
+            : (root.tone == "equal"
+                ? UiPalette.navigator_tree_tone_equal_text
+                : (root.tone == "left"
+                    ? UiPalette.navigator_tree_tone_left_text
+                    : (root.tone == "right"
+                        ? UiPalette.navigator_tree_tone_right_text
+                        : (root.tone == "warn"
+                            ? #8a6464
+                            : UiPalette.navigator_tree_tone_neutral_text))));
+        font-size: 11px;
+        font-weight: root.emphasized ? 700 : 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component CompareViewRow inherits Rectangle {
+    in property <string> row_path;
+    in property <int> row_depth: 0;
+    in property <string> left_icon;
+    in property <string> left_name;
+    in property <bool> left_present: false;
+    in property <string> status_label;
+    in property <string> status_tone: "neutral";
+    in property <string> right_icon;
+    in property <string> right_name;
+    in property <bool> right_present: false;
+    in property <bool> is_directory: false;
+    in property <bool> is_expandable: false;
+    in property <bool> is_expanded: false;
+    in property <length> column_inset: 10px;
+    in property <length> column_divider_width: 1px;
+    in property <length> status_column_width: 132px;
+    in property <int> row_index: -1;
+    in property <int> focused_row: -1;
+    in property <bool> enabled: true;
+    callback row_focused(string);
+    callback row_toggle_requested(string);
+    callback row_activated(string);
+    callback row_context_menu_requested(string, length, length);
+
+    property <bool> row_focused_state: root.row_index == root.focused_row;
+    property <bool> row_hovered: row_touch_area.has_hover;
+    property <length> content_width: max(0px, self.width - root.column_inset * 2);
+    property <length> side_column_width: max(
+        0px,
+        (self.content_width - root.status_column_width - root.column_divider_width * 2) / 2,
+    );
+    property <length> left_column_x: root.column_inset;
+    property <length> left_divider_x: root.left_column_x + root.side_column_width;
+    property <length> status_column_x: root.left_divider_x + root.column_divider_width;
+    property <length> right_divider_x: root.status_column_x + root.status_column_width;
+    property <length> right_column_x: root.right_divider_x + root.column_divider_width;
+
+    height: 30px;
+    background: root.row_focused_state
+        ? rgba(219, 233, 251, 0.58)
+        : (root.row_hovered ? rgba(247, 250, 253, 0.92) : transparent);
+    opacity: root.enabled ? 1 : 0.72;
+    clip: true;
+
+    Rectangle {
+        x: 0px;
+        y: 4px;
+        width: 2px;
+        height: parent.height - 8px;
+        border-radius: 1px;
+        background: UiPalette.results_row_selected_border;
+        visible: root.row_focused_state;
+    }
+
+    Rectangle {
+        x: 0px;
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: #edf2f7;
+    }
+
+    Rectangle {
+        x: root.left_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: transparent;
+
+        CompareSideEntryCell {
+            width: parent.width;
+            height: parent.height;
+            depth: root.row_depth;
+            icon: root.left_icon;
+            name: root.left_name;
+            present: root.left_present;
+            directory: root.is_directory;
+            expandable: root.is_expandable;
+            expanded: root.is_expanded;
+            emphasized: root.row_focused_state;
+            toggle_enabled: true;
+            toggle_requested => {
+                root.row_focused(root.row_path);
+                root.row_toggle_requested(root.row_path);
+            }
+        }
+    }
+
+    Rectangle {
+        x: root.left_divider_x;
+        y: 3px;
+        width: root.column_divider_width;
+        height: parent.height - 6px;
+        background: #e8eef5;
+    }
+
+    Rectangle {
+        x: root.status_column_x;
+        y: 0px;
+        width: root.status_column_width;
+        height: parent.height;
+        background: transparent;
+
+        CompareStatusCell {
+            width: parent.width;
+            height: parent.height;
+            label: root.status_label;
+            tone: root.status_tone;
+            emphasized: root.row_focused_state;
+        }
+    }
+
+    Rectangle {
+        x: root.right_divider_x;
+        y: 3px;
+        width: root.column_divider_width;
+        height: parent.height - 6px;
+        background: #e8eef5;
+    }
+
+    Rectangle {
+        x: root.right_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: transparent;
+
+        CompareSideEntryCell {
+            width: parent.width;
+            height: parent.height;
+            depth: root.row_depth;
+            icon: root.right_icon;
+            name: root.right_name;
+            present: root.right_present;
+            directory: root.is_directory;
+            expandable: root.is_expandable;
+            expanded: root.is_expanded;
+            emphasized: root.row_focused_state;
+        }
+    }
+
+    row_touch_area := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.row_focused(root.row_path);
+        }
+        double-clicked => {
+            root.row_focused(root.row_path);
+            root.row_activated(root.row_path);
+        }
+        pointer-event(event) => {
+            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                root.row_focused(root.row_path);
+                root.row_context_menu_requested(
+                    root.row_path,
+                    self.absolute-position.x + self.mouse-x,
+                    self.absolute-position.y + self.mouse-y,
+                );
+            }
+        }
+    }
+}
+
+export component CompareView inherits Rectangle {
+    in property <[string]> row_paths;
+    in property <[int]> row_depths;
+    in property <[string]> row_left_icons;
+    in property <[string]> row_left_names;
+    in property <[bool]> row_left_present;
+    in property <[string]> row_status_labels;
+    in property <[string]> row_status_tones;
+    in property <[string]> row_right_icons;
+    in property <[string]> row_right_names;
+    in property <[bool]> row_right_present;
+    in property <[bool]> row_is_directories;
+    in property <[bool]> row_is_expandable;
+    in property <[bool]> row_is_expanded;
+    in property <length> column_inset: 10px;
+    in property <length> column_divider_width: 1px;
+    in property <length> status_column_width: 132px;
+    in property <int> focused_row: -1;
+    in property <bool> interaction_enabled: true;
+    callback row_focused(string);
+    callback row_toggle_requested(string);
+    callback row_activated(string);
+    callback row_context_menu_requested(string, length, length);
+    callback back_requested();
+
+    forward-focus: compare_focus_scope;
+    clip: true;
+    property <length> content_width: max(0px, self.width - root.column_inset * 2);
+    property <length> side_column_width: max(
+        0px,
+        (self.content_width - root.status_column_width - root.column_divider_width * 2) / 2,
+    );
+    property <length> left_column_x: root.column_inset;
+    property <length> left_divider_x: root.left_column_x + root.side_column_width;
+    property <length> status_column_x: root.left_divider_x + root.column_divider_width;
+    property <length> right_divider_x: root.status_column_x + root.status_column_width;
+    property <length> right_column_x: root.right_divider_x + root.column_divider_width;
+
+    public function ensure_row_visible(target_row: int) {
+        compare_list.ensure_row_visible(target_row);
+    }
+
+    public function focus_rows() {
+        compare_focus_scope.focus();
+    }
+
+    compare_focus_scope := FocusScope {
+        x: 0px;
+        width: 0px;
+
+        key-pressed(event) => {
+            if event.text == Key.UpArrow {
+                if root.row_paths.length > 0 {
+                    let current = root.focused_row < 0 ? 0 : max(0, root.focused_row - 1);
+                    root.row_focused(root.row_paths[current]);
+                }
+                return accept;
+            } else if event.text == Key.DownArrow {
+                if root.row_paths.length > 0 {
+                    let current = root.focused_row < 0
+                        ? 0
+                        : min(root.row_paths.length - 1, root.focused_row + 1);
+                    root.row_focused(root.row_paths[current]);
+                }
+                return accept;
+            } else if event.text == Key.RightArrow || event.text == Key.LeftArrow || event.text == " " {
+                if root.focused_row >= 0
+                    && root.focused_row < root.row_paths.length
+                    && root.row_is_expandable[root.focused_row]
+                {
+                    root.row_toggle_requested(root.row_paths[root.focused_row]);
+                }
+                return accept;
+            } else if event.text == Key.Return {
+                if root.focused_row >= 0 && root.focused_row < root.row_paths.length {
+                    root.row_activated(root.row_paths[root.focused_row]);
+                }
+                return accept;
+            } else if event.text == Key.Backspace {
+                root.back_requested();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    Rectangle {
+        x: root.left_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: #fcfdff;
+    }
+
+    Rectangle {
+        x: root.status_column_x;
+        y: 0px;
+        width: root.status_column_width;
+        height: parent.height;
+        background: #fbfcfe;
+    }
+
+    Rectangle {
+        x: root.right_column_x;
+        y: 0px;
+        width: root.side_column_width;
+        height: parent.height;
+        background: #fcfdff;
+    }
+
+    Rectangle {
+        x: root.left_divider_x;
+        y: 0px;
+        width: root.column_divider_width;
+        height: parent.height;
+        background: #e3ebf3;
+    }
+
+    Rectangle {
+        x: root.right_divider_x;
+        y: 0px;
+        width: root.column_divider_width;
+        height: parent.height;
+        background: #e3ebf3;
+    }
+
+    compare_list := ListView {
+        width: parent.width;
+        height: parent.height;
+        property <length> row_height: 30px;
+        property <length> ensure_visible_padding: 10px;
+
+        function ensure_row_visible(target_row: int) {
+            if target_row < 0 || target_row >= root.row_paths.length {
+                return;
+            }
+
+            let top_limit = min(
+                self.ensure_visible_padding,
+                max(0px, self.visible-height - self.row_height),
+            );
+            let bottom_limit = max(
+                self.row_height,
+                self.visible-height - self.ensure_visible_padding,
+            );
+            let target_top = self.viewport-y + target_row * self.row_height;
+            let target_bottom = target_top + self.row_height;
+            if target_top < top_limit {
+                self.viewport-y += top_limit - target_top;
+            }
+            if target_bottom > bottom_limit {
+                self.viewport-y -= target_bottom - bottom_limit;
+            }
+        }
+
+        for row_path[index] in root.row_paths: row_item := CompareViewRow {
+            row_path: row_path;
+            row_index: index;
+            focused_row: root.focused_row;
+            enabled: root.interaction_enabled;
+            row_depth: root.row_depths[index];
+            left_icon: root.row_left_icons[index];
+            left_name: root.row_left_names[index];
+            left_present: root.row_left_present[index];
+            status_label: root.row_status_labels[index];
+            status_tone: root.row_status_tones[index];
+            right_icon: root.row_right_icons[index];
+            right_name: root.row_right_names[index];
+            right_present: root.row_right_present[index];
+            is_directory: root.row_is_directories[index];
+            is_expandable: root.row_is_expandable[index];
+            is_expanded: root.row_is_expanded[index];
+            column_inset: root.column_inset;
+            column_divider_width: root.column_divider_width;
+            status_column_width: root.status_column_width;
+            row_focused(path) => {
+                compare_focus_scope.focus();
+                root.row_focused(path);
+            }
+            row_toggle_requested(path) => {
+                compare_focus_scope.focus();
+                root.row_toggle_requested(path);
+            }
+            row_activated(path) => {
+                compare_focus_scope.focus();
+                root.row_activated(path);
+            }
+            row_context_menu_requested(path, anchor_x, anchor_y) => {
+                compare_focus_scope.focus();
+                root.row_context_menu_requested(path, anchor_x, anchor_y);
+            }
+        }
+    }
+}

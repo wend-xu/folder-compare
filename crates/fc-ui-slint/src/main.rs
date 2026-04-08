@@ -4,6 +4,7 @@ mod app;
 mod bridge;
 mod commands;
 mod compare_foundation;
+mod compare_tree;
 mod context_menu;
 mod folder_picker;
 mod macos_font_bootstrap;
