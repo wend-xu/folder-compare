@@ -62,6 +62,7 @@ slint::slint! {
         callback tooltip_requested(string, length, length, length);
         callback tooltip_closed();
 
+        horizontal-stretch: 0;
         min-width: self.button_min_width;
         height: self.control_height;
         border-width: 1px;
@@ -3389,8 +3390,10 @@ slint::slint! {
                                                     ToolButton {
                                                         label: root.analysis_loading ? "Analyzing..." : "Analyze";
                                                         primary: true;
-                                                        button_min_width: 108px;
+                                                        width: 132px;
+                                                        button_min_width: 132px;
                                                         control_height: 30px;
+                                                        label_font_size: 13px;
                                                         enabled: !root.analysis_loading && root.analysis_available && !root.diff_loading && !root.running
                                                             && (!root.analysis_remote_mode || root.analysis_remote_config_ready);
                                                         tapped => {
