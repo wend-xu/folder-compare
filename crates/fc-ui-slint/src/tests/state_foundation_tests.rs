@@ -117,6 +117,28 @@ fn workspace_mode_and_compare_focus_are_independent_from_file_selection() {
 }
 
 #[test]
+fn sidebar_visibility_is_top_level_shell_state() {
+    let mut state = state_from_entries(vec![text_diff_entry(
+        "src/bin/main.rs",
+        EntryStatus::Different,
+    )]);
+
+    state.set_workspace_mode(WorkspaceMode::CompareView);
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+    assert!(state.sidebar_visible());
+
+    assert!(state.toggle_sidebar_visible());
+    assert!(!state.sidebar_visible());
+    assert_eq!(state.workspace_mode_text(), "compare-view");
+    assert_eq!(state.compare_focus_path_raw_text(), "src");
+
+    assert!(state.set_sidebar_visible(true));
+    assert!(state.sidebar_visible());
+    assert_eq!(state.workspace_mode_text(), "compare-view");
+    assert_eq!(state.compare_focus_path_raw_text(), "src");
+}
+
+#[test]
 fn results_collection_text_mentions_hidden_entries_filtered_by_settings() {
     let mut state = state_from_entries(vec![
         file_entry(".env", EntryStatus::Different),
@@ -289,7 +311,7 @@ fn compare_view_rows_project_visible_tree_status_and_icons() {
         .expect("deleted row should exist");
     assert_eq!(deleted.status_label, "Left");
     assert_eq!(deleted.status_tone, "left");
-    assert_eq!(deleted.right_name, "-");
+    assert_eq!(deleted.right_name, "");
 
     let added = rows
         .iter()
@@ -297,7 +319,7 @@ fn compare_view_rows_project_visible_tree_status_and_icons() {
         .expect("added row should exist");
     assert_eq!(added.status_label, "Right");
     assert_eq!(added.status_tone, "right");
-    assert_eq!(added.left_name, "-");
+    assert_eq!(added.left_name, "");
 
     let mismatch = rows
         .iter()

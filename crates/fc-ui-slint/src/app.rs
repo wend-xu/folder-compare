@@ -110,6 +110,9 @@ slint::slint! {
     component TitleBarSurface inherits Rectangle {
         in property <length> leading_inset: 0px;
         in property <string> title_text: "Folder Compare";
+        in property <string> sidebar_label: "Hide Sidebar";
+        in property <bool> sidebar_active: true;
+        callback sidebar_tapped();
         callback settings_tapped();
         callback drag_requested();
 
@@ -156,6 +159,16 @@ slint::slint! {
 
             Rectangle {
                 horizontal-stretch: 1;
+            }
+
+            ToolButton {
+                label: root.sidebar_label;
+                active: root.sidebar_active;
+                button_min_width: 112px;
+                control_height: 24px;
+                tapped => {
+                    root.sidebar_tapped();
+                }
             }
 
             ToolButton {
@@ -1408,6 +1421,7 @@ slint::slint! {
         in property <string> analysis_full_copy_text;
         in property <bool> show_hidden_files;
         in property <string> default_navigator_view_mode;
+        in property <bool> sidebar_visible: true;
         in property <string> settings_error_text;
         in-out property <int> workspace_tab: 0;
         in-out property <bool> compare_status_details_expanded: false;
@@ -1492,9 +1506,14 @@ slint::slint! {
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
         property <length> compare_navigation_lane_width: 132px;
-        property <length> compare_view_column_inset: 10px;
+        property <length> compare_view_column_inset: 8px;
         property <length> compare_view_column_divider_width: 1px;
-        property <length> compare_view_relation_column_width: 108px;
+        property <length> compare_view_relation_column_width: 96px;
+        property <string> sidebar_toggle_label: root.sidebar_visible ? "Hide Sidebar" : "Show Sidebar";
+        property <string> compare_view_back_label: root.sidebar_visible ? "Back to Results" : "Back to File View";
+        property <string> compare_view_empty_note_text: root.sidebar_visible
+            ? "Use Results / Navigator -> Open in Compare View to change targets."
+            : "Show Sidebar, then use Results / Navigator -> Open in Compare View to change targets.";
         property <string> diff_helper_strip_text: root.diff_shell_ready && root.diff_has_rows
             ? ("Select text or double-click a line number to copy the full row."
                 + (root.diff_content_char_capacity > 112
@@ -1560,6 +1579,7 @@ slint::slint! {
         callback navigator_tree_file_selected(int);
         callback navigator_tree_context_menu_requested(string, string, bool, int);
         callback row_selected(int);
+        callback sidebar_toggle_requested();
         callback compare_view_back_to_results_requested();
         callback compare_view_up_requested();
         callback compare_view_row_focused(string);
@@ -1603,9 +1623,14 @@ slint::slint! {
                     width: parent.width + 20px;
                     height: parent.height;
                     leading_inset: root.titlebar_leading_inset;
+                    sidebar_label: root.sidebar_toggle_label;
+                    sidebar_active: root.sidebar_visible;
                     title_text: "Folder Compare";
                     drag_requested => {
                         root.titlebar_drag_requested();
+                    }
+                    sidebar_tapped => {
+                        root.sidebar_toggle_requested();
                     }
                     settings_tapped => {
                         root.open_settings();
@@ -1631,6 +1656,15 @@ slint::slint! {
                         horizontal-stretch: 1;
                     }
                     ToolButton {
+                        label: root.sidebar_toggle_label;
+                        active: root.sidebar_visible;
+                        button_min_width: 112px;
+                        control_height: 26px;
+                        tapped => {
+                            root.sidebar_toggle_requested();
+                        }
+                    }
+                    ToolButton {
                         label: "Settings";
                         button_min_width: 96px;
                         control_height: 26px;
@@ -1643,14 +1677,16 @@ slint::slint! {
 
             HorizontalLayout {
                 vertical-stretch: 1;
-                spacing: 10px;
+                spacing: root.sidebar_visible ? 10px : 0px;
 
                         // Contract: sidebar shell.
                         // Hosts compare setup/status/filter/navigation controls; detailed file view stays in workspace.
-                        Rectangle {
+                        sidebar_shell := Rectangle {
+                            property <length> shell_width: root.sidebar_visible ? 360px : 0px;
                             horizontal-stretch: 0;
-                            min-width: 360px;
-                            max-width: 360px;
+                            min-width: self.shell_width;
+                            max-width: self.shell_width;
+                            clip: true;
                             VerticalLayout {
                                 spacing: 8px;
 
@@ -3555,7 +3591,7 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: 80px;
+                                                height: root.workbench_compare_context_header_height;
                                                 background: #f9fbfe;
 
                                                 Rectangle {
@@ -3563,7 +3599,7 @@ slint::slint! {
                                                     y: parent.height - 1px;
                                                     width: parent.width;
                                                     height: 1px;
-                                                    background: #dde5f0;
+                                                    background: #e2e9f1;
                                                 }
 
                                                 HorizontalLayout {
@@ -3578,7 +3614,7 @@ slint::slint! {
                                                             spacing: 6px;
 
                                                             TextAction {
-                                                                label: "Back to Results";
+                                                                label: root.compare_view_back_label;
                                                                 tapped => {
                                                                     root.compare_view_back_to_results_requested();
                                                                 }
@@ -3597,7 +3633,7 @@ slint::slint! {
                                                     Rectangle {
                                                         width: 1px;
                                                         height: parent.height - 10px;
-                                                        background: #e2e9f1;
+                                                        background: #e8edf4;
                                                     }
 
                                                     Rectangle {
@@ -3654,15 +3690,15 @@ slint::slint! {
                                             }
 
                                             Rectangle {
-                                                height: 28px;
-                                                background: #f4f7fb;
+                                                height: 26px;
+                                                background: #f8fafd;
 
                                                 Rectangle {
                                                     x: 0px;
                                                     y: parent.height - 1px;
                                                     width: parent.width;
                                                     height: 1px;
-                                                    background: #dde5ef;
+                                                    background: #e8edf4;
                                                 }
 
                                                 compare_column_header := Rectangle {
@@ -3688,7 +3724,7 @@ slint::slint! {
                                                         y: 4px;
                                                         width: root.compare_view_column_divider_width;
                                                         height: parent.height - 8px;
-                                                        background: #d8e1ec;
+                                                        background: #edf2f7;
                                                     }
 
                                                     Rectangle {
@@ -3696,7 +3732,7 @@ slint::slint! {
                                                         y: 4px;
                                                         width: root.compare_view_column_divider_width;
                                                         height: parent.height - 8px;
-                                                        background: #d8e1ec;
+                                                        background: #edf2f7;
                                                     }
 
                                                         Text {
@@ -3797,7 +3833,7 @@ slint::slint! {
                                                     tone: "neutral";
                                                     title: root.compare_view_empty_title_text;
                                                     body: root.compare_view_empty_body_text;
-                                                    note: "Use Results / Navigator -> Open in Compare View to change targets.";
+                                                    note: root.compare_view_empty_note_text;
                                                 }
                                             }
                                         }
@@ -5006,6 +5042,7 @@ fn sync_window_state(
     window.set_navigator_runtime_view_mode(state.navigator_runtime_view_mode_text().into());
     window.set_navigator_effective_view_mode(state.navigator_effective_view_mode_text().into());
     window.set_navigator_search_forces_flat_mode(state.navigator_search_forces_flat_mode());
+    window.set_sidebar_visible(state.sidebar_visible());
     window.set_workspace_mode(state.workspace_mode_text().into());
     window.set_compare_focus_path_raw(state.compare_focus_path_raw_text().into());
     window.set_compare_root_pair_text(state.compare_root_pair_text().into());
@@ -6257,6 +6294,31 @@ pub fn run() -> anyhow::Result<()> {
             &status_filter_loading_mask_controller,
             SyncMode::Passive,
         );
+    });
+
+    let app_weak = app.as_weak();
+    let sidebar_toggle_bridge = bridge.clone();
+    let sidebar_toggle_cache = Arc::clone(&sync_cache);
+    let sidebar_toggle_context_menu_controller = context_menu_controller.clone();
+    let sidebar_toggle_loading_mask_controller = loading_mask_controller.clone();
+    app.on_sidebar_toggle_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        sidebar_toggle_context_menu_controller.close();
+        sidebar_toggle_bridge.dispatch(UiCommand::ToggleSidebarVisibility);
+        sync_window_state_if_changed(
+            &window,
+            &sidebar_toggle_bridge,
+            &sidebar_toggle_cache,
+            Some(&sidebar_toggle_context_menu_controller),
+            &sidebar_toggle_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
     });
 
     let app_weak = app.as_weak();

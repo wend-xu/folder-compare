@@ -229,6 +229,23 @@ fn returning_to_compare_view_restores_compare_mode() {
 }
 
 #[test]
+fn toggling_sidebar_visibility_does_not_disturb_compare_return_context() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    state.set_workspace_mode(WorkspaceMode::FileView);
+    state.can_return_to_compare_view = true;
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::ToggleSidebarVisibility);
+    let snapshot = presenter.state_snapshot();
+    assert!(!snapshot.sidebar_visible());
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::FileView);
+    assert!(snapshot.can_return_to_compare_view);
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+}
+
+#[test]
 fn compare_view_up_one_level_focuses_previous_child_directory() {
     let mut state = state_from_entries(vec![
         text_diff_entry("src/bin/main.rs", EntryStatus::Different),

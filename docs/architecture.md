@@ -1,13 +1,13 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2 + Phase 19C Shell Closeout)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation and the accepted `Phase 19B fix-2` compare-tree MVP closeout inside that shell
+  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation, the accepted `Phase 19B fix-2` compare-tree MVP, and the landed `Phase 19C` shell closeout inside that shell
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
-- `Phase 19B fix-2` is now the accepted compare-workspace MVP baseline.
-- Do not treat `Phase 19C` as active until a later thread explicitly activates it.
+- `Phase 19C` is now the current stable compare-workspace shell baseline.
+- `Phase 19B fix-2` remains the inherited compare-tree MVP foundation inside that `19C` shell.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
 ## Stable Delivery Baseline
@@ -108,10 +108,20 @@
   - tree-internal search / content search / richer match-span semantics
   - compare-core contract widening
 
-## Current Phase 19 Status (`19A` landed, `19B fix-2` accepted)
+## Current Phase 19 Status (`19A` landed, `19B fix-2` accepted, `19C` landed)
 
 - `Phase 19A` foundation work is landed.
 - `Phase 19B fix-2` is now the accepted compare-tree MVP baseline.
+- `Phase 19C` shell/product closeout is landed:
+  - top-level `sidebar_visible` now exists as Rust-owned shell state
+  - manual `Hide Sidebar / Show Sidebar` entry now lives in always-visible app bar / title bar chrome
+  - the main split remains `Sidebar + Workspace`, and hiding the sidebar lets the workspace consume the released width without introducing a competing outer shell
+  - Compare View workbench geometry is now visually tightened toward navigator language:
+    - disclosure / glyph / text alignment closeout
+    - lighter dividers
+    - denser `Relation` lane
+    - compare/file header rhythm kept inside one restrained workbench language
+  - `19C` still does not introduce auto-hide, whole-window compare takeover, or a true `File Compare View`
 - Workspace-level outer mode is now Rust-owned inside `fc-ui-slint` state:
   - `FileView`
   - `CompareView`
@@ -169,6 +179,11 @@
 
 - Top-level structure stays `Window -> Top Bar -> Main Split`.
 - The main split stays `Sidebar + Workspace`.
+- Top-level shell visibility is now explicit and Rust-owned:
+  - `sidebar_visible`
+  - manual hide / restore only
+  - restore entry remains in always-visible top-level chrome
+- Hiding the sidebar makes the workspace consume the released main-split width.
 - The right side remains one continuous workbench surface rather than nested competing cards.
 
 ### Sidebar: Four Stable Blocks
@@ -205,6 +220,7 @@
   - `workspace_mode`
   - `compare_focus_path`
   - `compare_row_focus_path`
+- Sidebar visibility is a sibling top-level shell state, not Compare View local state.
 - `Compare View` is now a real workspace surface rather than a later proposal.
 
 ### Diff / Analysis Shared File View Shell
@@ -241,7 +257,10 @@
 ### Compare View Contract
 
 - Current implemented baseline: Compare View renders inside the existing `Sidebar + Workspace` IA.
-- `19B fix-2` does not auto-hide the sidebar or enter a whole-window compare mode.
+- Compare View does not own sidebar hide / restore:
+  - `19C` keeps it as one top-level shell capability
+  - no auto-hide
+  - no whole-window compare mode
 - Compare View uses one stable three-way geometry:
   - left `Base`
   - narrow middle `Relation`
@@ -249,6 +268,11 @@
 - Header and body share the same column geometry.
 - Left/right columns remain visually symmetric.
 - Type markers use lightweight drawn glyphs, not status-pill surfaces.
+- `19C` tightens Compare View toward navigator/workbench language rather than inventing a heavier compare-specific UI:
+  - disclosure, glyph, and text alignment are intentionally closer to navigator tree rows
+  - divider contrast is reduced
+  - `Relation` lane width and color density stay restrained
+  - Compare View header wording remains consistent with the current sidebar-visible or sidebar-hidden shell state
 - Compare View follows `Settings -> Behavior -> Hidden files` with the same product boundary as navigator:
   - no `fc-core` change
   - no compare-summary source-count change
@@ -314,7 +338,9 @@
 
 ### Settings Boundary
 
-- `App Bar -> Settings` is the single global settings entry.
+- Top-level chrome owns the global shell actions:
+  - `Hide Sidebar / Show Sidebar`
+  - `Settings`
 - Settings currently owns two sections only:
   - `Provider`
   - `Behavior`
@@ -416,7 +442,7 @@
 
 - The `Phase 18` sections below are kept as the architectural record of what was decided and implemented across `18A / 18B / 18C`.
 - They are not the default execution entry anymore.
-- New work should start from the accepted `Phase 19B fix-2` baseline on top of the landed `Phase 18 / 19A` work unless a concrete regression requires a narrow `18C fix-*` or `19B` follow-up.
+- New work should start from the landed `Phase 19C` shell baseline on top of the landed `Phase 18 / 19A / 19B` work unless a concrete regression requires a narrow follow-up.
 - Nothing below should be read as evidence that richer Compare View descendants, tree search, directory detail panes, or compare-core widening already exist.
 
 ## Why Phase 18 Does Not Rewrite Compare Core Semantics
@@ -600,22 +626,17 @@
 - Deeper Compare View / File View redesign beyond the MVP split:
   - trigger: only if later work proves the current `19B` MVP shell insufficient
 
-## Phase 19C Draft Boundary
+## Phase 19C Landed Boundary
 
-- `Phase 19C` is now defined as one explicit draft boundary for the next compare-workspace pass.
-- This section describes intended scope only; it does not mean `19C` is already implemented.
-- `19C` should stay inside `fc-ui-slint` product/presentation work and inherit the accepted `19B fix-2` baseline.
-- Primary `19C` scope:
+- `Phase 19C` is now implemented as one shell/product closeout on top of the accepted `19B fix-2` baseline.
+- Landed `19C` scope:
   - compare workspace polish on top of the current anchored compare-tree surface
-  - disclosure / divider / icon alignment / relation-column visual closeout
-  - narrow-width minimum-usable behavior for the compare tree surface
-  - minimal horizontal-overflow plan for left/right compare columns when content exceeds available width
-- Sidebar direction for `19C`:
-  - treat sidebar hide / restore as one top-level IA decision, not as a local compare-tree tweak
-  - if activated, prefer one explicit user-controlled hide / restore pattern aligned with existing desktop workbench conventions
-  - do not make Compare View entry auto-hide the sidebar by default in `19C`
-  - whole-window compare takeover remains out of scope for `19C`
-- Explicitly out of `19C`:
+  - disclosure / divider / glyph / relation-column visual closeout
+  - top-level manual sidebar hide / restore with always-visible chrome entry
+  - compare/file header language continuity when the sidebar is visible or hidden
+- Explicitly not part of landed `19C`:
+  - narrow-width minimum-usable behavior
+  - minimal horizontal-overflow plan for left/right compare columns
   - true `File Compare View` implementation
   - sync scroll / reset / recenter
   - richer compare actions
@@ -623,24 +644,25 @@
   - `fc-core` widening
 - Candidate follow-on split after `19C`:
   - `19D`: true `File Compare View MVP`
-  - `19E`: advanced compare interaction layer
+  - `19E`: advanced compare interaction / overflow / horizontal-scrolling layer
 
 ## Next-Stage Activation
 
-- Default baseline is now `Phase 19B fix-2` accepted closeout.
+- Default baseline is now landed `Phase 19C` closeout.
 - `Phase 19A` has landed:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`
   - independent `compare_row_focus_path`
   - structured `compare_foundation`
-- Current accepted `19B fix-2` product contract is:
+- Current accepted `19C` product contract is:
   - explicit entry from `Results / Navigator`
   - anchored compare-tree workspace with in-place expand / collapse
+  - top-level manual sidebar hide / restore
   - Compare View / File View / Results navigation loop
   - stable compare-context File View header with clickable `Back to Compare View`
   - compare-visible rows following `Hidden files`
-- If a later thread explicitly activates `Phase 19C`, use the `Phase 19C Draft Boundary` section above as the planning boundary rather than reopening `19B fix-*`.
-- Do not move default planning to `Phase 19C` unless a later thread explicitly scopes and activates it.
+- Do not reopen `19B fix-*` or treat `19C` as draft unless a concrete regression requires it.
+- Only move default planning to `19D` or `19E` when a later thread explicitly scopes that stage.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
 ## Related Documents

@@ -27,6 +27,8 @@ pub enum UiCommand {
     SetNavigatorViewModeTree,
     /// Switches non-search Results / Navigator mode to flat.
     SetNavigatorViewModeFlat,
+    /// Toggles the top-level sidebar shell visibility.
+    ToggleSidebarVisibility,
     /// Toggles one directory node in tree mode.
     ToggleNavigatorTreeNode(String),
     /// Updates selected result row.

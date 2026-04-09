@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-08）：
+当前项目状态（2026-04-09）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -29,9 +29,14 @@
   - Compare View / File View / Results 基础导航闭环
   - File View compare-context header 回归已修复，`Back to Compare View` 已恢复可点击
   - Compare View 跟随 `Hidden files`
-- 当前不要默认直接进入 `Phase 19C`
+- `Phase 19C` 已落地：
+  - Rust-owned top-level `sidebar_visible`
+  - app bar / title bar 手动 `Hide Sidebar / Show Sidebar`
+  - sidebar 收起后 workspace 自动吃满主 split 剩余宽度
+  - Compare View disclosure / divider / relation lane / header geometry 完成当前一轮收边
+  - 继续不做 auto-hide，也不进入 true `File Compare View`
 - 当前 workspace 已进入 `Compare View / File View` 双模式：
-  - `Compare View` 是目录 compare tree MVP surface
+  - `Compare View` 是目录 compare tree workbench surface
   - `File View` 继续复用 attached `Diff / Analysis` shell
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
@@ -56,7 +61,8 @@
 
 ## 2. 当前稳定产品基线
 
-- 顶层 IA 保持 `Top Bar + Sidebar + Workspace`
+- 顶层 IA 保持 `Top Bar + Main Split`
+- Main Split 继续是 `Sidebar + Workspace`，并新增 top-level 手动 sidebar hide / restore
 - Sidebar 当前稳定为四块：
   - `Compare Inputs`
   - `Compare Status`
@@ -66,6 +72,7 @@
   - `Compare View`
   - `File View` -> `Tabs -> Header -> Content`
 - 当前外层 workspace foundation 也已进入 Rust state：
+  - `sidebar_visible`
   - `workspace_mode`
   - `compare_focus_path`
   - `compare_row_focus_path`
@@ -108,11 +115,15 @@
   - flat results 中 file leaf 支持 `Locate and Open` 回 tree
   - 目录 compare target 可通过显式 `Open in Compare View` 动作进入 workspace `Compare View`
   - row tooltip 只做完整 filename + parent path completion
+- Top-level shell
+  - `Hide Sidebar / Show Sidebar` 入口固定在 app bar / title bar
+  - 只做手动显隐
+  - 不做 Compare View auto-hide
 - `Compare View`
   - 基于 `compare_foundation` 的 anchored compare tree 投影渲染
   - 使用稳定 `Base | Relation | Target` 三列布局，header/body 共用同一套列几何
   - 目录主交互是树内 expand / collapse，不再以列表钻取作为主模型
-  - `Back to Results`、`Up one level`、`Back to Compare View` 已接线
+  - `Back to Results`、`Up one level`、`Back to Compare View` 已接线；sidebar 隐藏时 compare header 会避免继续暗示结果区可见
   - 轻量类型标识复用 navigator 风格，不再使用 compare tree 内的 pill 风格类型 badge
   - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
@@ -133,7 +144,7 @@
 
 ## 4. Settings / Tooltip / Hidden Files
 
-- 配置入口：App Bar -> `Settings`
+- 配置入口：App Bar / Title Bar -> `Settings`
 - 当前 Settings 只保留两个 section：
   - `Provider`
   - `Behavior`
@@ -240,7 +251,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 19B fix-2` 的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 19C` 的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` closeout 边界、deferred 与默认下一入口
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -248,9 +259,10 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 `Phase 19B fix-2`，不是直接进入 `Phase 19C`，也不是继续滚动 `18C fix-*`。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19C`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
+  - top-level manual sidebar hide / restore
   - attached `Diff / Analysis` shell
   - explicit stale-selection / unavailable 语义
   - tooltip / Settings / Hidden-files 边界
@@ -268,9 +280,11 @@ cargo test --workspace
 - 当前仍未实现：
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情
+  - narrow-width minimum-usable behavior / horizontal-overflow plan
   - compare core widening
-  - 超出 MVP 的更深层 `Compare View / File View` 重构
-- 当前不要默认切到 `Phase 19C`；`19B fix-2` 已是 accepted baseline，只有在后续线程明确激活时才进入下一阶段。
+  - true `File Compare View`
+  - 超出当前 shell closeout 的更深层 `Compare View / File View` 重构
+- 后续只有在目标明确时才进入 `19D / 19E`；不要把 landed `19C` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）
@@ -287,7 +301,7 @@ cargo test --workspace
 - `Phase 18`
   - 层级结果视图 / tree component / flat results 双视图
 - `Phase 19`
-  - Compare View / File View 双模式工作区（`19A` foundation 已落地，`19B fix-2` 已收口 compare tree MVP 基线）
+  - Compare View / File View 双模式工作区（`19A` foundation 已落地，`19B fix-2` 已收口 compare tree MVP，`19C` 已完成 shell closeout）
 - `Phase 20`
   - AI 分析增强（多任务 / hunk 关联 / 缓存）
 - `Phase 21`
