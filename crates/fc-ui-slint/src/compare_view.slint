@@ -108,7 +108,8 @@ component CompareSideEntryCell inherits Rectangle {
     in property <bool> expandable: false;
     in property <bool> expanded: false;
     in property <bool> emphasized: false;
-    in property <bool> toggle_enabled: false;
+    in property <bool> disclosure_visible: false;
+    in property <bool> disclosure_interactive: false;
     callback toggle_requested();
 
     property <length> indent_width: 12px * root.depth;
@@ -116,9 +117,9 @@ component CompareSideEntryCell inherits Rectangle {
     background: transparent;
 
     HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 8px;
-        spacing: 6px;
+        padding-left: 4px;
+        padding-right: 6px;
+        spacing: 5px;
 
         Rectangle {
             width: root.indent_width;
@@ -130,11 +131,12 @@ component CompareSideEntryCell inherits Rectangle {
             background: transparent;
 
             NavigatorDisclosureChevron {
-                visible: root.expandable && root.toggle_enabled;
+                visible: root.disclosure_visible;
                 expanded: root.expanded;
                 stroke: root.emphasized
                     ? UiPalette.results_row_selected_context_text
                     : UiPalette.results_row_tone_neutral_context_text;
+                opacity: root.disclosure_interactive ? 1 : 0.58;
                 x: 0px;
                 y: (parent.height - self.height) / 2;
             }
@@ -142,17 +144,25 @@ component CompareSideEntryCell inherits Rectangle {
             TouchArea {
                 width: parent.width;
                 height: parent.height;
-                enabled: root.expandable && root.toggle_enabled;
+                enabled: root.disclosure_visible && root.disclosure_interactive;
                 clicked => {
                     root.toggle_requested();
                 }
             }
         }
 
-        CompareKindGlyph {
-            label: root.icon;
-            present: root.present;
-            emphasized: root.emphasized;
+        glyph_slot := Rectangle {
+            width: 14px;
+            height: parent.height;
+            background: transparent;
+
+            CompareKindGlyph {
+                label: root.icon;
+                present: root.present;
+                emphasized: root.emphasized;
+                x: 0px;
+                y: (parent.height - self.height) / 2;
+            }
         }
 
         label_clip := Rectangle {
@@ -194,22 +204,22 @@ component CompareStatusCell inherits Rectangle {
         width: parent.width;
         height: parent.height;
         color: root.tone == "different"
-            ? UiPalette.navigator_tree_tone_different_text
+            ? UiPalette.status_pill_tone_different_text
             : (root.tone == "equal"
-                ? UiPalette.navigator_tree_tone_equal_text
+                ? UiPalette.status_pill_tone_equal_text
                 : (root.tone == "left"
-                    ? UiPalette.navigator_tree_tone_left_text
+                    ? UiPalette.status_pill_tone_left_text
                     : (root.tone == "right"
-                        ? UiPalette.navigator_tree_tone_right_text
+                        ? UiPalette.status_pill_tone_right_text
                         : (root.tone == "warn"
-                            ? #8a6464
-                            : UiPalette.navigator_tree_tone_neutral_text))));
-        font-size: 10px;
+                            ? UiPalette.status_pill_tone_warn_text
+                            : UiPalette.results_row_tone_neutral_detail_text))));
+        font-size: 11px;
         font-weight: root.emphasized ? 700 : 600;
         horizontal-alignment: center;
         vertical-alignment: center;
         overflow: elide;
-        opacity: root.emphasized ? 1 : 0.9;
+        opacity: 1;
     }
 }
 
@@ -228,8 +238,8 @@ component CompareViewRow inherits Rectangle {
     in property <bool> is_expandable: false;
     in property <bool> is_expanded: false;
     in property <length> column_inset: 10px;
-    in property <length> column_divider_width: 1px;
-    in property <length> status_column_width: 132px;
+    in property <length> column_divider_width: 4px;
+    in property <length> status_column_width: 92px;
     in property <int> row_index: -1;
     in property <int> focused_row: -1;
     in property <bool> enabled: true;
@@ -250,11 +260,38 @@ component CompareViewRow inherits Rectangle {
     property <length> status_column_x: root.left_divider_x + root.column_divider_width;
     property <length> right_divider_x: root.status_column_x + root.status_column_width;
     property <length> right_column_x: root.right_divider_x + root.column_divider_width;
+    property <brush> tone_background: root.status_tone == "different"
+        ? UiPalette.results_row_tone_different_background
+        : (root.status_tone == "equal"
+            ? UiPalette.results_row_tone_equal_background
+            : (root.status_tone == "left"
+                ? UiPalette.results_row_tone_left_background
+                : (root.status_tone == "right"
+                    ? UiPalette.results_row_tone_right_background
+                    : (root.status_tone == "warn"
+                        ? UiPalette.status_pill_tone_warn_background
+                        : transparent))));
+    property <brush> left_lane_background: root.status_tone == "different"
+        || root.status_tone == "equal"
+        || root.status_tone == "left"
+        || root.status_tone == "warn"
+        ? root.tone_background
+        : transparent;
+    property <brush> relation_lane_background: root.status_tone == "neutral"
+        ? transparent
+        : root.tone_background;
+    property <brush> right_lane_background: root.status_tone == "different"
+        || root.status_tone == "equal"
+        || root.status_tone == "right"
+        || root.status_tone == "warn"
+        ? root.tone_background
+        : transparent;
+    property <brush> overlay_background: root.row_focused_state
+        ? rgba(219, 233, 251, 0.22)
+        : (root.row_hovered ? rgba(244, 247, 251, 0.42) : transparent);
 
-    height: 28px;
-    background: root.row_focused_state
-        ? rgba(219, 233, 251, 0.62)
-        : (root.row_hovered ? rgba(244, 247, 251, 0.88) : transparent);
+    height: 26px;
+    background: transparent;
     opacity: root.enabled ? 1 : 0.72;
     clip: true;
 
@@ -269,11 +306,38 @@ component CompareViewRow inherits Rectangle {
     }
 
     Rectangle {
+        x: root.left_column_x;
+        y: 2px;
+        width: root.side_column_width;
+        height: parent.height - 4px;
+        border-radius: 4px;
+        background: root.left_lane_background;
+    }
+
+    Rectangle {
+        x: root.status_column_x;
+        y: 2px;
+        width: root.status_column_width;
+        height: parent.height - 4px;
+        border-radius: 4px;
+        background: root.relation_lane_background;
+    }
+
+    Rectangle {
+        x: root.right_column_x;
+        y: 2px;
+        width: root.side_column_width;
+        height: parent.height - 4px;
+        border-radius: 4px;
+        background: root.right_lane_background;
+    }
+
+    Rectangle {
         x: 0px;
-        y: parent.height - 1px;
+        y: 0px;
         width: parent.width;
-        height: 1px;
-        background: #eff3f8;
+        height: parent.height;
+        background: root.overlay_background;
     }
 
     Rectangle {
@@ -294,20 +358,13 @@ component CompareViewRow inherits Rectangle {
             expandable: root.is_expandable;
             expanded: root.is_expanded;
             emphasized: root.row_focused_state;
-            toggle_enabled: true;
+            disclosure_visible: root.is_expandable && root.left_present;
+            disclosure_interactive: true;
             toggle_requested => {
                 root.row_focused(root.row_path);
                 root.row_toggle_requested(root.row_path);
             }
         }
-    }
-
-    Rectangle {
-        x: root.left_divider_x;
-        y: 5px;
-        width: root.column_divider_width;
-        height: parent.height - 10px;
-        background: #eff3f8;
     }
 
     Rectangle {
@@ -324,14 +381,6 @@ component CompareViewRow inherits Rectangle {
             tone: root.status_tone;
             emphasized: root.row_focused_state;
         }
-    }
-
-    Rectangle {
-        x: root.right_divider_x;
-        y: 5px;
-        width: root.column_divider_width;
-        height: parent.height - 10px;
-        background: #eff3f8;
     }
 
     Rectangle {
@@ -352,6 +401,7 @@ component CompareViewRow inherits Rectangle {
             expandable: root.is_expandable;
             expanded: root.is_expanded;
             emphasized: root.row_focused_state;
+            disclosure_visible: root.is_expandable && root.right_present;
         }
     }
 
@@ -392,8 +442,8 @@ export component CompareView inherits Rectangle {
     in property <[bool]> row_is_expandable;
     in property <[bool]> row_is_expanded;
     in property <length> column_inset: 10px;
-    in property <length> column_divider_width: 1px;
-    in property <length> status_column_width: 132px;
+    in property <length> column_divider_width: 4px;
+    in property <length> status_column_width: 92px;
     in property <int> focused_row: -1;
     in property <bool> interaction_enabled: true;
     callback row_focused(string);
@@ -463,50 +513,10 @@ export component CompareView inherits Rectangle {
         }
     }
 
-    Rectangle {
-        x: root.left_column_x;
-        y: 0px;
-        width: root.side_column_width;
-        height: parent.height;
-        background: #fcfdff;
-    }
-
-    Rectangle {
-        x: root.status_column_x;
-        y: 0px;
-        width: root.status_column_width;
-        height: parent.height;
-        background: #fcfdff;
-    }
-
-    Rectangle {
-        x: root.right_column_x;
-        y: 0px;
-        width: root.side_column_width;
-        height: parent.height;
-        background: #fcfdff;
-    }
-
-    Rectangle {
-        x: root.left_divider_x;
-        y: 0px;
-        width: root.column_divider_width;
-        height: parent.height;
-        background: #edf2f7;
-    }
-
-    Rectangle {
-        x: root.right_divider_x;
-        y: 0px;
-        width: root.column_divider_width;
-        height: parent.height;
-        background: #edf2f7;
-    }
-
     compare_list := ListView {
         width: parent.width;
         height: parent.height;
-        property <length> row_height: 28px;
+        property <length> row_height: 26px;
         property <length> ensure_visible_padding: 10px;
 
         function ensure_row_visible(target_row: int) {

@@ -29,11 +29,13 @@
   - Compare View / File View / Results 基础导航闭环
   - File View compare-context header 回归已修复，`Back to Compare View` 已恢复可点击
   - Compare View 跟随 `Hidden files`
-- `Phase 19C` 已落地：
+- `Phase 19C fix-1` 已落地并成为当前稳定 shell baseline：
   - Rust-owned top-level `sidebar_visible`
-  - app bar / title bar 手动 `Hide Sidebar / Show Sidebar`
+  - sidebar toggle 已收口为 app bar / title bar 前导固定区的 glyph-only shell affordance
+  - top bar 更轻、更低；继续保持 macOS immersive / non-mac legacy top bar contract
   - sidebar 收起后 workspace 自动吃满主 split 剩余宽度
-  - Compare View disclosure / divider / relation lane / header geometry 完成当前一轮收边
+  - Compare View compare tree 改为稳定的 semantic lane background 语言，并基本消隐 divider
+  - Compare header 改为等宽 bordered button + 压缩 roots context，`Back to Results` 语义保持稳定
   - 继续不做 auto-hide，也不进入 true `File Compare View`
 - 当前 workspace 已进入 `Compare View / File View` 双模式：
   - `Compare View` 是目录 compare tree workbench surface
@@ -63,6 +65,7 @@
 
 - 顶层 IA 保持 `Top Bar + Main Split`
 - Main Split 继续是 `Sidebar + Workspace`，并新增 top-level 手动 sidebar hide / restore
+- sidebar toggle 当前固定为 glyph-only top-level shell affordance，而不是 Compare View 私有控件
 - Sidebar 当前稳定为四块：
   - `Compare Inputs`
   - `Compare Status`
@@ -116,15 +119,16 @@
   - 目录 compare target 可通过显式 `Open in Compare View` 动作进入 workspace `Compare View`
   - row tooltip 只做完整 filename + parent path completion
 - Top-level shell
-  - `Hide Sidebar / Show Sidebar` 入口固定在 app bar / title bar
+  - sidebar toggle 入口固定在 app bar / title bar 前导固定区，使用 glyph-only affordance + tooltip discoverability
   - 只做手动显隐
   - 不做 Compare View auto-hide
 - `Compare View`
   - 基于 `compare_foundation` 的 anchored compare tree 投影渲染
   - 使用稳定 `Base | Relation | Target` 三列布局，header/body 共用同一套列几何
   - 目录主交互是树内 expand / collapse，不再以列表钻取作为主模型
-  - `Back to Results`、`Up one level`、`Back to Compare View` 已接线；sidebar 隐藏时 compare header 会避免继续暗示结果区可见
+  - `Back to Results`、`Up one level`、`Back to Compare View` 已接线；`Back to Results` 文案在 sidebar visible/hidden 下保持稳定
   - 轻量类型标识复用 navigator 风格，不再使用 compare tree 内的 pill 风格类型 badge
+  - Compare tree 行背景按 `Diff / Equal / Left / Right` 复用 flat view 语义色，并补齐 Target 侧 disclosure 对称性
   - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
 - `Diff`
@@ -251,7 +255,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 19C` 的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 19C fix-1` 的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` closeout 边界、deferred 与默认下一入口
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -259,7 +263,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19C`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*`。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19C fix-1`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - top-level manual sidebar hide / restore

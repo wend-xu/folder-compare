@@ -107,6 +107,108 @@ slint::slint! {
         }
     }
 
+    component SidebarChromeButton inherits Rectangle {
+        in property <bool> sidebar_visible: true;
+        in property <string> tooltip_text: "";
+        out property <bool> hovered: button_touch_area.has_hover;
+        callback tapped();
+        callback tooltip_requested(string, length, length, length);
+        callback tooltip_closed();
+
+        property <brush> border_brush: !root.sidebar_visible
+            ? #c8d4e2
+            : (root.hovered ? #d7e0ea : transparent);
+        property <brush> background_brush: !root.sidebar_visible
+            ? rgba(234, 241, 249, 0.96)
+            : (root.hovered ? rgba(244, 247, 251, 0.96) : transparent);
+        property <brush> icon_brush: !root.sidebar_visible ? #315c86 : #617487;
+
+        width: 28px;
+        height: 24px;
+        border-width: 1px;
+        border-radius: 6px;
+        border-color: root.border_brush;
+        background: root.background_brush;
+
+        Rectangle {
+            x: 6px;
+            y: 5px;
+            width: 13px;
+            height: 14px;
+            border-width: 1px;
+            border-radius: 3px;
+            border-color: root.icon_brush;
+            background: transparent;
+        }
+
+        Rectangle {
+            x: 7px;
+            y: 6px;
+            width: 3px;
+            height: 12px;
+            border-radius: 1px;
+            border-width: root.sidebar_visible ? 0px : 1px;
+            border-color: root.icon_brush;
+            background: root.sidebar_visible ? root.icon_brush : transparent;
+            opacity: root.sidebar_visible ? 1 : 0.76;
+        }
+
+        Path {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            fill: transparent;
+            stroke: root.icon_brush;
+            stroke-width: 1.4px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo {
+                x: root.sidebar_visible ? 16.5 : 13.0;
+                y: 9.0;
+            }
+
+            LineTo {
+                x: root.sidebar_visible ? 13.0 : 16.5;
+                y: 12.0;
+            }
+
+            LineTo {
+                x: root.sidebar_visible ? 16.5 : 13.0;
+                y: 15.0;
+            }
+        }
+
+        button_touch_area := TouchArea {
+            enabled: true;
+            clicked => {
+                root.tapped();
+            }
+
+            changed has-hover => {
+                if self.has-hover && root.tooltip_text != "" {
+                    root.tooltip_requested(
+                        root.tooltip_text,
+                        self.absolute-position.x + 8px,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
+                    );
+                } else {
+                    root.tooltip_closed();
+                }
+            }
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.cancel || event.kind == PointerEventKind.down {
+                    root.tooltip_closed();
+                }
+            }
+        }
+    }
+
     component TitleBarSurface inherits Rectangle {
         in property <length> leading_inset: 0px;
         in property <string> title_text: "Folder Compare";
@@ -115,8 +217,10 @@ slint::slint! {
         callback sidebar_tapped();
         callback settings_tapped();
         callback drag_requested();
+        callback sidebar_tooltip_requested(string, length, length, length);
+        callback tooltip_closed();
 
-        background: #f7f9fc;
+        background: transparent;
         clip: true;
 
         TouchArea {
@@ -135,25 +239,39 @@ slint::slint! {
             y: parent.height - 1px;
             width: parent.width;
             height: 1px;
-            background: #e2e8f0;
+            background: #e6ebf2;
         }
 
         HorizontalLayout {
-            padding-left: 12px;
-            padding-right: 12px;
-            padding-top: 8px;
-            padding-bottom: 6px;
-            spacing: 8px;
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 6px;
+            padding-bottom: 4px;
+            spacing: 6px;
 
             Rectangle {
                 width: root.leading_inset;
                 background: transparent;
             }
 
+            SidebarChromeButton {
+                sidebar_visible: root.sidebar_active;
+                tooltip_text: root.sidebar_label;
+                tapped => {
+                    root.sidebar_tapped();
+                }
+                tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                    root.sidebar_tooltip_requested(text, anchor_x, anchor_top, anchor_bottom);
+                }
+                tooltip_closed => {
+                    root.tooltip_closed();
+                }
+            }
+
             Text {
                 text: root.title_text;
-                font-size: 15px;
-                color: #334252;
+                font-size: 14px;
+                color: #40505f;
                 vertical-alignment: center;
             }
 
@@ -162,18 +280,8 @@ slint::slint! {
             }
 
             ToolButton {
-                label: root.sidebar_label;
-                active: root.sidebar_active;
-                button_min_width: 112px;
-                control_height: 24px;
-                tapped => {
-                    root.sidebar_tapped();
-                }
-            }
-
-            ToolButton {
                 label: "Settings";
-                button_min_width: 96px;
+                button_min_width: 84px;
                 control_height: 24px;
                 tapped => {
                     root.settings_tapped();
@@ -1289,7 +1397,7 @@ slint::slint! {
         min-height: 620px;
         background: #f2f4f7;
         in property <bool> immersive_titlebar_enabled: false;
-        in property <length> titlebar_visual_height: 36px;
+        in property <length> titlebar_visual_height: 34px;
         in property <length> titlebar_leading_inset: 0px;
         in property <length> sidebar_form_label_width: 52px;
         in property <length> sidebar_action_button_width: 72px;
@@ -1503,14 +1611,16 @@ slint::slint! {
         property <length> diff_scrollbar_safe_inset: 18px;
         property <length> workbench_header_height: 66px;
         property <length> workbench_compare_context_header_height: 78px;
+        property <length> compare_workspace_header_height: 64px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
-        property <length> compare_navigation_lane_width: 132px;
+        property <length> compare_navigation_lane_width: 116px;
+        property <length> compare_navigation_button_width: 112px;
         property <length> compare_view_column_inset: 8px;
-        property <length> compare_view_column_divider_width: 1px;
-        property <length> compare_view_relation_column_width: 96px;
+        property <length> compare_view_column_divider_width: 4px;
+        property <length> compare_view_relation_column_width: 92px;
         property <string> sidebar_toggle_label: root.sidebar_visible ? "Hide Sidebar" : "Show Sidebar";
-        property <string> compare_view_back_label: root.sidebar_visible ? "Back to Results" : "Back to File View";
+        property <string> compare_view_back_label: "Back to Results";
         property <string> compare_view_empty_note_text: root.sidebar_visible
             ? "Use Results / Navigator -> Open in Compare View to change targets."
             : "Show Sidebar, then use Results / Navigator -> Open in Compare View to change targets.";
@@ -1606,11 +1716,11 @@ slint::slint! {
         callback titlebar_drag_requested();
 
         VerticalLayout {
-            padding-top: root.immersive_titlebar_enabled ? 0px : 10px;
-            padding-right: 10px;
-            padding-bottom: 10px;
-            padding-left: 10px;
-            spacing: 8px;
+            padding-top: root.immersive_titlebar_enabled ? 0px : 8px;
+            padding-right: 8px;
+            padding-bottom: 8px;
+            padding-left: 8px;
+            spacing: 6px;
 
             if root.immersive_titlebar_enabled : Rectangle {
                 height: root.titlebar_visual_height;
@@ -1632,6 +1742,17 @@ slint::slint! {
                     sidebar_tapped => {
                         root.sidebar_toggle_requested();
                     }
+                    sidebar_tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                        root.show_tooltip(
+                            text,
+                            anchor_x - root.absolute-position.x,
+                            anchor_top - root.absolute-position.y,
+                            anchor_bottom - root.absolute-position.y,
+                        );
+                    }
+                    tooltip_closed => {
+                        root.hide_tooltip();
+                    }
                     settings_tapped => {
                         root.open_settings();
                     }
@@ -1640,34 +1761,56 @@ slint::slint! {
 
             // Contract: app bar shell (title + global settings entry).
             if !root.immersive_titlebar_enabled : SectionCard {
-                height: 36px;
-                border-color: #e5e9ef;
-                background: #f7f9fc;
+                height: 32px;
+                border-width: 0px;
+                border-color: transparent;
+                background: transparent;
+
+                Rectangle {
+                    x: 0px;
+                    y: parent.height - 1px;
+                    width: parent.width;
+                    height: 1px;
+                    background: #e6ebf2;
+                }
+
                 HorizontalLayout {
-                    padding: 5px;
-                    spacing: 8px;
+                    padding-left: 4px;
+                    padding-right: 4px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    spacing: 6px;
+                    SidebarChromeButton {
+                        sidebar_visible: root.sidebar_visible;
+                        tooltip_text: root.sidebar_toggle_label;
+                        tapped => {
+                            root.sidebar_toggle_requested();
+                        }
+                        tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                            root.show_tooltip(
+                                text,
+                                anchor_x - root.absolute-position.x,
+                                anchor_top - root.absolute-position.y,
+                                anchor_bottom - root.absolute-position.y,
+                            );
+                        }
+                        tooltip_closed => {
+                            root.hide_tooltip();
+                        }
+                    }
                     Text {
                         text: "Folder Compare";
-                        font-size: 15px;
-                        color: #334252;
+                        font-size: 14px;
+                        color: #40505f;
                         vertical-alignment: center;
                     }
                     Rectangle {
                         horizontal-stretch: 1;
                     }
                     ToolButton {
-                        label: root.sidebar_toggle_label;
-                        active: root.sidebar_visible;
-                        button_min_width: 112px;
-                        control_height: 26px;
-                        tapped => {
-                            root.sidebar_toggle_requested();
-                        }
-                    }
-                    ToolButton {
                         label: "Settings";
-                        button_min_width: 96px;
-                        control_height: 26px;
+                        button_min_width: 84px;
+                        control_height: 24px;
                         tapped => {
                             root.open_settings();
                         }
@@ -3591,37 +3734,43 @@ slint::slint! {
                                             spacing: 0px;
 
                                             Rectangle {
-                                                height: root.workbench_compare_context_header_height;
-                                                background: #f9fbfe;
+                                                height: root.compare_workspace_header_height;
+                                                background: transparent;
 
                                                 Rectangle {
                                                     x: 0px;
                                                     y: parent.height - 1px;
                                                     width: parent.width;
                                                     height: 1px;
-                                                    background: #e2e9f1;
+                                                    background: #e7edf4;
                                                 }
 
                                                 HorizontalLayout {
-                                                    padding: 10px;
-                                                    spacing: 12px;
+                                                    padding: 8px;
+                                                    spacing: 10px;
 
                                                     Rectangle {
                                                         width: root.compare_navigation_lane_width;
                                                         background: transparent;
 
                                                         VerticalLayout {
-                                                            spacing: 6px;
+                                                            spacing: 4px;
 
-                                                            TextAction {
+                                                            ToolButton {
+                                                                width: parent.width;
                                                                 label: root.compare_view_back_label;
+                                                                button_min_width: root.compare_navigation_button_width;
+                                                                control_height: 26px;
                                                                 tapped => {
                                                                     root.compare_view_back_to_results_requested();
                                                                 }
                                                             }
 
-                                                            TextAction {
+                                                            ToolButton {
+                                                                width: parent.width;
                                                                 label: "Up one level";
+                                                                button_min_width: root.compare_navigation_button_width;
+                                                                control_height: 26px;
                                                                 enabled: root.compare_view_can_go_up;
                                                                 tapped => {
                                                                     root.compare_view_up_requested();
@@ -3632,8 +3781,8 @@ slint::slint! {
 
                                                     Rectangle {
                                                         width: 1px;
-                                                        height: parent.height - 10px;
-                                                        background: #e8edf4;
+                                                        height: parent.height - 12px;
+                                                        background: #edf2f7;
                                                     }
 
                                                     Rectangle {
@@ -3641,33 +3790,18 @@ slint::slint! {
                                                         background: transparent;
 
                                                         VerticalLayout {
-                                                            spacing: 4px;
-
-                                                            Text {
-                                                                text: "Root A ↔ Root B";
-                                                                color: #7a8897;
-                                                                font-size: 11px;
-                                                                font-weight: 600;
-                                                            }
+                                                            spacing: 3px;
 
                                                             Text {
                                                                 text: root.compare_root_pair_text;
-                                                                color: #546879;
-                                                                font-size: 12px;
+                                                                color: #6b7d8f;
+                                                                font-size: 11px;
                                                                 horizontal-stretch: 1;
                                                                 overflow: elide;
                                                             }
 
                                                             HorizontalLayout {
                                                                 spacing: 8px;
-
-                                                                Text {
-                                                                    text: "Current Path";
-                                                                    color: #7a8897;
-                                                                    font-size: 11px;
-                                                                    font-weight: 600;
-                                                                    vertical-alignment: center;
-                                                                }
 
                                                                 Text {
                                                                     text: root.compare_view_current_path_text;
@@ -3690,16 +3824,8 @@ slint::slint! {
                                             }
 
                                             Rectangle {
-                                                height: 26px;
-                                                background: #f8fafd;
-
-                                                Rectangle {
-                                                    x: 0px;
-                                                    y: parent.height - 1px;
-                                                    width: parent.width;
-                                                    height: 1px;
-                                                    background: #e8edf4;
-                                                }
+                                                height: 22px;
+                                                background: transparent;
 
                                                 compare_column_header := Rectangle {
                                                     width: parent.width;
@@ -3718,22 +3844,6 @@ slint::slint! {
                                                     property <length> status_column_x: self.left_divider_x + root.compare_view_column_divider_width;
                                                     property <length> right_divider_x: self.status_column_x + root.compare_view_relation_column_width;
                                                     property <length> right_column_x: self.right_divider_x + root.compare_view_column_divider_width;
-
-                                                    Rectangle {
-                                                        x: compare_column_header.left_divider_x;
-                                                        y: 4px;
-                                                        width: root.compare_view_column_divider_width;
-                                                        height: parent.height - 8px;
-                                                        background: #edf2f7;
-                                                    }
-
-                                                    Rectangle {
-                                                        x: compare_column_header.right_divider_x;
-                                                        y: 4px;
-                                                        width: root.compare_view_column_divider_width;
-                                                        height: parent.height - 8px;
-                                                        background: #edf2f7;
-                                                    }
 
                                                         Text {
                                                             x: compare_column_header.left_column_x;

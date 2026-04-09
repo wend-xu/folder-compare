@@ -6,9 +6,9 @@ pub fn immersive_titlebar_enabled() -> bool {
 
 pub fn titlebar_visual_height() -> f32 {
     if immersive_titlebar_enabled() {
-        40.0
-    } else {
         36.0
+    } else {
+        32.0
     }
 }
 

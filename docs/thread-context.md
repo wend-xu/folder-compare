@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Phase 19C landed baseline)
+# Folder Compare Thread Context (Phase 19C fix-1 landed baseline)
 
 ## 目的
 
@@ -12,7 +12,7 @@
   - `Phase 18` closeout（含 `18C fix-1`）
   - `Phase 19A` foundation-first 落地
   - `Phase 19B fix-2` compare-tree MVP 收口并通过当前验收
-  - `Phase 19C` Compare workspace 收边 + top-level sidebar hide / restore 已落地
+  - `Phase 19C fix-1` Compare workspace 收边 + top-level sidebar hide / restore 已落地
 - 当前默认事实不再是“是否进入 `19C`”，而是“`19C` 已成为当前稳定 shell baseline”。
 - 后续线程默认不要重开 `19B fix-*` 或把 `19C` 重新当成 proposal；除非目标明确要求做 regression 或进入 `19D / 19E`。
 - 当前必须继承的 navigator 事实已固定：
@@ -34,11 +34,13 @@
   - File View compare-context header 回归已修复，`Back to Compare View` 可点击
   - Compare View 使用稳定 `Base / Relation / Target` 列几何
   - Compare View visible rows 已跟随 `Hidden files`
-- `Phase 19C` 当前已成立的事实：
+- `Phase 19C fix-1` 当前已成立的事实：
   - Rust-owned top-level `sidebar_visible`
-  - app bar / title bar 始终可见的手动 `Hide Sidebar / Show Sidebar`
+  - app bar / title bar 前导固定区的 glyph-only sidebar toggle 已成为稳定 shell affordance
+  - top bar 已进一步压低并弱化背景，但不改 macOS immersive / non-mac legacy top bar contract
   - sidebar 收起后 workspace 吃满主 split 剩余宽度
-  - Compare View disclosure / glyph / alignment / divider / relation lane 已完成当前一轮收边
+  - Compare View compare tree 已完成 disclosure / glyph / alignment / semantic lane background 收边，并基本消隐 divider
+  - Compare header 已改为等宽 bordered action button + 压缩 roots context，`Back to Results` 文案在 sidebar visible/hidden 下保持稳定
   - Compare View / File View 在 sidebar visible/hidden 下继续维持同一 workbench 语言
 - tree 内搜索、内容搜索、目录详情、compare-core widening 仍是 deferred。
 - 字体方向维持当前集中式 macOS bootstrap shim 这一临时兼容基线；不要把它扩张成长期应用层字体策略。
@@ -47,13 +49,13 @@
 ## 快照（Snapshot）
 
 - 日期：`2026-04-09`（Asia/Shanghai）
-- 分支：`dev`
+- 分支：`phase19C`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
   - `Phase 18` navigator baseline 已收口完成（含 `18C fix-1`）
   - `Phase 19A` compare workspace foundation 已落地
   - `Phase 19B fix-2` 已成为 accepted baseline：compare tree MVP、Compare -> File -> Back 闭环、Hidden files 接入 Compare View 已通过当前验收
-  - `Phase 19C` 已成为当前稳定 shell baseline：top-level sidebar hide / restore、Compare workspace 视觉收边、Compare/File 头部语言继续统一
+  - `Phase 19C fix-1` 已成为当前稳定 shell baseline：top-level sidebar hide / restore、轻量 top chrome、Compare workspace semantic lane 语言、Compare/File 头部语言继续统一
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 当前线程已完成完整代码验证：
   - `cargo fmt --all`
@@ -94,7 +96,7 @@
 - Sidebar 现在额外具备 top-level shell 能力：
   - `sidebar_visible`
   - 手动 hide / restore only
-  - restore 入口始终留在 top-level app bar / title bar
+  - restore 入口始终留在 top-level app bar / title bar 的前导固定区
 - `Diff / Analysis` 继续共用稳定 file-view shell。
 - 外层 workspace product state 现已在 Rust 中持有：
   - `sidebar_visible`
@@ -161,8 +163,8 @@
   - attached `Diff / Analysis` shell 继续作为 `File View`
   - `Compare View` 当前实现目标已校正为 anchored compare tree surface
   - tree 目录仍只 toggle，不接入 file-view selection
-  - `Back to Results` / `Up one level` / `Back to Compare View` 已接线
-  - Compare View 已使用稳定 `Base / Relation / Target` 三列几何与轻量类型 glyph
+  - `Back to Results` / `Up one level` / `Back to Compare View` 已接线，且 `Back to Results` 在 sidebar visible/hidden 下保持稳定
+  - Compare View 已使用稳定 `Base / Relation / Target` 三列几何、轻量类型 glyph、Target 侧 disclosure 对称位以及 semantic lane background
   - Compare View visible rows 已跟随 `Hidden files`
 
 ## 当前执行焦点（Execution Focus）
@@ -262,7 +264,7 @@
   - status filter / hidden-files 在多层目录上的显示
   - macOS 15.x 下 `中`、`Ａ`、`（`、`中Ａ（`、左树文件行、左树目录行、diff 正文是否仍正确显示
 
-## Phase 19C 后入口
+## Phase 19C fix-1 后入口
 
 建议新线程首条消息直接使用：
 
@@ -271,7 +273,7 @@
 > 把 `Phase 18A + 18B + 18C` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 mode 来自 `Settings -> Behavior -> Default view`；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree / flat 切换会在目标视图 ensure-scroll 当前文件；flat results（搜索态或显式 flat）都有 `Locate and Open`；compare rerun 会 prune / restore expanded-path overrides。  
 > 把 `Phase 19A` 也视为已落地事实，而不是 proposal：Rust state 中已有 `workspace_mode`；`compare_focus_path` 已与 `selected_row / selected_relative_path` 分离；`compare_foundation` 已在 `fc-ui-slint` 中成为 compare 数据基础；当前迁移方向已明确为 `compare_foundation -> navigator / legacy file-view projection`。  
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
-> 把 `Phase 19C` 视为已成立基线：Compare View 已是更完整的 anchored compare tree workbench，top-level sidebar hide / restore 已存在，Compare -> File -> Back 闭环仍成立，Compare View 已跟随 `Hidden files`。不要把当前事实写回成 “`19C` 仍是 proposal”。  
+> 把 `Phase 19C fix-1` 视为已成立基线：Compare View 已是更完整的 anchored compare tree workbench，top-level sidebar hide / restore 已存在，Compare -> File -> Back 闭环仍成立，Compare View 已跟随 `Hidden files`。不要把当前事实写回成 “`19C` 仍是 proposal”。  
 > 当前默认下一入口不再是“是否进入 `19C`”，而是明确判断是否真的需要进入 `19D` / `19E`；否则继续在 `19C` 稳定壳层内做回归修复。  
 > 当前不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `19D / 19E` 的 richer Compare View surface 写成已实现。
 
