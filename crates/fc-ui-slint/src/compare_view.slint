@@ -117,9 +117,9 @@ component CompareSideEntryCell inherits Rectangle {
     background: transparent;
 
     HorizontalLayout {
-        padding-left: 4px;
-        padding-right: 6px;
-        spacing: 5px;
+        padding-left: 6px;
+        padding-right: 8px;
+        spacing: 6px;
 
         Rectangle {
             width: root.indent_width;
@@ -127,7 +127,7 @@ component CompareSideEntryCell inherits Rectangle {
         }
 
         disclosure_slot := Rectangle {
-            width: 12px;
+            width: 13px;
             background: transparent;
 
             NavigatorDisclosureChevron {
@@ -152,7 +152,7 @@ component CompareSideEntryCell inherits Rectangle {
         }
 
         glyph_slot := Rectangle {
-            width: 14px;
+            width: 15px;
             height: parent.height;
             background: transparent;
 
@@ -196,30 +196,89 @@ component CompareStatusCell inherits Rectangle {
     in property <string> tone: "neutral";
     in property <bool> emphasized: false;
 
+    property <brush> text_brush: root.tone == "different"
+        ? #98584c
+        : (root.tone == "equal"
+            ? #48755d
+            : (root.tone == "left"
+                ? #8a6b43
+                : (root.tone == "right"
+                    ? #55758a
+                    : (root.tone == "warn"
+                        ? #946845
+                        : #647486))));
+    property <brush> pill_border: root.tone == "different"
+        ? rgba(218, 171, 159, 0.88)
+        : (root.tone == "equal"
+            ? rgba(176, 205, 182, 0.9)
+            : (root.tone == "left"
+                ? rgba(213, 195, 161, 0.9)
+                : (root.tone == "right"
+                    ? rgba(181, 200, 210, 0.9)
+                    : (root.tone == "warn"
+                        ? rgba(220, 199, 165, 0.9)
+                        : rgba(214, 222, 231, 0.92)))));
+    property <brush> pill_background: root.tone == "different"
+        ? rgba(250, 239, 236, 0.96)
+        : (root.tone == "equal"
+            ? rgba(241, 248, 243, 0.96)
+            : (root.tone == "left"
+                ? rgba(249, 245, 236, 0.96)
+                : (root.tone == "right"
+                    ? rgba(238, 245, 248, 0.96)
+                    : (root.tone == "warn"
+                        ? rgba(250, 244, 234, 0.96)
+                        : rgba(248, 250, 252, 0.96)))));
+    property <length> pill_width: min(
+        max(48px, measure_text.preferred-width + 18px),
+        max(48px, self.width - 12px),
+    );
+
     clip: true;
     background: transparent;
 
-    Text {
+    measure_text := Text {
+        visible: false;
+        width: 0px;
+        height: 0px;
         text: root.label;
-        width: parent.width;
-        height: parent.height;
-        color: root.tone == "different"
-            ? UiPalette.status_pill_tone_different_text
-            : (root.tone == "equal"
-                ? UiPalette.status_pill_tone_equal_text
-                : (root.tone == "left"
-                    ? UiPalette.status_pill_tone_left_text
-                    : (root.tone == "right"
-                        ? UiPalette.status_pill_tone_right_text
-                        : (root.tone == "warn"
-                            ? UiPalette.status_pill_tone_warn_text
-                            : UiPalette.results_row_tone_neutral_detail_text))));
-        font-size: 11px;
+        font-size: 10px;
         font-weight: root.emphasized ? 700 : 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
-        opacity: 1;
+    }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: root.pill_width;
+        height: 18px;
+        border-width: 1px;
+        border-radius: 9px;
+        border-color: root.pill_border;
+        background: root.pill_background;
+
+        Text {
+            text: root.label;
+            width: parent.width;
+            height: parent.height;
+            color: root.text_brush;
+            font-size: 10px;
+            font-weight: root.emphasized ? 700 : 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            opacity: 1;
+        }
+    }
+
+    /*
+     * Keep one invisible text node to stabilize pill measurement
+     * without letting the visible label affect parent layout.
+     */
+    Text {
+        visible: false;
+        text: root.label;
+        width: 0px;
+        height: 0px;
     }
 }
 
@@ -261,15 +320,15 @@ component CompareViewRow inherits Rectangle {
     property <length> right_divider_x: root.status_column_x + root.status_column_width;
     property <length> right_column_x: root.right_divider_x + root.column_divider_width;
     property <brush> tone_background: root.status_tone == "different"
-        ? UiPalette.results_row_tone_different_background
+        ? rgba(247, 220, 213, 0.62)
         : (root.status_tone == "equal"
-            ? UiPalette.results_row_tone_equal_background
+            ? rgba(228, 239, 232, 0.68)
             : (root.status_tone == "left"
-                ? UiPalette.results_row_tone_left_background
+                ? rgba(244, 236, 220, 0.68)
                 : (root.status_tone == "right"
-                    ? UiPalette.results_row_tone_right_background
+                    ? rgba(225, 236, 242, 0.7)
                     : (root.status_tone == "warn"
-                        ? UiPalette.status_pill_tone_warn_background
+                        ? rgba(246, 235, 217, 0.7)
                         : transparent))));
     property <brush> left_lane_background: root.status_tone == "different"
         || root.status_tone == "equal"
@@ -287,10 +346,10 @@ component CompareViewRow inherits Rectangle {
         ? root.tone_background
         : transparent;
     property <brush> overlay_background: root.row_focused_state
-        ? rgba(219, 233, 251, 0.22)
-        : (root.row_hovered ? rgba(244, 247, 251, 0.42) : transparent);
+        ? rgba(219, 233, 251, 0.18)
+        : (root.row_hovered ? rgba(244, 247, 251, 0.28) : transparent);
 
-    height: 26px;
+    height: 28px;
     background: transparent;
     opacity: root.enabled ? 1 : 0.72;
     clip: true;
@@ -307,25 +366,25 @@ component CompareViewRow inherits Rectangle {
 
     Rectangle {
         x: root.left_column_x;
-        y: 0px;
+        y: 1px;
         width: root.side_column_width;
-        height: parent.height;
+        height: parent.height - 2px;
         background: root.left_lane_background;
     }
 
     Rectangle {
         x: root.status_column_x;
-        y: 0px;
+        y: 1px;
         width: root.status_column_width;
-        height: parent.height;
+        height: parent.height - 2px;
         background: root.relation_lane_background;
     }
 
     Rectangle {
         x: root.right_column_x;
-        y: 0px;
+        y: 1px;
         width: root.side_column_width;
-        height: parent.height;
+        height: parent.height - 2px;
         background: root.right_lane_background;
     }
 
@@ -513,7 +572,7 @@ export component CompareView inherits Rectangle {
     compare_list := ListView {
         width: parent.width;
         height: parent.height;
-        property <length> row_height: 26px;
+        property <length> row_height: 28px;
         property <length> ensure_visible_padding: 10px;
 
         function ensure_row_visible(target_row: int) {
