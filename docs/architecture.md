@@ -121,8 +121,9 @@
     - disclosure / glyph / text alignment closeout
     - target-side disclosure symmetry or equivalent slot presence
     - semantic lane backgrounds for `Diff / Equal / Left / Right`
+    - adjacent rows with the same relation tone now merge their vertical gutters into one continuous semantic band
     - dividers reduced to near-invisible gutters rather than visible table rules
-    - compare header rewritten as compact bordered actions + compressed root context
+    - compare header rewritten as compact bordered toolbar actions + compressed root context
   - `19C fix-1` still does not introduce auto-hide, whole-window compare takeover, or a true `File Compare View`
 - Workspace-level outer mode is now Rust-owned inside `fc-ui-slint` state:
   - `FileView`
@@ -225,6 +226,16 @@
 - Sidebar visibility is a sibling top-level shell state, not Compare View local state.
 - `Compare View` is now a real workspace surface rather than a later proposal.
 
+### Shared Control Primitive Contract
+
+- Shared `ToolButton` instances now default to `horizontal-stretch: 0`.
+- `button_min_width` is treated as a floor, not a fill-layout policy.
+- Full-width actions must opt in explicitly with `horizontal-stretch: 1`.
+- Current intended examples:
+  - sidebar primary `Compare` action uses a full-width lane
+  - top-bar `Settings`, analysis-header `Analyze`, and settings-modal `Cancel / Save` stay fixed-width or content-width controls
+- This contract exists to prevent width-explosion regressions when buttons are placed inside `HorizontalLayout`.
+
 ### Diff / Analysis Shared File View Shell
 
 - `Diff` and `Analysis` share the same file-level shell rhythm in non-ready states:
@@ -273,9 +284,10 @@
 - `19C fix-1` tightens Compare View toward navigator/workbench language rather than inventing a heavier compare-specific UI:
   - disclosure, glyph, and text alignment are intentionally closer to navigator tree rows
   - semantic lane backgrounds reuse the flat-results status language instead of card/list chrome
+  - adjacent same-tone compare rows intentionally merge their top/bottom gutters so one relation group reads as one continuous band
   - divider contrast is reduced to near-invisible gutters
   - `Relation` text now follows the flat-view semantic text palette
-  - Compare View header keeps stable `Back to Results` wording even when the sidebar is hidden, because sidebar visibility remains shell state rather than Compare View state
+  - Compare View header uses compact bordered toolbar buttons, keeps stable `Back to Results` wording even when the sidebar is hidden, and preserves compressed root/context text rather than reintroducing a label-heavy header
 - Compare View follows `Settings -> Behavior -> Hidden files` with the same product boundary as navigator:
   - no `fc-core` change
   - no compare-summary source-count change

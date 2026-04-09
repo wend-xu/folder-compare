@@ -6,7 +6,7 @@
 - 只记录当前真实事实、当前边界、下一线程入口。
 - 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
-## 本轮更新说明（2026-04-09）
+## 本轮更新说明（2026-04-10）
 
 - 当前真实代码基线已明确包含：
   - `Phase 18` closeout（含 `18C fix-1`）
@@ -39,23 +39,24 @@
   - app bar / title bar 前导固定区的 glyph-only sidebar toggle 已成为稳定 shell affordance
   - top bar 已进一步压低并弱化背景，但不改 macOS immersive / non-mac legacy top bar contract
   - sidebar 收起后 workspace 吃满主 split 剩余宽度
-  - Compare View compare tree 已完成 disclosure / glyph / alignment / semantic lane background 收边，并基本消隐 divider
-  - Compare header 已改为等宽 bordered action button + 压缩 roots context，`Back to Results` 文案在 sidebar visible/hidden 下保持稳定
+  - Compare View compare tree 已完成 disclosure / glyph / alignment / semantic lane background 收边，并基本消隐 divider；相邻同 relation rows 现在会动态消隐上下白缝，形成连续 semantic band
+  - Compare header 已改为紧凑、左对齐的 bordered toolbar action + 压缩 roots context，按钮 lane 已放宽以保证 `Back to Results` 不再被截断，且其文案在 sidebar visible/hidden 下保持稳定
   - Compare View / File View 在 sidebar visible/hidden 下继续维持同一 workbench 语言
+  - 共享 `ToolButton` 现已默认 `horizontal-stretch: 0`；只有显式声明的 full-width action（例如 Compare）才允许铺满，避免 Settings / Analysis / modal action 的宽度爆炸回归
 - tree 内搜索、内容搜索、目录详情、compare-core widening 仍是 deferred。
 - 字体方向维持当前集中式 macOS bootstrap shim 这一临时兼容基线；不要把它扩张成长期应用层字体策略。
 - `docs/architecture.md`、`docs/thread-context.md` 与 `README.md` 现已统一到同一 handoff 入口。
 
 ## 快照（Snapshot）
 
-- 日期：`2026-04-09`（Asia/Shanghai）
+- 日期：`2026-04-10`（Asia/Shanghai）
 - 分支：`phase19C`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
   - `Phase 18` navigator baseline 已收口完成（含 `18C fix-1`）
   - `Phase 19A` compare workspace foundation 已落地
   - `Phase 19B fix-2` 已成为 accepted baseline：compare tree MVP、Compare -> File -> Back 闭环、Hidden files 接入 Compare View 已通过当前验收
-  - `Phase 19C fix-1` 已成为当前稳定 shell baseline：top-level sidebar hide / restore、轻量 top chrome、Compare workspace semantic lane 语言、Compare/File 头部语言继续统一
+  - `Phase 19C fix-1` 已成为当前稳定 shell baseline：top-level sidebar hide / restore、轻量 top chrome、Compare workspace semantic lane 语言、Compare/File 头部语言继续统一，并补齐按钮宽度约束与 relation band 连片收边
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 当前线程已完成完整代码验证：
   - `cargo fmt --all`
@@ -164,8 +165,12 @@
   - `Compare View` 当前实现目标已校正为 anchored compare tree surface
   - tree 目录仍只 toggle，不接入 file-view selection
   - `Back to Results` / `Up one level` / `Back to Compare View` 已接线，且 `Back to Results` 在 sidebar visible/hidden 下保持稳定
-  - Compare View 已使用稳定 `Base / Relation / Target` 三列几何、轻量类型 glyph、Target 侧 disclosure 对称位以及 semantic lane background
+  - Compare View 已使用稳定 `Base / Relation / Target` 三列几何、轻量类型 glyph、Target 侧 disclosure 对称位、semantic lane background，以及相邻同 relation row 的动态连片
   - Compare View visible rows 已跟随 `Hidden files`
+- 共享按钮基线现已固定：
+  - 普通 `ToolButton` 默认不参与 `HorizontalLayout` 剩余空间拉伸
+  - 只有显式声明的主操作才使用 full-width lane
+  - `Settings`、`Analyze`、modal `Cancel / Save` 已回到固定/内容驱动宽度
 
 ## 当前执行焦点（Execution Focus）
 
