@@ -302,6 +302,8 @@ component CompareViewRow inherits Rectangle {
     in property <int> row_index: -1;
     in property <int> focused_row: -1;
     in property <bool> enabled: true;
+    in property <bool> merge_with_previous: false;
+    in property <bool> merge_with_next: false;
     callback row_focused(string);
     callback row_toggle_requested(string);
     callback row_activated(string);
@@ -348,6 +350,12 @@ component CompareViewRow inherits Rectangle {
     property <brush> overlay_background: root.row_focused_state
         ? rgba(219, 233, 251, 0.18)
         : (root.row_hovered ? rgba(244, 247, 251, 0.28) : transparent);
+    property <length> lane_top_inset: root.merge_with_previous ? 0px : 1px;
+    property <length> lane_bottom_inset: root.merge_with_next ? 0px : 1px;
+    property <length> lane_height: max(
+        0px,
+        root.height - root.lane_top_inset - root.lane_bottom_inset,
+    );
 
     height: 28px;
     background: transparent;
@@ -366,25 +374,25 @@ component CompareViewRow inherits Rectangle {
 
     Rectangle {
         x: root.left_column_x;
-        y: 1px;
+        y: root.lane_top_inset;
         width: root.side_column_width;
-        height: parent.height - 2px;
+        height: root.lane_height;
         background: root.left_lane_background;
     }
 
     Rectangle {
         x: root.status_column_x;
-        y: 1px;
+        y: root.lane_top_inset;
         width: root.status_column_width;
-        height: parent.height - 2px;
+        height: root.lane_height;
         background: root.relation_lane_background;
     }
 
     Rectangle {
         x: root.right_column_x;
-        y: 1px;
+        y: root.lane_top_inset;
         width: root.side_column_width;
-        height: parent.height - 2px;
+        height: root.lane_height;
         background: root.right_lane_background;
     }
 
@@ -618,6 +626,12 @@ export component CompareView inherits Rectangle {
             column_inset: root.column_inset;
             column_divider_width: root.column_divider_width;
             status_column_width: root.status_column_width;
+            merge_with_previous: index > 0
+                && root.row_status_tones[index] != "neutral"
+                && root.row_status_tones[index - 1] == root.row_status_tones[index];
+            merge_with_next: index + 1 < root.row_paths.length
+                && root.row_status_tones[index] != "neutral"
+                && root.row_status_tones[index + 1] == root.row_status_tones[index];
             row_focused(path) => {
                 compare_focus_scope.focus();
                 root.row_focused(path);

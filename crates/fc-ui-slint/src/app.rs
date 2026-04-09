@@ -1660,8 +1660,8 @@ slint::slint! {
         property <length> compare_workspace_header_height: 56px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
-        property <length> compare_navigation_lane_width: 108px;
-        property <length> compare_navigation_button_width: 104px;
+        property <length> compare_navigation_lane_width: 124px;
+        property <length> compare_navigation_button_width: 120px;
         property <length> compare_view_column_inset: 8px;
         property <length> compare_view_column_divider_width: 0px;
         property <length> compare_view_relation_column_width: 92px;
