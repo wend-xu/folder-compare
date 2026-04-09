@@ -238,7 +238,7 @@ component CompareViewRow inherits Rectangle {
     in property <bool> is_expandable: false;
     in property <bool> is_expanded: false;
     in property <length> column_inset: 10px;
-    in property <length> column_divider_width: 4px;
+    in property <length> column_divider_width: 0px;
     in property <length> status_column_width: 92px;
     in property <int> row_index: -1;
     in property <int> focused_row: -1;
@@ -307,28 +307,25 @@ component CompareViewRow inherits Rectangle {
 
     Rectangle {
         x: root.left_column_x;
-        y: 2px;
+        y: 0px;
         width: root.side_column_width;
-        height: parent.height - 4px;
-        border-radius: 4px;
+        height: parent.height;
         background: root.left_lane_background;
     }
 
     Rectangle {
         x: root.status_column_x;
-        y: 2px;
+        y: 0px;
         width: root.status_column_width;
-        height: parent.height - 4px;
-        border-radius: 4px;
+        height: parent.height;
         background: root.relation_lane_background;
     }
 
     Rectangle {
         x: root.right_column_x;
-        y: 2px;
+        y: 0px;
         width: root.side_column_width;
-        height: parent.height - 4px;
-        border-radius: 4px;
+        height: parent.height;
         background: root.right_lane_background;
     }
 
@@ -442,7 +439,7 @@ export component CompareView inherits Rectangle {
     in property <[bool]> row_is_expandable;
     in property <[bool]> row_is_expanded;
     in property <length> column_inset: 10px;
-    in property <length> column_divider_width: 4px;
+    in property <length> column_divider_width: 0px;
     in property <length> status_column_width: 92px;
     in property <int> focused_row: -1;
     in property <bool> interaction_enabled: true;

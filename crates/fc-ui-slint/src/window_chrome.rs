@@ -14,7 +14,7 @@ pub fn titlebar_visual_height() -> f32 {
 
 pub fn titlebar_leading_inset() -> f32 {
     if immersive_titlebar_enabled() {
-        86.0
+        72.0
     } else {
         0.0
     }

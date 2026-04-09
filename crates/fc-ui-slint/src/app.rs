@@ -52,6 +52,10 @@ slint::slint! {
         in property <bool> enabled: true;
         in property <length> button_min_width: 72px;
         in property <length> control_height: 30px;
+        in property <length> label_font_size: 14px;
+        in property <bool> label_align_left: false;
+        in property <length> label_left_padding: 0px;
+        in property <length> label_right_padding: 0px;
         in property <string> tooltip_text: "";
         out property <bool> hovered: button_touch_area.has_hover;
         callback tapped();
@@ -71,11 +75,13 @@ slint::slint! {
             : (self.active ? #edf2f8 : #f8f9fb);
 
         Text {
+            x: root.label_left_padding;
+            width: max(0px, parent.width - root.label_left_padding - root.label_right_padding);
             text: root.label;
             color: root.primary ? #ffffff : (root.active ? #27476b : #384555);
-            horizontal-alignment: center;
+            horizontal-alignment: root.label_align_left ? left : center;
             vertical-alignment: center;
-            font-size: 14px;
+            font-size: root.label_font_size;
         }
 
         button_touch_area := TouchArea {
@@ -243,7 +249,7 @@ slint::slint! {
         }
 
         HorizontalLayout {
-            padding-left: 10px;
+            padding-left: 6px;
             padding-right: 10px;
             padding-top: 6px;
             padding-bottom: 4px;
@@ -1611,13 +1617,13 @@ slint::slint! {
         property <length> diff_scrollbar_safe_inset: 18px;
         property <length> workbench_header_height: 66px;
         property <length> workbench_compare_context_header_height: 78px;
-        property <length> compare_workspace_header_height: 64px;
+        property <length> compare_workspace_header_height: 56px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
-        property <length> compare_navigation_lane_width: 116px;
-        property <length> compare_navigation_button_width: 112px;
+        property <length> compare_navigation_lane_width: 108px;
+        property <length> compare_navigation_button_width: 104px;
         property <length> compare_view_column_inset: 8px;
-        property <length> compare_view_column_divider_width: 4px;
+        property <length> compare_view_column_divider_width: 0px;
         property <length> compare_view_relation_column_width: 92px;
         property <string> sidebar_toggle_label: root.sidebar_visible ? "Hide Sidebar" : "Show Sidebar";
         property <string> compare_view_back_label: "Back to Results";
@@ -3746,21 +3752,28 @@ slint::slint! {
                                                 }
 
                                                 HorizontalLayout {
-                                                    padding: 8px;
-                                                    spacing: 10px;
+                                                    padding-left: 8px;
+                                                    padding-right: 8px;
+                                                    padding-top: 5px;
+                                                    padding-bottom: 5px;
+                                                    spacing: 8px;
 
                                                     Rectangle {
                                                         width: root.compare_navigation_lane_width;
                                                         background: transparent;
 
                                                         VerticalLayout {
-                                                            spacing: 4px;
+                                                            spacing: 2px;
 
                                                             ToolButton {
                                                                 width: parent.width;
                                                                 label: root.compare_view_back_label;
                                                                 button_min_width: root.compare_navigation_button_width;
-                                                                control_height: 26px;
+                                                                control_height: 20px;
+                                                                label_font_size: 13px;
+                                                                label_align_left: true;
+                                                                label_left_padding: 8px;
+                                                                label_right_padding: 6px;
                                                                 tapped => {
                                                                     root.compare_view_back_to_results_requested();
                                                                 }
@@ -3770,7 +3783,11 @@ slint::slint! {
                                                                 width: parent.width;
                                                                 label: "Up one level";
                                                                 button_min_width: root.compare_navigation_button_width;
-                                                                control_height: 26px;
+                                                                control_height: 20px;
+                                                                label_font_size: 13px;
+                                                                label_align_left: true;
+                                                                label_left_padding: 8px;
+                                                                label_right_padding: 6px;
                                                                 enabled: root.compare_view_can_go_up;
                                                                 tapped => {
                                                                     root.compare_view_up_requested();
