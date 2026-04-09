@@ -203,6 +203,8 @@ pub struct AppState {
     pub navigator_runtime_view_mode: NavigatorViewMode,
     /// Persisted default mode for non-search Results / Navigator.
     pub default_navigator_view_mode: NavigatorViewMode,
+    /// Whether the top-level sidebar shell is currently visible.
+    pub sidebar_visible: bool,
     /// Outer workspace mode owned in Rust state.
     pub workspace_mode: WorkspaceMode,
     /// Compare-view focus anchor independent from file selection.
@@ -287,6 +289,7 @@ impl Default for AppState {
             entry_status_filter: "all".to_string(),
             navigator_runtime_view_mode: NavigatorViewMode::Tree,
             default_navigator_view_mode: NavigatorViewMode::Tree,
+            sidebar_visible: true,
             workspace_mode: WorkspaceMode::FileView,
             compare_focus_path: CompareFocusPath::root(),
             compare_row_focus_path: None,
@@ -892,6 +895,11 @@ impl AppState {
         self.workspace_mode.as_str().to_string()
     }
 
+    /// Returns whether the top-level sidebar shell should be visible.
+    pub fn sidebar_visible(&self) -> bool {
+        self.sidebar_visible
+    }
+
     /// Returns compare-focus raw path for UI syncing.
     pub fn compare_focus_path_raw_text(&self) -> String {
         self.compare_focus_path.raw_text()
@@ -929,7 +937,7 @@ impl AppState {
                 left_name: if left_present {
                     node.display_name.clone()
                 } else {
-                    "-".to_string()
+                    String::new()
                 },
                 status_label: status_label.to_string(),
                 status_tone: status_tone.to_string(),
@@ -942,7 +950,7 @@ impl AppState {
                 right_name: if right_present {
                     node.display_name.clone()
                 } else {
-                    "-".to_string()
+                    String::new()
                 },
                 is_directory: row.is_directory,
                 is_expandable: row.is_expandable,
@@ -1145,6 +1153,20 @@ impl AppState {
     /// Updates the outer workspace mode.
     pub fn set_workspace_mode(&mut self, mode: WorkspaceMode) {
         self.workspace_mode = mode;
+    }
+
+    /// Updates the top-level sidebar shell visibility.
+    pub fn set_sidebar_visible(&mut self, visible: bool) -> bool {
+        if self.sidebar_visible == visible {
+            return false;
+        }
+        self.sidebar_visible = visible;
+        true
+    }
+
+    /// Toggles the top-level sidebar shell visibility.
+    pub fn toggle_sidebar_visible(&mut self) -> bool {
+        self.set_sidebar_visible(!self.sidebar_visible)
     }
 
     /// Updates compare focus path, clamping to an existing compare target directory or root.

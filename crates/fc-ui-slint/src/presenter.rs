@@ -117,6 +117,10 @@ impl Presenter {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 Self::apply_runtime_navigator_view_mode(&mut state, NavigatorViewMode::Flat);
             }
+            UiCommand::ToggleSidebarVisibility => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.toggle_sidebar_visible();
+            }
             UiCommand::ToggleNavigatorTreeNode(key) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.toggle_navigator_tree_node(&key);
