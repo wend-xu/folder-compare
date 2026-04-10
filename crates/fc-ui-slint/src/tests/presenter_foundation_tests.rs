@@ -140,7 +140,8 @@ fn selecting_file_row_switches_workspace_mode_to_file_view_without_resetting_com
     let selected_index = state
         .row_index_for_relative_path("src/bin/main.rs")
         .expect("file row should exist");
-    state.set_workspace_mode(WorkspaceMode::CompareView);
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
 
     let presenter = presenter_from_state(state);
@@ -148,6 +149,10 @@ fn selecting_file_row_switches_workspace_mode_to_file_view_without_resetting_com
     let snapshot = presenter.state_snapshot();
     assert_eq!(snapshot.workspace_mode, WorkspaceMode::FileView);
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(
+        snapshot.active_session_id.as_deref(),
+        Some("file:src/bin/main.rs")
+    );
     assert_eq!(
         snapshot.selected_relative_path.as_deref(),
         Some("src/bin/main.rs")
@@ -169,6 +174,8 @@ fn opening_compare_view_switches_workspace_mode_without_clearing_file_selection(
     presenter.handle_command(UiCommand::OpenCompareView("src".to_string()));
     let snapshot = presenter.state_snapshot();
     assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert!(snapshot.has_compare_tree_session());
+    assert_eq!(snapshot.active_session_id.as_deref(), Some("compare-tree"));
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
     assert_eq!(
         snapshot.compare_row_focus_path.as_deref(),
@@ -185,7 +192,8 @@ fn opening_compare_view_switches_workspace_mode_without_clearing_file_selection(
 fn opening_file_view_from_compare_preserves_compare_return_context() {
     let mut state =
         state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
-    state.set_workspace_mode(WorkspaceMode::CompareView);
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
     assert_eq!(state.compare_row_focus_path.as_deref(), Some("src/main.rs"));
 
@@ -196,6 +204,10 @@ fn opening_file_view_from_compare_preserves_compare_return_context() {
     let snapshot = presenter.state_snapshot();
     assert_eq!(snapshot.workspace_mode, WorkspaceMode::FileView);
     assert!(snapshot.can_return_to_compare_view);
+    assert_eq!(
+        snapshot.active_session_id.as_deref(),
+        Some("file:src/main.rs")
+    );
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
     assert_eq!(
         snapshot.compare_row_focus_path.as_deref(),
@@ -208,19 +220,24 @@ fn opening_file_view_from_compare_preserves_compare_return_context() {
 }
 
 #[test]
-fn returning_to_compare_view_restores_compare_mode() {
+fn selecting_compare_tree_session_restores_compare_mode() {
     let mut state =
         state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
-    state.set_workspace_mode(WorkspaceMode::FileView);
-    state.can_return_to_compare_view = true;
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
     assert_eq!(state.compare_row_focus_path.as_deref(), Some("src/main.rs"));
 
     let presenter = presenter_from_state(state);
-    presenter.handle_command(UiCommand::ReturnToCompareView);
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+        "src/main.rs".to_string(),
+    ));
+    presenter.handle_command(UiCommand::SelectWorkspaceSession(
+        "compare-tree".to_string(),
+    ));
     let snapshot = presenter.state_snapshot();
     assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
-    assert!(snapshot.can_return_to_compare_view);
+    assert_eq!(snapshot.active_session_id.as_deref(), Some("compare-tree"));
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
     assert_eq!(
         snapshot.compare_row_focus_path.as_deref(),
@@ -232,11 +249,14 @@ fn returning_to_compare_view_restores_compare_mode() {
 fn toggling_sidebar_visibility_does_not_disturb_compare_return_context() {
     let mut state =
         state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
-    state.set_workspace_mode(WorkspaceMode::FileView);
-    state.can_return_to_compare_view = true;
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
 
     let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+        "src/main.rs".to_string(),
+    ));
     presenter.handle_command(UiCommand::ToggleSidebarVisibility);
     let snapshot = presenter.state_snapshot();
     assert!(!snapshot.sidebar_visible());
@@ -251,7 +271,8 @@ fn compare_view_up_one_level_focuses_previous_child_directory() {
         text_diff_entry("src/bin/main.rs", EntryStatus::Different),
         file_entry("src/lib.rs", EntryStatus::Equal),
     ]);
-    state.set_workspace_mode(WorkspaceMode::CompareView);
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src/bin")));
 
     let presenter = presenter_from_state(state);
@@ -269,7 +290,8 @@ fn toggling_compare_tree_node_expands_directory_without_reanchoring_compare_view
         text_diff_entry("src/bin/main.rs", EntryStatus::Different),
         text_diff_entry("src/root.rs", EntryStatus::Different),
     ]);
-    state.set_workspace_mode(WorkspaceMode::CompareView);
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
 
     let presenter = presenter_from_state(state);
@@ -288,4 +310,24 @@ fn toggling_compare_tree_node_expands_directory_without_reanchoring_compare_view
             .iter()
             .any(|row| row.relative_path == "src/bin/main.rs")
     );
+}
+
+#[test]
+fn closing_compare_tree_session_with_file_tabs_requires_confirmation() {
+    let state = state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenCompareView("src".to_string()));
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+        "src/main.rs".to_string(),
+    ));
+
+    presenter.handle_command(UiCommand::CloseWorkspaceSession("compare-tree".to_string()));
+    let pending_snapshot = presenter.state_snapshot();
+    assert!(pending_snapshot.compare_tree_close_confirmation_open());
+    assert!(pending_snapshot.workspace_sessions_visible());
+
+    presenter.handle_command(UiCommand::ConfirmCompareTreeSessionClose);
+    let final_snapshot = presenter.state_snapshot();
+    assert!(!final_snapshot.workspace_sessions_visible());
+    assert!(!final_snapshot.compare_tree_close_confirmation_open());
 }

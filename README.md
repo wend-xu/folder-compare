@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-09）：
+当前项目状态（2026-04-10）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -20,14 +20,13 @@
 - `Phase 19A` 已落地：
   - Rust-owned `workspace_mode`
   - 独立 `compare_focus_path`
+  - 独立 `compare_row_focus_path`
   - 独立 `compare_foundation`
   - foundation -> navigator / legacy file-view projection 迁移方向
 - `Phase 19B fix-2` 已成为 accepted baseline：
   - `Compare View` workspace mode
   - anchored compare tree workspace
-  - 独立 `compare_row_focus_path`
-  - Compare View / File View / Results 基础导航闭环
-  - File View compare-context header 回归已修复，`Back to Compare View` 已恢复可点击
+  - stable `Base / Relation / Target` compare geometry
   - Compare View 跟随 `Hidden files`
 - `Phase 19C fix-1` 已落地并成为当前稳定 shell baseline：
   - Rust-owned top-level `sidebar_visible`
@@ -35,11 +34,14 @@
   - top bar 更轻、更低；继续保持 macOS immersive / non-mac legacy top bar contract
   - sidebar 收起后 workspace 自动吃满主 split 剩余宽度
   - Compare View compare tree 改为稳定的 semantic lane background 语言，并基本消隐 divider
-  - Compare header 改为等宽 bordered button + 压缩 roots context，`Back to Results` 语义保持稳定
+  - Compare header 改为紧凑 bordered button + 压缩 roots context，并为外层 session 导航让出职责边界
   - 继续不做 auto-hide，也不进入 true `File Compare View`
-- 当前 workspace 已进入 `Compare View / File View` 双模式：
-  - `Compare View` 是目录 compare tree workbench surface
-  - `File View` 继续复用 attached `Diff / Analysis` shell
+- `Phase 19D` 已落地并成为当前稳定 compare workspace baseline：
+  - 外层 workspace 现在是轻量 `session tabs -> session content`
+  - 同一时刻只允许一个固定左侧的 `Compare Tree` tab
+  - Compare Tree 中文件 leaf 会打开或复用 compare-originated `File` tabs
+  - `File` tab 内继续复用既有 attached `Diff / Analysis` shell
+  - 关闭 Compare Tree tab 等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -71,11 +73,13 @@
   - `Compare Status`
   - `Filter / Scope`
   - `Results / Navigator`
-- Workspace 当前稳定为双模式：
-  - `Compare View`
-  - `File View` -> `Tabs -> Header -> Content`
+- Workspace 当前稳定为：
+  - 外层 `Session Tabs -> Session Content`
+  - 其中 `File` session 内继续是 `Tabs -> Header -> Content`
 - 当前外层 workspace foundation 也已进入 Rust state：
   - `sidebar_visible`
+  - `workspace_sessions`
+  - `active_session_id`
   - `workspace_mode`
   - `compare_focus_path`
   - `compare_row_focus_path`
@@ -126,11 +130,17 @@
   - 基于 `compare_foundation` 的 anchored compare tree 投影渲染
   - 使用稳定 `Base | Relation | Target` 三列布局，header/body 共用同一套列几何
   - 目录主交互是树内 expand / collapse，不再以列表钻取作为主模型
-  - `Back to Results`、`Up one level`、`Back to Compare View` 已接线；`Back to Results` 文案在 sidebar visible/hidden 下保持稳定
+  - Compare Tree header 现在只保留 `Up one level` 与 compare context；Compare / File session 切换改由外层 tab strip 完成
   - 轻量类型标识复用 navigator 风格，不再使用 compare tree 内的 pill 风格类型 badge
   - Compare tree 行背景按 `Diff / Equal / Left / Right` 复用 flat view 语义色，并补齐 Target 侧 disclosure 对称性
   - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
+- Workspace Session Tabs
+  - `Open in Compare View` 会创建或激活唯一的 `Compare Tree` tab，并把 compare anchor 对准当前目录 target
+  - Compare Tree tab 固定在最左侧；不会创建第二个 compare session tab
+  - Compare Tree 中文件 leaf 会打开或复用同一路径的 File tab
+  - File tab 默认可直接关闭，不弹确认
+  - Compare Tree tab 关闭等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
 - `Diff`
   - 状态机：`no-selection | stale-selection -> loading -> unavailable | error -> preview-ready | detailed-ready`
   - single-side preview 继续是一等路径
@@ -255,7 +265,7 @@ cargo test --workspace
 ## 10. 文档入口
 
 - `docs/thread-context.md`
-  - 新线程交接、当前稳定事实、`Phase 19C fix-1` 的 handoff 入口
+  - 新线程交接、当前稳定事实、`Phase 19D` 的 handoff 入口
 - `docs/architecture.md`
   - 当前稳定架构基线、`Phase 18` closeout 边界、deferred 与默认下一入口
 - `docs/upgrade-plan-rust-1.94-slint-1.15.md`
@@ -263,7 +273,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19C fix-1`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*`。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19D`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - top-level manual sidebar hide / restore
@@ -281,6 +291,12 @@ cargo test --workspace
   - `compare_focus_path` 已与 file selection state 分离
   - `compare_foundation` 已在 `fc-ui-slint` 内落地
   - 当前迁移方向已是 `compare_foundation -> navigator / legacy file-view projection`
+- `Phase 19D` 当前额外事实：
+  - 外层 workspace session tabs 已落地
+  - 当前只允许一个固定左侧的 `Compare Tree` session
+  - Compare Tree 中文件 leaf 会打开或复用 compare-originated `File` tabs
+  - `File` tab 继续复用既有内层 `Diff / Analysis`
+  - Compare session 的进入、切换、结束语义现在由外层 tab strip 承担
 - 当前仍未实现：
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情
@@ -288,7 +304,7 @@ cargo test --workspace
   - compare core widening
   - true `File Compare View`
   - 超出当前 shell closeout 的更深层 `Compare View / File View` 重构
-- 后续只有在目标明确时才进入 `19D / 19E`；不要把 landed `19C` 重新写回 proposal。
+- 后续只有在目标明确时才进入 `19E` 或更后阶段；不要把 landed `19D` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）
@@ -305,7 +321,7 @@ cargo test --workspace
 - `Phase 18`
   - 层级结果视图 / tree component / flat results 双视图
 - `Phase 19`
-  - Compare View / File View 双模式工作区（`19A` foundation 已落地，`19B fix-2` 已收口 compare tree MVP，`19C` 已完成 shell closeout）
+  - Compare workspace 演进（`19A` foundation 已落地，`19B fix-2` 已收口 compare tree MVP，`19C` 已完成 shell closeout，`19D` 已落地 outer session tabs）
 - `Phase 20`
   - AI 分析增强（多任务 / hunk 关联 / 缓存）
 - `Phase 21`

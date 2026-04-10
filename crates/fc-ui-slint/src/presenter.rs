@@ -7,7 +7,7 @@ use crate::compare_foundation::CompareFocusPath;
 use crate::settings::{
     self, AppPreferences, BehaviorSettings, DefaultResultsView, ProviderSettings,
 };
-use crate::state::{AppState, NavigatorViewMode, WorkspaceMode};
+use crate::state::{AppState, FileSessionMode, NavigatorViewMode, WorkspaceMode};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -103,19 +103,23 @@ impl Presenter {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.set_entry_filter(filter);
                 Self::reconcile_selected_row_membership(&mut state);
+                state.reconcile_file_sessions_with_active_results();
             }
             UiCommand::UpdateEntryStatusFilter(filter) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.set_entry_status_filter(&filter);
                 Self::reconcile_selected_row_membership(&mut state);
+                state.reconcile_file_sessions_with_active_results();
             }
             UiCommand::SetNavigatorViewModeTree => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 Self::apply_runtime_navigator_view_mode(&mut state, NavigatorViewMode::Tree);
+                state.reconcile_file_sessions_with_active_results();
             }
             UiCommand::SetNavigatorViewModeFlat => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 Self::apply_runtime_navigator_view_mode(&mut state, NavigatorViewMode::Flat);
+                state.reconcile_file_sessions_with_active_results();
             }
             UiCommand::ToggleSidebarVisibility => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -130,7 +134,7 @@ impl Presenter {
                 let selected_index = usize::try_from(index)
                     .ok()
                     .filter(|value| *value < state.entry_rows.len());
-                Self::apply_row_selection(&mut state, selected_index, false);
+                Self::select_results_row(&mut state, selected_index);
             }
             UiCommand::LoadSelectedDiff => self.execute_load_selected_diff(),
             UiCommand::LocateAndOpen(relative_path) => {
@@ -138,7 +142,31 @@ impl Presenter {
             }
             UiCommand::OpenCompareView(relative_path) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                Self::enter_compare_view(&mut state, relative_path.as_str(), None, true);
+                Self::enter_compare_view(&mut state, relative_path.as_str(), None);
+            }
+            UiCommand::SelectWorkspaceSession(session_id) => {
+                let should_load_selected_diff = {
+                    let mut state = self.state.lock().expect("state mutex poisoned");
+                    if !state.activate_workspace_session(session_id.as_str()) {
+                        return;
+                    }
+                    state.active_file_session_needs_diff_reload()
+                };
+                if should_load_selected_diff {
+                    self.execute_load_selected_diff();
+                }
+            }
+            UiCommand::CloseWorkspaceSession(session_id) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.close_workspace_session(session_id.as_str());
+            }
+            UiCommand::ConfirmCompareTreeSessionClose => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.confirm_compare_tree_session_close();
+            }
+            UiCommand::CancelCompareTreeSessionClose => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.cancel_compare_tree_session_close();
             }
             UiCommand::CompareViewUpOneLevel => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -149,24 +177,7 @@ impl Presenter {
                         &mut state,
                         parent_focus.as_str(),
                         Some(child_focus.as_str()),
-                        false,
                     );
-                }
-            }
-            UiCommand::ExitCompareViewToResults => {
-                let mut state = self.state.lock().expect("state mutex poisoned");
-                state.set_workspace_mode(WorkspaceMode::FileView);
-                state.can_return_to_compare_view = false;
-            }
-            UiCommand::ReturnToCompareView => {
-                let mut state = self.state.lock().expect("state mutex poisoned");
-                if state.can_return_to_compare_view {
-                    state.set_workspace_mode(WorkspaceMode::CompareView);
-                    if let Some(path) = state.compare_row_focus_path.clone() {
-                        state.reveal_compare_view_path(path.as_str());
-                        state.set_compare_row_focus_path(Some(path.as_str()));
-                        state.request_compare_view_scroll_to_path(path.as_str());
-                    }
                 }
             }
             UiCommand::ToggleCompareTreeNode(relative_path) => {
@@ -189,6 +200,14 @@ impl Presenter {
             UiCommand::OpenFileViewFromCompare(relative_path) => {
                 self.open_file_view_from_compare(relative_path);
             }
+            UiCommand::SetFileViewModeDiff => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.set_file_view_mode(FileSessionMode::Diff);
+            }
+            UiCommand::SetFileViewModeAnalysis => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.set_file_view_mode(FileSessionMode::Analysis);
+            }
             UiCommand::LoadAiAnalysis => self.execute_load_ai_analysis(),
             UiCommand::SetAiProviderModeMock => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -196,6 +215,7 @@ impl Presenter {
                 state.clear_analysis_panel();
                 state.analysis_hint =
                     Some("Using mock provider. No remote request will be sent.".to_string());
+                state.sync_active_file_session_from_top_level();
             }
             UiCommand::SetAiProviderModeOpenAiCompatible => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -203,21 +223,25 @@ impl Presenter {
                 state.clear_analysis_panel();
                 state.analysis_hint =
                     Some("Using remote provider. Configure endpoint/api key/model.".to_string());
+                state.sync_active_file_session_from_top_level();
             }
             UiCommand::UpdateAiEndpoint(value) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.analysis_openai_endpoint = value;
                 state.analysis_error_message = None;
+                state.sync_active_file_session_from_top_level();
             }
             UiCommand::UpdateAiApiKey(value) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.analysis_openai_api_key = value;
                 state.analysis_error_message = None;
+                state.sync_active_file_session_from_top_level();
             }
             UiCommand::UpdateAiModel(value) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.analysis_openai_model = value;
                 state.analysis_error_message = None;
+                state.sync_active_file_session_from_top_level();
             }
             UiCommand::SaveAppSettings {
                 provider_kind,
@@ -250,6 +274,7 @@ impl Presenter {
                     state.set_show_hidden_files(show_hidden_files);
                     state.set_default_navigator_view_mode(default_results_view);
                     Self::apply_runtime_navigator_view_mode(&mut state, default_results_view);
+                    state.reconcile_file_sessions_with_active_results();
                     state.clear_analysis_panel();
                     state.analysis_hint = Some(match provider_kind {
                         fc_ai::AiProviderKind::Mock => {
@@ -259,6 +284,7 @@ impl Presenter {
                             "Using remote provider. Configure endpoint/api key/model.".to_string()
                         }
                     });
+                    state.sync_active_file_session_from_top_level();
 
                     AppPreferences {
                         provider: ProviderSettings {
@@ -347,6 +373,7 @@ impl Presenter {
             .cloned();
         if selected_row_vm.is_some() {
             state.set_workspace_mode(WorkspaceMode::FileView);
+            state.file_view_mode = FileSessionMode::Diff;
         }
         state.can_return_to_compare_view = selected_row_vm.is_some() && opened_from_compare_view;
         state.selected_relative_path = selected_row_vm
@@ -360,19 +387,37 @@ impl Presenter {
             Some(_) => "Load detailed diff, then click Analyze.".to_string(),
             None => "Select one changed text file to analyze.".to_string(),
         });
+        state.sync_active_file_session_from_top_level();
+    }
+
+    fn select_results_row(state: &mut AppState, selected_index: Option<usize>) {
+        let selected_row_vm = selected_index
+            .and_then(|index| state.entry_rows.get(index))
+            .cloned();
+        if state.has_compare_tree_session() {
+            let Some(row) = selected_row_vm.as_ref() else {
+                return;
+            };
+            if row.entry_kind != "file" {
+                return;
+            }
+            let should_load =
+                Self::open_file_session(state, row.relative_path.as_str(), selected_index, true);
+            if !should_load {
+                state.sync_active_file_session_from_top_level();
+            }
+            return;
+        }
+        Self::apply_row_selection(state, selected_index, false);
     }
 
     fn enter_compare_view(
         state: &mut AppState,
         relative_path: &str,
         preferred_row_focus: Option<&str>,
-        reset_compare_return: bool,
     ) {
+        state.ensure_compare_tree_session();
         state.set_compare_focus_path(CompareFocusPath::relative(relative_path));
-        state.set_workspace_mode(WorkspaceMode::CompareView);
-        if reset_compare_return {
-            state.can_return_to_compare_view = false;
-        }
         if let Some(preferred) = preferred_row_focus {
             state.reveal_compare_view_path(preferred);
             state.set_compare_row_focus_path(Some(preferred));
@@ -382,6 +427,25 @@ impl Presenter {
             state.set_compare_row_focus_path(Some(path.as_str()));
             state.request_compare_view_scroll_to_path(path.as_str());
         }
+        state.activate_workspace_session("compare-tree");
+    }
+
+    fn open_file_session(
+        state: &mut AppState,
+        relative_path: &str,
+        selected_index: Option<usize>,
+        opened_from_compare_view: bool,
+    ) -> bool {
+        let Some(result) = state.open_or_activate_file_session(relative_path) else {
+            return false;
+        };
+        if !result.activated_existing {
+            Self::apply_row_selection(state, selected_index, opened_from_compare_view);
+        } else {
+            state.can_return_to_compare_view = state.has_compare_tree_session();
+        }
+        state.sync_active_file_session_from_top_level();
+        !result.has_cached_view_state && state.active_file_session_needs_diff_reload()
     }
 
     fn selection_path_at(state: &AppState, index: usize) -> Option<String> {
@@ -457,6 +521,7 @@ impl Presenter {
                 state.selected_row = Some(index);
                 state.selected_relative_path = Some(path);
                 Self::clear_file_view_state(state);
+                state.sync_active_file_session_from_top_level();
                 true
             }
             Some(_) | None => {
@@ -464,6 +529,7 @@ impl Presenter {
                 state.selected_relative_path = Some(path);
                 Self::clear_file_view_state(state);
                 Self::set_analysis_stale_selection_hint(state);
+                state.sync_active_file_session_from_top_level();
                 false
             }
         }
@@ -472,6 +538,11 @@ impl Presenter {
     fn prepare_selected_diff_load(&self) -> DiffLoadPlan {
         let mut state = self.state.lock().expect("state mutex poisoned");
         if state.diff_loading {
+            return DiffLoadPlan::Noop;
+        }
+        if state.selected_row.is_some()
+            && (state.selected_diff.is_some() || state.diff_error_message.is_some())
+        {
             return DiffLoadPlan::Noop;
         }
 
@@ -489,6 +560,7 @@ impl Presenter {
             state.clear_analysis_panel();
             Self::set_analysis_no_selection_hint(&mut state);
             state.status_text = "Detailed diff unavailable".to_string();
+            state.sync_active_file_session_from_top_level();
             return DiffLoadPlan::SyncOnly;
         };
 
@@ -515,6 +587,7 @@ impl Presenter {
             } else {
                 "Detailed diff unavailable for selected row".to_string()
             };
+            state.sync_active_file_session_from_top_level();
             return DiffLoadPlan::SyncOnly;
         }
 
@@ -524,6 +597,7 @@ impl Presenter {
         } else {
             "Detailed diff is loading...".to_string()
         });
+        state.sync_active_file_session_from_top_level();
         DiffLoadPlan::Background {
             left_root: state.left_root.clone(),
             right_root: state.right_root.clone(),
@@ -540,9 +614,8 @@ impl Presenter {
             if state.running {
                 return;
             }
-            let restore_relative_path = state
-                .selected_row
-                .and_then(|index| Self::selection_path_at(&state, index));
+            state.sync_active_file_session_from_top_level();
+            let restore_relative_path = state.selected_relative_path.clone();
             state.running = true;
             state.error_message = None;
             state.status_text = "Comparing...".to_string();
@@ -562,6 +635,7 @@ impl Presenter {
                 Self::set_analysis_no_selection_hint(&mut state);
             }
             Self::clear_file_view_state(&mut state);
+            state.sync_active_file_session_from_top_level();
             (
                 state.left_root.clone(),
                 state.right_root.clone(),
@@ -597,11 +671,21 @@ impl Presenter {
                         state.truncated = vm.truncated;
                         state.error_message = None;
                         state.status_text = format!("Compare finished: {} entries", count);
-                        should_reload_restored_selection = Self::restore_selection_after_compare(
-                            &mut state,
-                            restore_relative_path.as_deref(),
-                        );
-                        if !should_reload_restored_selection && restore_relative_path.is_none() {
+                        state.mark_file_sessions_for_compare_restore();
+                        if state.has_compare_tree_session() {
+                            should_reload_restored_selection =
+                                state.active_file_session_needs_diff_reload();
+                        } else {
+                            should_reload_restored_selection =
+                                Self::restore_selection_after_compare(
+                                    &mut state,
+                                    restore_relative_path.as_deref(),
+                                );
+                        }
+                        if !should_reload_restored_selection
+                            && restore_relative_path.is_none()
+                            && !state.has_compare_tree_session()
+                        {
                             if state
                                 .selected_relative_path
                                 .as_deref()
@@ -624,6 +708,7 @@ impl Presenter {
                         state.truncated = false;
                         state.error_message = Some(message);
                         state.status_text = "Compare failed".to_string();
+                        state.mark_file_sessions_for_compare_restore();
                         if state
                             .selected_relative_path
                             .as_deref()
@@ -720,6 +805,7 @@ impl Presenter {
                         } else {
                             "Detailed diff loaded".to_string()
                         };
+                        state.sync_active_file_session_from_top_level();
                     }
                     Err(message) => {
                         state.diff_error_message = Some(message);
@@ -732,6 +818,7 @@ impl Presenter {
                             "Detailed diff is unavailable; AI analysis is disabled.".to_string(),
                         );
                         state.status_text = "Detailed diff unavailable".to_string();
+                        state.sync_active_file_session_from_top_level();
                     }
                 }
             }
@@ -756,9 +843,13 @@ impl Presenter {
                 .filter(|index| state.is_row_member_in_active_results(*index))
             {
                 Some(index) => {
-                    Self::apply_row_selection(&mut state, Some(index), false);
                     state.request_navigator_tree_scroll_to_source_index(index);
-                    true
+                    if state.has_compare_tree_session() {
+                        Self::open_file_session(&mut state, &relative_path, Some(index), true)
+                    } else {
+                        Self::apply_row_selection(&mut state, Some(index), false);
+                        true
+                    }
                 }
                 None => {
                     state.selected_row = None;
@@ -766,6 +857,7 @@ impl Presenter {
                     state.can_return_to_compare_view = false;
                     Self::clear_file_view_state(&mut state);
                     Self::set_analysis_stale_selection_hint(&mut state);
+                    state.sync_active_file_session_from_top_level();
                     false
                 }
             }
@@ -791,6 +883,7 @@ impl Presenter {
             let Some(row) = selected_row.as_ref() else {
                 state.analysis_error_message =
                     Some("select one compare row before running AI analysis".to_string());
+                state.sync_active_file_session_from_top_level();
                 return;
             };
             if !row.can_load_analysis {
@@ -798,16 +891,19 @@ impl Presenter {
                     Some(row.analysis_blocked_reason.clone().unwrap_or_else(|| {
                         "selected row does not support AI analysis".to_string()
                     }));
+                state.sync_active_file_session_from_top_level();
                 return;
             }
             if state.diff_loading {
                 state.analysis_error_message =
                     Some("wait until detailed diff loading completes".to_string());
+                state.sync_active_file_session_from_top_level();
                 return;
             }
             if state.selected_diff.is_none() {
                 state.analysis_error_message =
                     Some("load detailed diff before running AI analysis".to_string());
+                state.sync_active_file_session_from_top_level();
                 return;
             }
             if state.analysis_remote_mode() && !state.analysis_remote_config_ready() {
@@ -815,6 +911,7 @@ impl Presenter {
                     "remote provider configuration is incomplete (endpoint/api key/model required)"
                         .to_string(),
                 );
+                state.sync_active_file_session_from_top_level();
                 return;
             }
 
@@ -825,6 +922,7 @@ impl Presenter {
                 "Running AI analysis with {} provider...",
                 state.analysis_provider_mode_text()
             ));
+            state.sync_active_file_session_from_top_level();
             (
                 selected_row,
                 state.selected_diff.clone(),
@@ -871,11 +969,13 @@ impl Presenter {
                             state.analysis_provider_mode_text()
                         ));
                         state.status_text = "AI analysis loaded".to_string();
+                        state.sync_active_file_session_from_top_level();
                     }
                     Err(message) => {
                         state.analysis_error_message = Some(message);
                         state.analysis_result = None;
                         state.status_text = "AI analysis unavailable".to_string();
+                        state.sync_active_file_session_from_top_level();
                     }
                 }
             }
@@ -892,6 +992,7 @@ impl Presenter {
                 state.can_return_to_compare_view = false;
                 Self::clear_file_view_state(state);
                 Self::set_analysis_stale_selection_hint(state);
+                state.sync_active_file_session_from_top_level();
             }
         }
     }
@@ -906,15 +1007,16 @@ impl Presenter {
 
             match state.row_index_for_relative_path(&relative_path) {
                 Some(index) => {
-                    Self::apply_row_selection(&mut state, Some(index), true);
-                    true
+                    Self::open_file_session(&mut state, &relative_path, Some(index), true)
                 }
                 None => {
+                    let _ = state.open_or_activate_file_session(&relative_path);
                     state.selected_row = None;
                     state.selected_relative_path = Some(relative_path);
                     state.can_return_to_compare_view = true;
                     Self::clear_file_view_state(&mut state);
                     Self::set_analysis_stale_selection_hint(&mut state);
+                    state.sync_active_file_session_from_top_level();
                     false
                 }
             }

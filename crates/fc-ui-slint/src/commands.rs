@@ -39,18 +39,26 @@ pub enum UiCommand {
     LocateAndOpen(String),
     /// Opens one directory compare target in workspace Compare View.
     OpenCompareView(String),
+    /// Activates one outer workspace session tab.
+    SelectWorkspaceSession(String),
+    /// Closes one outer workspace session tab.
+    CloseWorkspaceSession(String),
+    /// Confirms compare-session termination and closes derived file tabs.
+    ConfirmCompareTreeSessionClose,
+    /// Cancels compare-session termination.
+    CancelCompareTreeSessionClose,
     /// Moves current Compare View target to its parent directory.
     CompareViewUpOneLevel,
-    /// Exits Compare View back to the existing Results / File View shell.
-    ExitCompareViewToResults,
-    /// Restores Compare View from File View when the current session came from Compare View.
-    ReturnToCompareView,
     /// Toggles one expandable directory row inside Compare View.
     ToggleCompareTreeNode(String),
     /// Focuses one visible row inside Compare View.
     FocusCompareRow(String),
     /// Opens one file/special-entry row in File View while preserving Compare View return context.
     OpenFileViewFromCompare(String),
+    /// Switches current file shell back to Diff.
+    SetFileViewModeDiff,
+    /// Switches current file shell to Analysis.
+    SetFileViewModeAnalysis,
     /// Loads AI analysis for selected detailed diff.
     LoadAiAnalysis,
     /// Switches AI provider mode to mock.

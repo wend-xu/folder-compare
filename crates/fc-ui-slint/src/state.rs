@@ -166,6 +166,168 @@ impl WorkspaceMode {
     }
 }
 
+const COMPARE_TREE_SESSION_ID: &str = "compare-tree";
+
+/// Outer workspace session kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceSessionKind {
+    CompareTree,
+    File,
+}
+
+impl WorkspaceSessionKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CompareTree => "compare-tree",
+            Self::File => "file",
+        }
+    }
+}
+
+/// One visible outer workspace tab.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSession {
+    /// Stable session identifier.
+    pub session_id: String,
+    /// Session kind used by presenter/UI branching.
+    pub kind: WorkspaceSessionKind,
+    /// Short tab label.
+    pub label: String,
+    /// Full tooltip text for truncated tab labels.
+    pub tooltip_text: String,
+    /// Whether the tab exposes close affordance.
+    pub closable: bool,
+}
+
+/// File-session inner content mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileSessionMode {
+    Diff,
+    Analysis,
+}
+
+impl FileSessionMode {
+    pub fn tab_index(self) -> i32 {
+        match self {
+            Self::Diff => 0,
+            Self::Analysis => 1,
+        }
+    }
+}
+
+/// The single compare-tree session carried by 19D workspace tabs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompareTreeSession {
+    /// Stable compare-session tab id.
+    pub session_id: String,
+    /// Left compare root snapshot for this session.
+    pub left_root: String,
+    /// Right compare root snapshot for this session.
+    pub right_root: String,
+    /// Compare-view focus anchor independent from file selection.
+    pub compare_focus_path: CompareFocusPath,
+    /// Focused visible compare-tree row inside Compare View.
+    pub compare_row_focus_path: Option<String>,
+    /// Expansion overrides for compare-tree directory nodes.
+    pub expansion_overrides: BTreeMap<String, bool>,
+}
+
+impl CompareTreeSession {
+    pub fn new(left_root: &str, right_root: &str) -> Self {
+        Self {
+            session_id: COMPARE_TREE_SESSION_ID.to_string(),
+            left_root: left_root.to_string(),
+            right_root: right_root.to_string(),
+            compare_focus_path: CompareFocusPath::root(),
+            compare_row_focus_path: None,
+            expansion_overrides: BTreeMap::new(),
+        }
+    }
+}
+
+/// One compare-originated file session tab.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileSession {
+    /// Stable file-session tab id.
+    pub session_id: String,
+    /// Owning compare-session id.
+    pub source_compare_session_id: String,
+    /// Canonical compare relative path for this file tab.
+    pub relative_path: String,
+    /// Short display title used in the tab strip.
+    pub display_title: String,
+    /// Inner `Diff / Analysis` mode for this file session.
+    pub mode: FileSessionMode,
+    /// Active results membership source index when still valid.
+    pub source_index: Option<usize>,
+    /// Whether detailed diff loading is running.
+    pub diff_loading: bool,
+    /// Top-level detailed diff error.
+    pub diff_error_message: Option<String>,
+    /// Structured detailed diff panel payload.
+    pub selected_diff: Option<DiffPanelViewModel>,
+    /// Optional warning from detailed diff result.
+    pub diff_warning: Option<String>,
+    /// Whether selected detailed diff is truncated.
+    pub diff_truncated: bool,
+    /// Whether AI analysis can be triggered for current selection.
+    pub analysis_available: bool,
+    /// Whether AI analysis loading is running.
+    pub analysis_loading: bool,
+    /// Optional hint text for AI analysis availability.
+    pub analysis_hint: Option<String>,
+    /// Top-level AI analysis error.
+    pub analysis_error_message: Option<String>,
+    /// Structured AI analysis payload for panel rendering.
+    pub analysis_result: Option<AnalysisResultViewModel>,
+}
+
+impl FileSession {
+    pub fn new(relative_path: &str, source_compare_session_id: &str) -> Self {
+        let (_, leaf_name) = split_relative_path_leaf(relative_path.trim());
+        Self {
+            session_id: file_session_id(relative_path),
+            source_compare_session_id: source_compare_session_id.to_string(),
+            relative_path: relative_path.trim().to_string(),
+            display_title: if leaf_name.is_empty() {
+                relative_path.trim().to_string()
+            } else {
+                leaf_name
+            },
+            mode: FileSessionMode::Diff,
+            source_index: None,
+            diff_loading: false,
+            diff_error_message: None,
+            selected_diff: None,
+            diff_warning: None,
+            diff_truncated: false,
+            analysis_available: false,
+            analysis_loading: false,
+            analysis_hint: Some("Select one changed text file to analyze.".to_string()),
+            analysis_error_message: None,
+            analysis_result: None,
+        }
+    }
+}
+
+/// Result of opening or activating a file session tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileSessionOpenResult {
+    /// Whether the tab already existed before this request.
+    pub activated_existing: bool,
+    /// Whether the restored session already had cached file-view content/state.
+    pub has_cached_view_state: bool,
+}
+
+/// Pending confirmation before compare-session termination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompareTreeCloseConfirmation {
+    /// Target compare-session id.
+    pub compare_session_id: String,
+    /// Number of file tabs that will be closed together.
+    pub related_file_tab_count: usize,
+}
+
 /// In-memory UI state for compare workflow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppState {
@@ -207,6 +369,14 @@ pub struct AppState {
     pub sidebar_visible: bool,
     /// Outer workspace mode owned in Rust state.
     pub workspace_mode: WorkspaceMode,
+    /// Outer workspace session tabs.
+    pub workspace_sessions: Vec<WorkspaceSession>,
+    /// Currently active outer workspace session id.
+    pub active_session_id: Option<String>,
+    /// Optional compare-tree session currently attached to the workspace.
+    pub compare_tree_session: Option<CompareTreeSession>,
+    /// Compare-originated file sessions attached to the current compare session.
+    pub file_sessions: Vec<FileSession>,
     /// Compare-view focus anchor independent from file selection.
     pub compare_focus_path: CompareFocusPath,
     /// Focused visible compare-tree row inside Compare View, independent from file selection.
@@ -217,8 +387,10 @@ pub struct AppState {
     pub compare_view_scroll_request_revision: u64,
     /// Relative path requested for Compare View ensure-visible.
     pub compare_view_scroll_target_relative_path: Option<String>,
-    /// Whether current File View session should show Back to Compare View.
+    /// Whether current File View session should show compare-context header treatment.
     pub can_return_to_compare_view: bool,
+    /// Current active file-view inner mode (`Diff` / `Analysis`).
+    pub file_view_mode: FileSessionMode,
     /// Expansion overrides for compare-tree directory nodes.
     pub compare_view_expansion_overrides: BTreeMap<String, bool>,
     /// Expansion overrides for directory nodes in tree mode.
@@ -267,6 +439,8 @@ pub struct AppState {
     pub show_hidden_files: bool,
     /// Settings dialog error message.
     pub settings_error_message: Option<String>,
+    /// Pending compare-session close confirmation.
+    pub pending_compare_tree_close_confirmation: Option<CompareTreeCloseConfirmation>,
 }
 
 impl Default for AppState {
@@ -291,12 +465,17 @@ impl Default for AppState {
             default_navigator_view_mode: NavigatorViewMode::Tree,
             sidebar_visible: true,
             workspace_mode: WorkspaceMode::FileView,
+            workspace_sessions: Vec::new(),
+            active_session_id: None,
+            compare_tree_session: None,
+            file_sessions: Vec::new(),
             compare_focus_path: CompareFocusPath::root(),
             compare_row_focus_path: None,
             compare_view_projection_revision: 0,
             compare_view_scroll_request_revision: 0,
             compare_view_scroll_target_relative_path: None,
             can_return_to_compare_view: false,
+            file_view_mode: FileSessionMode::Diff,
             compare_view_expansion_overrides: BTreeMap::new(),
             navigator_tree_expansion_overrides: BTreeMap::new(),
             warning_lines: Vec::new(),
@@ -321,6 +500,7 @@ impl Default for AppState {
             analysis_request_timeout_secs: 30,
             show_hidden_files: true,
             settings_error_message: None,
+            pending_compare_tree_close_confirmation: None,
         }
     }
 }
@@ -331,6 +511,553 @@ impl AppState {
             .as_deref()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty())
+    }
+
+    fn active_workspace_session_kind(&self) -> Option<WorkspaceSessionKind> {
+        let active_id = self.active_session_id.as_deref()?;
+        self.workspace_sessions
+            .iter()
+            .find(|session| session.session_id == active_id)
+            .map(|session| session.kind)
+    }
+
+    fn active_file_session_index(&self) -> Option<usize> {
+        let active_id = self.active_session_id.as_deref()?;
+        self.file_sessions
+            .iter()
+            .position(|session| session.session_id == active_id)
+    }
+
+    fn active_file_session_mut(&mut self) -> Option<&mut FileSession> {
+        let index = self.active_file_session_index()?;
+        self.file_sessions.get_mut(index)
+    }
+
+    fn file_session_index_for_relative_path(&self, relative_path: &str) -> Option<usize> {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() {
+            return None;
+        }
+        self.file_sessions
+            .iter()
+            .position(|session| session.relative_path == normalized)
+    }
+
+    fn refresh_workspace_sessions(&mut self) {
+        let mut sessions = Vec::new();
+        if self.compare_tree_session.is_some() {
+            sessions.push(WorkspaceSession {
+                session_id: COMPARE_TREE_SESSION_ID.to_string(),
+                kind: WorkspaceSessionKind::CompareTree,
+                label: "Compare Tree".to_string(),
+                tooltip_text: "Compare Tree".to_string(),
+                closable: true,
+            });
+        }
+        sessions.extend(self.file_sessions.iter().map(|session| WorkspaceSession {
+            session_id: session.session_id.clone(),
+            kind: WorkspaceSessionKind::File,
+            label: session.display_title.clone(),
+            tooltip_text: session.relative_path.clone(),
+            closable: true,
+        }));
+        self.workspace_sessions = sessions;
+
+        let active_still_exists = self.active_session_id.as_deref().is_some_and(|session_id| {
+            self.workspace_sessions
+                .iter()
+                .any(|session| session.session_id == session_id)
+        });
+        if !active_still_exists {
+            self.active_session_id = self
+                .workspace_sessions
+                .first()
+                .map(|session| session.session_id.clone());
+        }
+        self.sync_workspace_mode_from_active_session();
+    }
+
+    fn sync_workspace_mode_from_active_session(&mut self) {
+        self.workspace_mode = match self.active_workspace_session_kind() {
+            Some(WorkspaceSessionKind::CompareTree) => WorkspaceMode::CompareView,
+            Some(WorkspaceSessionKind::File) | None => WorkspaceMode::FileView,
+        };
+        self.can_return_to_compare_view = matches!(
+            self.active_workspace_session_kind(),
+            Some(WorkspaceSessionKind::File)
+        ) && self.compare_tree_session.is_some();
+    }
+
+    fn sync_compare_tree_session_from_top_level(&mut self) {
+        if let Some(session) = self.compare_tree_session.as_mut() {
+            session.left_root = self.left_root.clone();
+            session.right_root = self.right_root.clone();
+            session.compare_focus_path = self.compare_focus_path.clone();
+            session.compare_row_focus_path = self.compare_row_focus_path.clone();
+            session.expansion_overrides = self.compare_view_expansion_overrides.clone();
+        }
+    }
+
+    fn restore_compare_tree_session_to_top_level(&mut self) {
+        let Some(session) = self.compare_tree_session.as_ref() else {
+            return;
+        };
+        self.compare_focus_path = session.compare_focus_path.clone();
+        self.compare_row_focus_path = session.compare_row_focus_path.clone();
+        self.compare_view_expansion_overrides = session.expansion_overrides.clone();
+    }
+
+    pub fn sync_active_file_session_from_top_level(&mut self) {
+        let selected_relative_path = self.selected_relative_path.clone();
+        let selected_row = self.selected_row;
+        let file_view_mode = self.file_view_mode;
+        let diff_loading = self.diff_loading;
+        let diff_error_message = self.diff_error_message.clone();
+        let selected_diff = self.selected_diff.clone();
+        let diff_warning = self.diff_warning.clone();
+        let diff_truncated = self.diff_truncated;
+        let analysis_available = self.analysis_available;
+        let analysis_loading = self.analysis_loading;
+        let analysis_hint = self.analysis_hint.clone();
+        let analysis_error_message = self.analysis_error_message.clone();
+        let analysis_result = self.analysis_result.clone();
+        let computed_title = selected_relative_path
+            .as_deref()
+            .and_then(normalize_optional_text)
+            .map(|value| split_relative_path_leaf(&value).1)
+            .filter(|value| !value.is_empty());
+
+        if let Some(session) = self.active_file_session_mut() {
+            if let Some(relative_path) = selected_relative_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                session.relative_path = relative_path.to_string();
+            }
+            session.display_title = computed_title.unwrap_or_else(|| session.display_title.clone());
+            session.source_index = selected_row;
+            session.mode = file_view_mode;
+            session.diff_loading = diff_loading;
+            session.diff_error_message = diff_error_message;
+            session.selected_diff = selected_diff;
+            session.diff_warning = diff_warning;
+            session.diff_truncated = diff_truncated;
+            session.analysis_available = analysis_available;
+            session.analysis_loading = analysis_loading;
+            session.analysis_hint = analysis_hint;
+            session.analysis_error_message = analysis_error_message;
+            session.analysis_result = analysis_result;
+        }
+        self.refresh_workspace_sessions();
+    }
+
+    fn restore_file_session_to_top_level(&mut self, session_index: usize) {
+        let Some(session) = self.file_sessions.get(session_index).cloned() else {
+            return;
+        };
+        self.selected_row = session.source_index;
+        self.selected_relative_path = Some(session.relative_path.clone());
+        self.file_view_mode = session.mode;
+        self.diff_loading = session.diff_loading;
+        self.diff_error_message = session.diff_error_message;
+        self.selected_diff = session.selected_diff;
+        self.diff_warning = session.diff_warning;
+        self.diff_truncated = session.diff_truncated;
+        self.analysis_available = session.analysis_available;
+        self.analysis_loading = session.analysis_loading;
+        self.analysis_hint = session.analysis_hint;
+        self.analysis_error_message = session.analysis_error_message;
+        self.analysis_result = session.analysis_result;
+        self.workspace_mode = WorkspaceMode::FileView;
+        self.can_return_to_compare_view = self.compare_tree_session.is_some();
+    }
+
+    pub fn has_compare_tree_session(&self) -> bool {
+        self.compare_tree_session.is_some()
+    }
+
+    pub fn active_workspace_session_index(&self) -> i32 {
+        self.active_session_id
+            .as_deref()
+            .and_then(|session_id| {
+                self.workspace_sessions
+                    .iter()
+                    .position(|session| session.session_id == session_id)
+            })
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(-1)
+    }
+
+    pub fn workspace_session_ids(&self) -> Vec<String> {
+        self.workspace_sessions
+            .iter()
+            .map(|session| session.session_id.clone())
+            .collect()
+    }
+
+    pub fn workspace_session_labels(&self) -> Vec<String> {
+        self.workspace_sessions
+            .iter()
+            .map(|session| session.label.clone())
+            .collect()
+    }
+
+    pub fn workspace_session_tooltips(&self) -> Vec<String> {
+        self.workspace_sessions
+            .iter()
+            .map(|session| session.tooltip_text.clone())
+            .collect()
+    }
+
+    pub fn workspace_session_kinds(&self) -> Vec<String> {
+        self.workspace_sessions
+            .iter()
+            .map(|session| session.kind.as_str().to_string())
+            .collect()
+    }
+
+    pub fn workspace_session_closable(&self) -> Vec<bool> {
+        self.workspace_sessions
+            .iter()
+            .map(|session| session.closable)
+            .collect()
+    }
+
+    pub fn workspace_sessions_visible(&self) -> bool {
+        !self.workspace_sessions.is_empty()
+    }
+
+    pub fn file_view_mode_tab_index(&self) -> i32 {
+        self.file_view_mode.tab_index()
+    }
+
+    pub fn set_file_view_mode(&mut self, mode: FileSessionMode) -> bool {
+        if self.file_view_mode == mode {
+            return false;
+        }
+        self.file_view_mode = mode;
+        self.sync_active_file_session_from_top_level();
+        true
+    }
+
+    pub fn compare_tree_file_tab_count(&self) -> usize {
+        let Some(compare_session) = self.compare_tree_session.as_ref() else {
+            return 0;
+        };
+        self.file_sessions
+            .iter()
+            .filter(|session| session.source_compare_session_id == compare_session.session_id)
+            .count()
+    }
+
+    pub fn ensure_compare_tree_session(&mut self) {
+        if self.compare_tree_session.is_none() {
+            self.compare_tree_session = Some(CompareTreeSession::new(
+                self.left_root.as_str(),
+                self.right_root.as_str(),
+            ));
+        }
+        self.sync_compare_tree_session_from_top_level();
+        self.refresh_workspace_sessions();
+    }
+
+    pub fn activate_workspace_session(&mut self, session_id: &str) -> bool {
+        let normalized = session_id.trim();
+        if normalized.is_empty()
+            || self.active_session_id.as_deref() == Some(normalized)
+            || !self
+                .workspace_sessions
+                .iter()
+                .any(|session| session.session_id == normalized)
+        {
+            return false;
+        }
+
+        self.sync_active_file_session_from_top_level();
+        self.active_session_id = Some(normalized.to_string());
+        match self.active_workspace_session_kind() {
+            Some(WorkspaceSessionKind::CompareTree) => {
+                self.restore_compare_tree_session_to_top_level();
+                self.workspace_mode = WorkspaceMode::CompareView;
+                self.can_return_to_compare_view = false;
+            }
+            Some(WorkspaceSessionKind::File) => {
+                if let Some(index) = self.active_file_session_index() {
+                    self.restore_file_session_to_top_level(index);
+                }
+            }
+            None => {
+                self.workspace_mode = WorkspaceMode::FileView;
+                self.can_return_to_compare_view = false;
+            }
+        }
+        self.refresh_workspace_sessions();
+        true
+    }
+
+    pub fn open_or_activate_file_session(
+        &mut self,
+        relative_path: &str,
+    ) -> Option<FileSessionOpenResult> {
+        let normalized = relative_path.trim();
+        let Some(compare_session_id) = self
+            .compare_tree_session
+            .as_ref()
+            .map(|session| session.session_id.clone())
+        else {
+            return None;
+        };
+        if normalized.is_empty() {
+            return None;
+        }
+
+        self.sync_active_file_session_from_top_level();
+        let session_id = file_session_id(normalized);
+        if let Some(index) = self.file_session_index_for_relative_path(normalized) {
+            let has_cached_view_state = self.file_sessions.get(index).is_some_and(|session| {
+                session.selected_diff.is_some()
+                    || session.diff_error_message.is_some()
+                    || session.analysis_result.is_some()
+                    || session.analysis_error_message.is_some()
+            });
+            self.active_session_id = Some(session_id);
+            self.restore_file_session_to_top_level(index);
+            self.refresh_workspace_sessions();
+            return Some(FileSessionOpenResult {
+                activated_existing: true,
+                has_cached_view_state,
+            });
+        }
+
+        let mut session = FileSession::new(normalized, compare_session_id.as_str());
+        session.source_index = self
+            .row_index_for_relative_path(normalized)
+            .filter(|index| self.is_row_member_in_active_results(*index));
+        self.file_sessions.push(session);
+        let new_index = self.file_sessions.len().saturating_sub(1);
+        self.active_session_id = Some(session_id);
+        self.restore_file_session_to_top_level(new_index);
+        self.refresh_workspace_sessions();
+        Some(FileSessionOpenResult {
+            activated_existing: false,
+            has_cached_view_state: false,
+        })
+    }
+
+    pub fn close_workspace_session(&mut self, session_id: &str) -> bool {
+        let normalized = session_id.trim();
+        if normalized.is_empty() {
+            return false;
+        }
+        if normalized == COMPARE_TREE_SESSION_ID {
+            return self.request_compare_tree_session_close();
+        }
+
+        let Some(index) = self
+            .file_sessions
+            .iter()
+            .position(|session| session.session_id == normalized)
+        else {
+            return false;
+        };
+
+        self.sync_active_file_session_from_top_level();
+        let was_active = self.active_session_id.as_deref() == Some(normalized);
+        self.file_sessions.remove(index);
+        if was_active {
+            self.active_session_id =
+                if let Some(compare_session) = self.compare_tree_session.as_ref() {
+                    Some(compare_session.session_id.clone())
+                } else {
+                    self.file_sessions
+                        .last()
+                        .map(|session| session.session_id.clone())
+                };
+            if let Some(next_index) = self.active_file_session_index() {
+                self.restore_file_session_to_top_level(next_index);
+            } else {
+                self.workspace_mode = if self.compare_tree_session.is_some() {
+                    WorkspaceMode::CompareView
+                } else {
+                    WorkspaceMode::FileView
+                };
+                self.can_return_to_compare_view = false;
+                self.file_view_mode = FileSessionMode::Diff;
+            }
+        }
+        self.refresh_workspace_sessions();
+        true
+    }
+
+    pub fn request_compare_tree_session_close(&mut self) -> bool {
+        let Some(compare_session) = self.compare_tree_session.as_ref() else {
+            return false;
+        };
+
+        let related_file_tab_count = self.compare_tree_file_tab_count();
+        if related_file_tab_count > 0 {
+            self.pending_compare_tree_close_confirmation = Some(CompareTreeCloseConfirmation {
+                compare_session_id: compare_session.session_id.clone(),
+                related_file_tab_count,
+            });
+            return true;
+        }
+        self.confirm_compare_tree_session_close()
+    }
+
+    pub fn confirm_compare_tree_session_close(&mut self) -> bool {
+        let Some(compare_session) = self.compare_tree_session.as_ref() else {
+            self.pending_compare_tree_close_confirmation = None;
+            return false;
+        };
+        let compare_session_id = compare_session.session_id.clone();
+
+        self.pending_compare_tree_close_confirmation = None;
+        self.compare_tree_session = None;
+        self.file_sessions
+            .retain(|session| session.source_compare_session_id != compare_session_id);
+        self.active_session_id = None;
+        self.workspace_mode = WorkspaceMode::FileView;
+        self.can_return_to_compare_view = false;
+        self.compare_focus_path = CompareFocusPath::root();
+        self.compare_row_focus_path = None;
+        self.compare_view_expansion_overrides.clear();
+        self.file_view_mode = FileSessionMode::Diff;
+        self.diff_loading = false;
+        self.diff_error_message = None;
+        self.selected_relative_path = None;
+        self.selected_diff = None;
+        self.diff_warning = None;
+        self.diff_truncated = false;
+        self.analysis_available = false;
+        self.analysis_loading = false;
+        self.analysis_hint = Some("Select one changed text file to analyze.".to_string());
+        self.analysis_error_message = None;
+        self.analysis_result = None;
+        self.refresh_workspace_sessions();
+        true
+    }
+
+    pub fn cancel_compare_tree_session_close(&mut self) -> bool {
+        if self.pending_compare_tree_close_confirmation.is_none() {
+            return false;
+        }
+        self.pending_compare_tree_close_confirmation = None;
+        true
+    }
+
+    pub fn compare_tree_close_confirmation_open(&self) -> bool {
+        self.pending_compare_tree_close_confirmation.is_some()
+    }
+
+    pub fn compare_tree_close_confirmation_title_text(&self) -> String {
+        "Close Compare session?".to_string()
+    }
+
+    pub fn compare_tree_close_confirmation_body_text(&self) -> String {
+        let Some(pending) = self.pending_compare_tree_close_confirmation.as_ref() else {
+            return String::new();
+        };
+        if pending.related_file_tab_count == 1 {
+            "Closing Compare Tree will also close 1 related file tab.".to_string()
+        } else {
+            format!(
+                "Closing Compare Tree will also close {} related file tabs.",
+                pending.related_file_tab_count
+            )
+        }
+    }
+
+    pub fn reconcile_file_sessions_with_active_results(&mut self) {
+        let session_paths = self
+            .file_sessions
+            .iter()
+            .map(|session| session.relative_path.clone())
+            .collect::<Vec<_>>();
+        let resolved_indices = session_paths
+            .iter()
+            .map(|relative_path| {
+                self.row_index_for_relative_path(relative_path)
+                    .filter(|index| self.is_row_member_in_active_results(*index))
+            })
+            .collect::<Vec<_>>();
+
+        for (session, source_index) in self.file_sessions.iter_mut().zip(resolved_indices) {
+            if session.source_index == source_index {
+                continue;
+            }
+            session.source_index = source_index;
+            if session.source_index.is_none() {
+                session.diff_loading = false;
+                session.diff_error_message = None;
+                session.selected_diff = None;
+                session.diff_warning = None;
+                session.diff_truncated = false;
+                session.analysis_available = false;
+                session.analysis_loading = false;
+                session.analysis_hint = Some(
+                    "Previous selection is no longer active in the current Results / Navigator set."
+                        .to_string(),
+                );
+                session.analysis_error_message = None;
+                session.analysis_result = None;
+            }
+        }
+
+        if let Some(index) = self.active_file_session_index() {
+            self.restore_file_session_to_top_level(index);
+        }
+        self.refresh_workspace_sessions();
+    }
+
+    pub fn mark_file_sessions_for_compare_restore(&mut self) {
+        let session_paths = self
+            .file_sessions
+            .iter()
+            .map(|session| session.relative_path.clone())
+            .collect::<Vec<_>>();
+        let resolved_indices = session_paths
+            .iter()
+            .map(|relative_path| {
+                self.row_index_for_relative_path(relative_path)
+                    .filter(|index| self.is_row_member_in_active_results(*index))
+            })
+            .collect::<Vec<_>>();
+
+        for (session, source_index) in self.file_sessions.iter_mut().zip(resolved_indices) {
+            session.source_index = source_index;
+            session.diff_loading = false;
+            session.diff_error_message = None;
+            session.selected_diff = None;
+            session.diff_warning = None;
+            session.diff_truncated = false;
+            session.analysis_available = false;
+            session.analysis_loading = false;
+            session.analysis_error_message = None;
+            session.analysis_result = None;
+            session.analysis_hint = Some(if session.source_index.is_some() {
+                "Previous selection will be rechecked after compare finishes.".to_string()
+            } else {
+                "Previous selection is no longer active in the current Results / Navigator set."
+                    .to_string()
+            });
+        }
+
+        if let Some(index) = self.active_file_session_index() {
+            self.restore_file_session_to_top_level(index);
+        }
+        self.refresh_workspace_sessions();
+    }
+
+    pub fn active_file_session_needs_diff_reload(&self) -> bool {
+        matches!(
+            self.active_workspace_session_kind(),
+            Some(WorkspaceSessionKind::File)
+        ) && self.selected_row.is_some()
+            && self.selected_diff.is_none()
+            && !self.diff_loading
+            && self.diff_error_message.is_none()
     }
 
     fn has_stale_selection(&self) -> bool {
@@ -1007,16 +1734,21 @@ impl AppState {
 
     /// Returns one formatted root-pair context string for Compare/File view headers.
     pub fn compare_root_pair_text(&self) -> String {
+        let (left_root, right_root) = self
+            .compare_tree_session
+            .as_ref()
+            .map(|session| (session.left_root.as_str(), session.right_root.as_str()))
+            .unwrap_or((self.left_root.as_str(), self.right_root.as_str()));
         format!(
             "{} ↔ {}",
             abbreviate_middle(
-                self.left_root.trim(),
+                left_root.trim(),
                 ROOT_PAIR_MAX_CHARS,
                 ROOT_PAIR_HEAD_CHARS,
                 ROOT_PAIR_TAIL_CHARS,
             ),
             abbreviate_middle(
-                self.right_root.trim(),
+                right_root.trim(),
                 ROOT_PAIR_MAX_CHARS,
                 ROOT_PAIR_HEAD_CHARS,
                 ROOT_PAIR_TAIL_CHARS,
@@ -1183,6 +1915,7 @@ impl AppState {
         }
         self.reconcile_compare_row_focus(None);
         self.bump_compare_view_projection_revision();
+        self.sync_compare_tree_session_from_top_level();
         true
     }
 
@@ -1228,6 +1961,7 @@ impl AppState {
         }
         self.bump_compare_view_projection_revision();
         self.reconcile_compare_row_focus(Some(key));
+        self.sync_compare_tree_session_from_top_level();
         true
     }
 
@@ -1260,6 +1994,7 @@ impl AppState {
 
         if changed {
             self.bump_compare_view_projection_revision();
+            self.sync_compare_tree_session_from_top_level();
         }
         changed
     }
@@ -1271,6 +2006,7 @@ impl AppState {
             return false;
         }
         self.compare_row_focus_path = next;
+        self.sync_compare_tree_session_from_top_level();
         true
     }
 
@@ -1303,7 +2039,11 @@ impl AppState {
                     None => false,
                 },
             );
-        previous != self.compare_view_expansion_overrides
+        let changed = previous != self.compare_view_expansion_overrides;
+        if changed {
+            self.sync_compare_tree_session_from_top_level();
+        }
+        changed
     }
 
     /// Updates the persisted non-search default mode.
@@ -1461,6 +2201,7 @@ impl AppState {
         }
         self.bump_navigator_projection_revisions();
         self.bump_compare_view_projection_revision();
+        self.sync_compare_tree_session_from_top_level();
     }
 
     /// Marks both flat/tree navigator projections dirty after compare data changes.
@@ -2522,6 +3263,7 @@ impl AppState {
         }
         self.reconcile_compare_row_focus(previous_focus.as_deref());
         self.bump_compare_view_projection_revision();
+        self.sync_compare_tree_session_from_top_level();
     }
 
     pub fn clear_compare_foundation(&mut self) {
@@ -2530,6 +3272,7 @@ impl AppState {
         self.compare_row_focus_path = None;
         self.compare_view_expansion_overrides.clear();
         self.bump_compare_view_projection_revision();
+        self.sync_compare_tree_session_from_top_level();
     }
 
     fn compare_mode_token(&self) -> Option<String> {
@@ -2757,6 +3500,10 @@ fn sanitize_inline_query(query: &str) -> String {
         .replace('\n', " ")
         .replace('\r', " ")
         .replace('"', "'")
+}
+
+fn file_session_id(relative_path: &str) -> String {
+    format!("file:{}", relative_path.trim())
 }
 
 fn split_relative_path_leaf(relative_path: &str) -> (String, String) {

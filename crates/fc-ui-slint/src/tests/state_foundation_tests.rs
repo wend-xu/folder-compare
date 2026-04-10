@@ -97,7 +97,8 @@ fn workspace_mode_and_compare_focus_are_independent_from_file_selection() {
         file_entry("src/lib.rs", EntryStatus::Equal),
     ]);
 
-    state.set_workspace_mode(WorkspaceMode::CompareView);
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert_eq!(state.workspace_mode_text(), "compare-view");
 
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src/bin/main.rs")));
@@ -123,7 +124,8 @@ fn sidebar_visibility_is_top_level_shell_state() {
         EntryStatus::Different,
     )]);
 
-    state.set_workspace_mode(WorkspaceMode::CompareView);
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
     assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
     assert!(state.sidebar_visible());
 
@@ -136,6 +138,66 @@ fn sidebar_visibility_is_top_level_shell_state() {
     assert!(state.sidebar_visible());
     assert_eq!(state.workspace_mode_text(), "compare-view");
     assert_eq!(state.compare_focus_path_raw_text(), "src");
+}
+
+#[test]
+fn workspace_sessions_keep_compare_tree_left_and_unique() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("src/lib.rs", EntryStatus::Different),
+    ]);
+
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
+    assert!(state.open_or_activate_file_session("src/main.rs").is_some());
+    assert!(state.open_or_activate_file_session("src/lib.rs").is_some());
+    assert!(state.open_or_activate_file_session("src/main.rs").is_some());
+
+    assert_eq!(
+        state.workspace_session_kinds(),
+        vec!["compare-tree", "file", "file"]
+    );
+    assert_eq!(
+        state.workspace_session_labels(),
+        vec!["Compare Tree", "main.rs", "lib.rs"]
+    );
+    assert_eq!(state.workspace_session_ids()[0], "compare-tree");
+}
+
+#[test]
+fn compare_tree_session_close_requires_confirmation_when_file_tabs_exist() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+
+    state.ensure_compare_tree_session();
+    assert!(state.open_or_activate_file_session("src/main.rs").is_some());
+
+    assert!(state.close_workspace_session("compare-tree"));
+    assert!(state.compare_tree_close_confirmation_open());
+    assert!(state.workspace_sessions_visible());
+
+    assert!(state.confirm_compare_tree_session_close());
+    assert!(!state.workspace_sessions_visible());
+    assert_eq!(state.compare_tree_file_tab_count(), 0);
+    assert_eq!(state.selected_relative_path.as_deref(), None);
+}
+
+#[test]
+fn closing_file_session_is_immediate_and_keeps_compare_tree_tab() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+
+    state.ensure_compare_tree_session();
+    assert!(state.open_or_activate_file_session("src/main.rs").is_some());
+    let file_session_id = state
+        .workspace_session_ids()
+        .into_iter()
+        .find(|session_id| session_id != "compare-tree")
+        .expect("file session should exist");
+
+    assert!(state.close_workspace_session(file_session_id.as_str()));
+    assert_eq!(state.workspace_session_ids(), vec!["compare-tree"]);
+    assert_eq!(state.workspace_mode_text(), "compare-view");
 }
 
 #[test]
