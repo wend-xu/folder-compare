@@ -453,6 +453,98 @@ slint::slint! {
         }
     }
 
+    component WorkspaceSessionTabButton inherits Rectangle {
+        in property <string> label;
+        in property <string> kind: "file";
+        in property <bool> active: false;
+        in property <bool> closable: true;
+        callback tapped();
+        callback close_requested();
+
+        property <bool> close_hovered: false;
+        property <bool> hovered: tab_touch_area.has_hover || root.close_hovered;
+        property <length> close_slot_width: root.closable ? 20px : 0px;
+        property <brush> active_fill: root.kind == "compare-tree" ? #eef4fb : #f8fbfe;
+        property <brush> inactive_fill: root.kind == "compare-tree" ? #f2f6fa : #f4f7fb;
+        property <brush> active_border: root.kind == "compare-tree" ? #c4d4e6 : #d5dee9;
+        property <brush> inactive_border: root.kind == "compare-tree" ? #d3dee9 : #d8e0e9;
+
+        measure_text := Text {
+            visible: false;
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.active ? 600 : 500;
+        }
+
+        width: min(
+            188px,
+            max(104px, measure_text.preferred-width + root.close_slot_width + 26px),
+        );
+        height: 28px;
+        border-width: 1px;
+        border-radius: 6px;
+        border-color: root.active ? root.active_border : root.inactive_border;
+        background: root.active ? root.active_fill : root.inactive_fill;
+
+        // Keep the whole-tab hit area behind the dedicated close target so the
+        // close button is not shadowed by the selection hit region.
+        tab_touch_area := TouchArea {
+            width: parent.width;
+            height: parent.height;
+            clicked => {
+                root.tapped();
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 6px;
+            spacing: 6px;
+
+            Text {
+                text: root.label;
+                color: root.active
+                    ? (root.kind == "compare-tree" ? #284c6f : #32485d)
+                    : #5b6d80;
+                font-size: 13px;
+                font-weight: root.active ? 600 : 500;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            if root.closable : Rectangle {
+                width: root.close_slot_width;
+                height: parent.height;
+                background: transparent;
+
+                Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: "×";
+                    color: root.hovered
+                        ? (root.kind == "compare-tree" ? #244a6c : #4a6077)
+                        : #8393a3;
+                    font-size: 15px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                close_touch_area := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    enabled: root.closable;
+                    changed has-hover => {
+                        root.close_hovered = self.has_hover;
+                    }
+                    clicked => {
+                        root.close_requested();
+                    }
+                }
+            }
+        }
+    }
+
     component StatusPill inherits Rectangle {
         in property <string> label;
         in property <string> tone: "neutral";
@@ -1507,6 +1599,13 @@ slint::slint! {
         in property <[bool]> compare_row_is_expanded;
         in property <int> compare_row_focused_index: -1;
         in property <string> workspace_mode;
+        in property <[string]> workspace_session_ids;
+        in property <[string]> workspace_session_labels;
+        in property <[string]> workspace_session_tooltips;
+        in property <[string]> workspace_session_kinds;
+        in property <[bool]> workspace_session_closable;
+        in property <int> active_workspace_session_index: -1;
+        in property <bool> workspace_sessions_visible: false;
         in property <string> compare_focus_path_raw;
         in property <string> compare_root_pair_text;
         in property <string> compare_view_current_path_text;
@@ -1624,6 +1723,10 @@ slint::slint! {
         in-out property <length> tooltip_anchor_x: 0px;
         in-out property <length> tooltip_anchor_top: 0px;
         in-out property <length> tooltip_anchor_bottom: 0px;
+        in property <bool> workspace_session_confirm_open: false;
+        in property <string> workspace_session_confirm_title;
+        in property <string> workspace_session_confirm_body;
+        in property <string> workspace_session_confirm_action_label;
         property <length> tooltip_gap: 6px;
         property <bool> compare_ready: !root.running && root.left_root != "" && root.right_root != "";
         property <string> compare_button_tooltip_text: root.running
@@ -1666,8 +1769,8 @@ slint::slint! {
         property <length> compare_view_column_inset: 8px;
         property <length> compare_view_column_divider_width: 0px;
         property <length> compare_view_relation_column_width: 92px;
+        property <length> workspace_session_strip_height: root.workspace_sessions_visible ? 34px : 0px;
         property <string> sidebar_toggle_label: root.sidebar_visible ? "Hide Sidebar" : "Show Sidebar";
-        property <string> compare_view_back_label: "Back to Results";
         property <string> compare_view_empty_note_text: root.sidebar_visible
             ? "Use Results / Navigator -> Open in Compare View to change targets."
             : "Show Sidebar, then use Results / Navigator -> Open in Compare View to change targets.";
@@ -1737,13 +1840,17 @@ slint::slint! {
         callback navigator_tree_context_menu_requested(string, string, bool, int);
         callback row_selected(int);
         callback sidebar_toggle_requested();
-        callback compare_view_back_to_results_requested();
+        callback workspace_session_selected(string);
+        callback workspace_session_close_requested(string);
         callback compare_view_up_requested();
         callback compare_view_row_focused(string);
         callback compare_view_row_toggle_requested(string);
         callback compare_view_row_activated(string);
         callback compare_view_row_context_menu_requested(string);
-        callback back_to_compare_view_requested();
+        callback file_view_diff_requested();
+        callback file_view_analysis_requested();
+        callback workspace_session_confirmed();
+        callback workspace_session_cancelled();
         callback copy_requested(string, string);
         callback analyze_clicked();
         callback analysis_provider_mock_selected();
@@ -2742,12 +2849,51 @@ slint::slint! {
                                 property <length> panel_overlap: 4px;
                                 property <length> panel_top: self.tab_row_height - self.panel_overlap;
 
+                                if root.workspace_sessions_visible : Rectangle {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    height: root.workspace_session_strip_height;
+                                    background: transparent;
+
+                                    HorizontalLayout {
+                                        padding-left: 2px;
+                                        padding-right: 2px;
+                                        padding-top: 3px;
+                                        padding-bottom: 3px;
+                                        spacing: 6px;
+
+                                        for session_id[index] in root.workspace_session_ids : WorkspaceSessionTabButton {
+                                            label: root.workspace_session_labels[index];
+                                            kind: root.workspace_session_kinds[index];
+                                            active: index == root.active_workspace_session_index;
+                                            closable: root.workspace_session_closable[index];
+                                            tapped => {
+                                                root.context_menu_close_requested();
+                                                root.workspace_session_selected(session_id);
+                                            }
+                                            close_requested() => {
+                                                root.context_menu_close_requested();
+                                                root.workspace_session_close_requested(session_id);
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            horizontal-stretch: 1;
+                                            background: transparent;
+                                        }
+                                    }
+                                }
+
                                 workbench_panel := Rectangle {
                                     visible: root.workspace_mode == "file-view";
                                     x: 0px;
-                                    y: workbench_host.panel_top;
+                                    y: root.workspace_session_strip_height + workbench_host.panel_top;
                                     width: parent.width;
-                                    height: max(0px, parent.height - workbench_host.panel_top);
+                                    height: max(
+                                        0px,
+                                        parent.height - root.workspace_session_strip_height - workbench_host.panel_top,
+                                    );
                                     border-width: 1px;
                                     border-color: workbench_host.panel_border;
                                     border-radius: workbench_host.panel_corner_radius;
@@ -2778,105 +2924,80 @@ slint::slint! {
                                                     background: #dde5f0;
                                                 }
 
-                                                if root.can_return_to_compare_view : HorizontalLayout {
-                                                    padding: 10px;
-                                                    spacing: 12px;
+                                                if root.can_return_to_compare_view : Rectangle {
+                                                    width: parent.width;
+                                                    height: parent.height;
+                                                    background: transparent;
 
-                                                    Rectangle {
-                                                        width: root.compare_navigation_lane_width;
-                                                        background: transparent;
+                                                    VerticalLayout {
+                                                        padding: 10px;
+                                                        spacing: 4px;
 
-                                                        VerticalLayout {
+                                                        Text {
+                                                            text: root.compare_root_pair_text;
+                                                            color: #6e7f90;
+                                                            font-size: 11px;
+                                                            horizontal-stretch: 1;
+                                                            overflow: elide;
+                                                        }
+
+                                                        Text {
+                                                            text: root.file_view_title_text;
+                                                            color: root.file_view_title_text == "No file selected" ? #607286 : #294b6b;
+                                                            font-size: 16px;
+                                                            font-weight: 600;
+                                                            horizontal-stretch: 1;
+                                                            overflow: elide;
+                                                        }
+
+                                                        HorizontalLayout {
                                                             spacing: 6px;
 
-                                                            TextAction {
-                                                                label: "Back to Compare View";
-                                                                tapped => {
-                                                                    root.back_to_compare_view_requested();
-                                                                }
+                                                            StatusPill {
+                                                                label: "Diff";
+                                                                tone: "neutral";
+                                                            }
+                                                            if root.has_selected_result : StatusPill {
+                                                                label: root.diff_mode_label;
+                                                                tone: root.diff_mode_tone;
+                                                            }
+                                                            if root.has_selected_result : StatusPill {
+                                                                label: root.file_view_compare_status_label;
+                                                                tone: root.file_view_compare_status_tone;
+                                                            }
+                                                            if !root.has_selected_result
+                                                                || root.diff_shell_state_token == "stale-selection"
+                                                                || root.diff_shell_state_token == "loading"
+                                                                || root.diff_shell_state_token == "unavailable"
+                                                                || root.diff_shell_state_token == "error" : StatusPill {
+                                                                label: root.diff_shell_state_label;
+                                                                tone: root.diff_shell_state_tone;
+                                                            }
+                                                            Text {
+                                                                text: root.file_view_path_context_text;
+                                                                color: #617285;
+                                                                font-size: 12px;
+                                                                vertical-alignment: center;
+                                                                horizontal-stretch: 1;
+                                                                overflow: elide;
                                                             }
                                                         }
                                                     }
 
-                                                    Rectangle {
-                                                        width: 1px;
-                                                        height: parent.height - 6px;
-                                                        background: #e2e9f1;
-                                                    }
-
-                                                    Rectangle {
-                                                        horizontal-stretch: 1;
-                                                        background: transparent;
-
-                                                        VerticalLayout {
-                                                            spacing: 4px;
-
-                                                            Text {
-                                                                text: root.compare_root_pair_text;
-                                                                color: #6e7f90;
-                                                                font-size: 11px;
-                                                                horizontal-stretch: 1;
-                                                                overflow: elide;
-                                                            }
-
-                                                            Text {
-                                                                text: root.file_view_title_text;
-                                                                color: root.file_view_title_text == "No file selected" ? #607286 : #294b6b;
-                                                                font-size: 16px;
-                                                                font-weight: 600;
-                                                                horizontal-stretch: 1;
-                                                                overflow: elide;
-                                                            }
-
-                                                            HorizontalLayout {
-                                                                spacing: 6px;
-
-                                                                StatusPill {
-                                                                    label: "Diff";
-                                                                    tone: "neutral";
-                                                                }
-                                                                if root.has_selected_result : StatusPill {
-                                                                    label: root.diff_mode_label;
-                                                                    tone: root.diff_mode_tone;
-                                                                }
-                                                                if root.has_selected_result : StatusPill {
-                                                                    label: root.file_view_compare_status_label;
-                                                                    tone: root.file_view_compare_status_tone;
-                                                                }
-                                                                if !root.has_selected_result
-                                                                    || root.diff_shell_state_token == "stale-selection"
-                                                                    || root.diff_shell_state_token == "loading"
-                                                                    || root.diff_shell_state_token == "unavailable"
-                                                                    || root.diff_shell_state_token == "error" : StatusPill {
-                                                                    label: root.diff_shell_state_label;
-                                                                    tone: root.diff_shell_state_tone;
-                                                                }
-                                                                Text {
-                                                                    text: root.file_view_path_context_text;
-                                                                    color: #617285;
-                                                                    font-size: 12px;
-                                                                    vertical-alignment: center;
-                                                                    horizontal-stretch: 1;
-                                                                    overflow: elide;
-                                                                }
-                                                            }
-                                                        }
-
-                                                        TouchArea {
-                                                            width: parent.width;
-                                                            height: parent.height;
-                                                            pointer-event(event) => {
-                                                                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
-                                                                    root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
-                                                                    root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
-                                                                    root.workspace_header_context_menu_requested(
-                                                                        root.selected_relative_path_raw,
-                                                                        root.diff_mode_label,
-                                                                        root.file_view_compare_status_label,
-                                                                        root.file_view_path_context_text,
-                                                                        root.compare_root_pair_text,
-                                                                    );
-                                                                }
+                                                    TouchArea {
+                                                        width: parent.width;
+                                                        height: parent.height;
+                                                        pointer-event(event) => {
+                                                            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                                                                root.context_menu_anchor_x = self.absolute-position.x + self.mouse-x - root.absolute-position.x;
+                                                                root.context_menu_anchor_y = self.absolute-position.y + self.mouse-y - root.absolute-position.y;
+                                                                root.workspace_header_context_menu_requested(
+                                                                    root.selected_relative_path_raw,
+                                                                    root.diff_mode_label,
+                                                                    root.file_view_compare_status_label,
+                                                                    root.file_view_path_context_text,
+                                                                    root.compare_root_pair_text,
+                                                                );
                                                             }
                                                         }
                                                     }
@@ -3239,28 +3360,6 @@ slint::slint! {
                                                 HorizontalLayout {
                                                     padding: 10px;
                                                     spacing: 10px;
-
-                                                    if root.can_return_to_compare_view : Rectangle {
-                                                        width: root.compare_navigation_lane_width;
-                                                        background: transparent;
-
-                                                        VerticalLayout {
-                                                            spacing: 6px;
-
-                                                            TextAction {
-                                                                label: "Back to Compare View";
-                                                                tapped => {
-                                                                    root.back_to_compare_view_requested();
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-
-                                                    if root.can_return_to_compare_view : Rectangle {
-                                                        width: 1px;
-                                                        height: parent.height - 6px;
-                                                        background: #e2e9f1;
-                                                    }
 
                                                     analysis_header_surface := Rectangle {
                                                         horizontal-stretch: 1;
@@ -3709,7 +3808,7 @@ slint::slint! {
                                 Rectangle {
                                     visible: root.workspace_mode == "file-view";
                                     x: workbench_host.panel_corner_radius;
-                                    y: workbench_host.panel_top;
+                                    y: root.workspace_session_strip_height + workbench_host.panel_top;
                                     width: max(0px, parent.width - workbench_host.panel_corner_radius * 2);
                                     height: 1px;
                                     background: workbench_host.panel_border;
@@ -3718,7 +3817,7 @@ slint::slint! {
                                 HorizontalLayout {
                                     visible: root.workspace_mode == "file-view";
                                     x: 0px;
-                                    y: 0px;
+                                    y: root.workspace_session_strip_height;
                                     width: parent.width;
                                     height: workbench_host.tab_row_height;
                                     padding-right: 7px;
@@ -3732,7 +3831,7 @@ slint::slint! {
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
-                                            root.workspace_tab = 0;
+                                            root.file_view_diff_requested();
                                         }
                                     }
 
@@ -3744,7 +3843,7 @@ slint::slint! {
                                         connector_depth: 5px;
                                         tapped => {
                                             root.context_menu_close_requested();
-                                            root.workspace_tab = 1;
+                                            root.file_view_analysis_requested();
                                         }
                                     }
 
@@ -3764,9 +3863,9 @@ slint::slint! {
                                 compare_workspace_surface := Rectangle {
                                     visible: root.workspace_mode == "compare-view";
                                     x: 0px;
-                                    y: 0px;
+                                    y: root.workspace_session_strip_height;
                                     width: parent.width;
-                                    height: parent.height;
+                                    height: max(0px, parent.height - root.workspace_session_strip_height);
                                     background: transparent;
 
                                     Rectangle {
@@ -3803,29 +3902,12 @@ slint::slint! {
                                                     padding-bottom: 6px;
                                                     spacing: 10px;
 
-                                                    Rectangle {
-                                                        width: root.compare_navigation_lane_width;
-                                                        background: transparent;
-
-                                                        VerticalLayout {
-                                                            spacing: 3px;
-
-                                                            CompactToolbarButton {
-                                                                label: root.compare_view_back_label;
-                                                                button_width: root.compare_navigation_button_width;
-                                                                tapped => {
-                                                                    root.compare_view_back_to_results_requested();
-                                                                }
-                                                            }
-
-                                                            CompactToolbarButton {
-                                                                label: "Up one level";
-                                                                button_width: root.compare_navigation_button_width;
-                                                                enabled: root.compare_view_can_go_up;
-                                                                tapped => {
-                                                                    root.compare_view_up_requested();
-                                                                }
-                                                            }
+                                                    CompactToolbarButton {
+                                                        label: "Up one level";
+                                                        button_width: root.compare_navigation_button_width;
+                                                        enabled: root.compare_view_can_go_up;
+                                                        tapped => {
+                                                            root.compare_view_up_requested();
                                                         }
                                                     }
 
@@ -4205,6 +4287,80 @@ slint::slint! {
                 horizontal-alignment: center;
                 vertical-alignment: center;
                 overflow: elide;
+            }
+        }
+
+        if root.workspace_session_confirm_open : Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            background: rgba(17, 24, 34, 0.24);
+
+            TouchArea {}
+
+            SectionCard {
+                property <length> dialog_width: min(420px, parent.width - 40px);
+                property <length> dialog_height: 180px;
+                width: self.dialog_width;
+                height: self.dialog_height;
+                x: (parent.width - self.width) / 2;
+                y: max(24px, (parent.height - self.height) / 2);
+                background: #fbfdff;
+                border-color: #d8e2ec;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 12px;
+
+                    Text {
+                        text: root.workspace_session_confirm_title;
+                        color: #274460;
+                        font-size: 16px;
+                        font-weight: 600;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+
+                    Text {
+                        text: root.workspace_session_confirm_body;
+                        color: #5e7084;
+                        font-size: 13px;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                        background: transparent;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            background: transparent;
+                        }
+
+                        ToolButton {
+                            label: "Cancel";
+                            button_min_width: 88px;
+                            tapped => {
+                                root.workspace_session_cancelled();
+                            }
+                        }
+
+                        ToolButton {
+                            label: root.workspace_session_confirm_action_label;
+                            primary: true;
+                            button_min_width: 110px;
+                            tapped => {
+                                root.workspace_session_confirmed();
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -5057,6 +5213,19 @@ fn should_refresh_compare_view_models(
     }
 }
 
+fn should_refresh_workspace_session_models(
+    last_state: Option<&AppState>,
+    next_state: &AppState,
+) -> bool {
+    match last_state {
+        None => true,
+        Some(last) => {
+            last.workspace_sessions != next_state.workspace_sessions
+                || last.active_session_id != next_state.active_session_id
+        }
+    }
+}
+
 fn should_apply_compare_scroll_request(
     last_state: Option<&AppState>,
     next_state: &AppState,
@@ -5080,6 +5249,11 @@ fn should_refresh_diff_models(last_state: Option<&AppState>, next_state: &AppSta
 }
 
 fn initialize_window_models(window: &MainWindow) {
+    window.set_workspace_session_ids(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_workspace_session_labels(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_workspace_session_tooltips(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_workspace_session_kinds(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_workspace_session_closable(Rc::new(VecModel::<bool>::default()).into());
     window.set_row_statuses(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_paths(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_row_details(Rc::new(VecModel::<SharedString>::default()).into());
@@ -5205,6 +5379,8 @@ fn sync_window_state(
     window.set_navigator_search_forces_flat_mode(state.navigator_search_forces_flat_mode());
     window.set_sidebar_visible(state.sidebar_visible());
     window.set_workspace_mode(state.workspace_mode_text().into());
+    window.set_active_workspace_session_index(state.active_workspace_session_index());
+    window.set_workspace_sessions_visible(state.workspace_sessions_visible());
     window.set_compare_focus_path_raw(state.compare_focus_path_raw_text().into());
     window.set_compare_root_pair_text(state.compare_root_pair_text().into());
     window.set_compare_view_current_path_text(state.compare_view_current_path_text().into());
@@ -5213,6 +5389,18 @@ fn sync_window_state(
     window.set_compare_view_empty_title_text(state.compare_view_empty_title_text().into());
     window.set_compare_view_empty_body_text(state.compare_view_empty_body_text().into());
     window.set_compare_view_can_go_up(state.compare_view_can_go_up());
+    window.set_workspace_session_confirm_open(state.workspace_session_confirmation_open());
+    window.set_workspace_session_confirm_title(
+        state.workspace_session_confirmation_title_text().into(),
+    );
+    window.set_workspace_session_confirm_body(
+        state.workspace_session_confirmation_body_text().into(),
+    );
+    window.set_workspace_session_confirm_action_label(
+        state
+            .workspace_session_confirmation_action_label_text()
+            .into(),
+    );
     window.set_can_return_to_compare_view(state.can_return_to_compare_view());
     window.set_compare_row_focused_index(
         state
@@ -5220,6 +5408,7 @@ fn sync_window_state(
             .and_then(|index| i32::try_from(index).ok())
             .unwrap_or(-1),
     );
+    window.set_workspace_tab(state.file_view_mode_tab_index());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
     window.set_selected_relative_path_raw(
@@ -5314,6 +5503,53 @@ fn sync_window_state(
     window.set_diff_shell_body_text(state.diff_shell_body_text().into());
     window.set_diff_shell_note_text(state.diff_shell_note_text().into());
     window.set_diff_content_char_capacity(state.diff_content_char_capacity());
+    if should_refresh_workspace_session_models(last_state, state) {
+        let session_ids = state
+            .workspace_session_ids()
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_workspace_session_ids(),
+            session_ids,
+            "workspace_session_ids",
+        );
+        let session_labels = state
+            .workspace_session_labels()
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_workspace_session_labels(),
+            session_labels,
+            "workspace_session_labels",
+        );
+        let session_tooltips = state
+            .workspace_session_tooltips()
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_workspace_session_tooltips(),
+            session_tooltips,
+            "workspace_session_tooltips",
+        );
+        let session_kinds = state
+            .workspace_session_kinds()
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_workspace_session_kinds(),
+            session_kinds,
+            "workspace_session_kinds",
+        );
+        replace_model_contents(
+            window.get_workspace_session_closable(),
+            state.workspace_session_closable(),
+            "workspace_session_closable",
+        );
+    }
     if should_refresh_flat_result_models(last_state, state) {
         let projected_rows = state.navigator_row_projections();
         let row_statuses = projected_rows
@@ -6061,7 +6297,11 @@ pub fn run() -> anyhow::Result<()> {
                             &action_loading_mask_controller,
                             SyncMode::ProgrammaticInputs,
                         );
-                        window.invoke_focus_compare_rows();
+                        if !window.get_workspace_session_confirm_open()
+                            && window.get_workspace_mode() == "compare-view"
+                        {
+                            window.invoke_focus_compare_rows();
+                        }
                     }),
                 });
             }
@@ -6122,7 +6362,11 @@ pub fn run() -> anyhow::Result<()> {
                         &action_loading_mask_controller,
                         SyncMode::ProgrammaticInputs,
                     );
-                    window.invoke_focus_compare_rows();
+                    if !window.get_workspace_session_confirm_open()
+                        && window.get_workspace_mode() == "compare-view"
+                    {
+                        window.invoke_focus_compare_rows();
+                    }
                 }),
             });
         } else if source_index >= 0 {
@@ -6297,12 +6541,25 @@ pub fn run() -> anyhow::Result<()> {
         row_context_menu_controller.close();
         window.set_workspace_tab(0);
         if window.get_selected_row() == index
+            && !window.get_workspace_sessions_visible()
+            && window.get_workspace_mode() == "file-view"
             && (window.get_diff_loaded() || window.get_diff_loading())
         {
             return;
         }
 
         row_bridge.dispatch(UiCommand::SelectRow(index));
+        sync_window_state_if_changed(
+            &window,
+            &row_bridge,
+            &row_cache,
+            Some(&row_context_menu_controller),
+            &row_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_session_confirm_open() {
+            return;
+        }
         row_bridge.dispatch(UiCommand::LoadSelectedDiff);
         sync_window_state_if_changed(
             &window,
@@ -6419,12 +6676,25 @@ pub fn run() -> anyhow::Result<()> {
         tree_file_context_menu_controller.close();
         window.set_workspace_tab(0);
         if window.get_selected_row() == index
+            && !window.get_workspace_sessions_visible()
+            && window.get_workspace_mode() == "file-view"
             && (window.get_diff_loaded() || window.get_diff_loading())
         {
             return;
         }
 
         tree_file_bridge.dispatch(UiCommand::SelectRow(index));
+        sync_window_state_if_changed(
+            &window,
+            &tree_file_bridge,
+            &tree_file_cache,
+            Some(&tree_file_context_menu_controller),
+            &tree_file_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_session_confirm_open() {
+            return;
+        }
         tree_file_bridge.dispatch(UiCommand::LoadSelectedDiff);
         sync_window_state_if_changed(
             &window,
@@ -6483,23 +6753,142 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
-    let compare_back_bridge = bridge.clone();
-    let compare_back_cache = Arc::clone(&sync_cache);
-    let compare_back_context_menu_controller = context_menu_controller.clone();
-    let compare_back_loading_mask_controller = loading_mask_controller.clone();
-    app.on_compare_view_back_to_results_requested(move || {
+    let session_select_bridge = bridge.clone();
+    let session_select_cache = Arc::clone(&sync_cache);
+    let session_select_context_menu_controller = context_menu_controller.clone();
+    let session_select_loading_mask_controller = loading_mask_controller.clone();
+    app.on_workspace_session_selected(move |session_id| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
-        compare_back_context_menu_controller.close();
-        compare_back_bridge.dispatch(UiCommand::ExitCompareViewToResults);
+        session_select_context_menu_controller.close();
+        session_select_bridge.dispatch(UiCommand::SelectWorkspaceSession(session_id.to_string()));
         sync_window_state_if_changed(
             &window,
-            &compare_back_bridge,
-            &compare_back_cache,
-            Some(&compare_back_context_menu_controller),
-            &compare_back_loading_mask_controller,
+            &session_select_bridge,
+            &session_select_cache,
+            Some(&session_select_context_menu_controller),
+            &session_select_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let session_close_bridge = bridge.clone();
+    let session_close_cache = Arc::clone(&sync_cache);
+    let session_close_context_menu_controller = context_menu_controller.clone();
+    let session_close_loading_mask_controller = loading_mask_controller.clone();
+    app.on_workspace_session_close_requested(move |session_id| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        session_close_context_menu_controller.close();
+        session_close_bridge.dispatch(UiCommand::CloseWorkspaceSession(session_id.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &session_close_bridge,
+            &session_close_cache,
+            Some(&session_close_context_menu_controller),
+            &session_close_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let confirm_close_bridge = bridge.clone();
+    let confirm_close_cache = Arc::clone(&sync_cache);
+    let confirm_close_context_menu_controller = context_menu_controller.clone();
+    let confirm_close_loading_mask_controller = loading_mask_controller.clone();
+    app.on_workspace_session_confirmed(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        confirm_close_context_menu_controller.close();
+        confirm_close_bridge.dispatch(UiCommand::ConfirmWorkspaceSessionAction);
+        sync_window_state_if_changed(
+            &window,
+            &confirm_close_bridge,
+            &confirm_close_cache,
+            Some(&confirm_close_context_menu_controller),
+            &confirm_close_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let cancel_close_bridge = bridge.clone();
+    let cancel_close_cache = Arc::clone(&sync_cache);
+    let cancel_close_context_menu_controller = context_menu_controller.clone();
+    let cancel_close_loading_mask_controller = loading_mask_controller.clone();
+    app.on_workspace_session_cancelled(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        cancel_close_context_menu_controller.close();
+        cancel_close_bridge.dispatch(UiCommand::CancelWorkspaceSessionAction);
+        sync_window_state_if_changed(
+            &window,
+            &cancel_close_bridge,
+            &cancel_close_cache,
+            Some(&cancel_close_context_menu_controller),
+            &cancel_close_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let diff_mode_bridge = bridge.clone();
+    let diff_mode_cache = Arc::clone(&sync_cache);
+    let diff_mode_context_menu_controller = context_menu_controller.clone();
+    let diff_mode_loading_mask_controller = loading_mask_controller.clone();
+    app.on_file_view_diff_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        diff_mode_context_menu_controller.close();
+        diff_mode_bridge.dispatch(UiCommand::SetFileViewModeDiff);
+        sync_window_state_if_changed(
+            &window,
+            &diff_mode_bridge,
+            &diff_mode_cache,
+            Some(&diff_mode_context_menu_controller),
+            &diff_mode_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let analysis_mode_bridge = bridge.clone();
+    let analysis_mode_cache = Arc::clone(&sync_cache);
+    let analysis_mode_context_menu_controller = context_menu_controller.clone();
+    let analysis_mode_loading_mask_controller = loading_mask_controller.clone();
+    app.on_file_view_analysis_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        analysis_mode_context_menu_controller.close();
+        analysis_mode_bridge.dispatch(UiCommand::SetFileViewModeAnalysis);
+        sync_window_state_if_changed(
+            &window,
+            &analysis_mode_bridge,
+            &analysis_mode_cache,
+            Some(&analysis_mode_context_menu_controller),
+            &analysis_mode_loading_mask_controller,
             SyncMode::Passive,
         );
     });
@@ -6636,31 +7025,6 @@ pub fn run() -> anyhow::Result<()> {
             return;
         }
         compare_row_context_menu_controller.close();
-    });
-
-    let app_weak = app.as_weak();
-    let back_to_compare_bridge = bridge.clone();
-    let back_to_compare_cache = Arc::clone(&sync_cache);
-    let back_to_compare_context_menu_controller = context_menu_controller.clone();
-    let back_to_compare_loading_mask_controller = loading_mask_controller.clone();
-    app.on_back_to_compare_view_requested(move || {
-        let Some(window) = app_weak.upgrade() else {
-            return;
-        };
-
-        back_to_compare_context_menu_controller.close();
-        back_to_compare_bridge.dispatch(UiCommand::ReturnToCompareView);
-        sync_window_state_if_changed(
-            &window,
-            &back_to_compare_bridge,
-            &back_to_compare_cache,
-            Some(&back_to_compare_context_menu_controller),
-            &back_to_compare_loading_mask_controller,
-            SyncMode::Passive,
-        );
-        if window.get_workspace_mode() == "compare-view" {
-            window.invoke_focus_compare_rows();
-        }
     });
 
     let app_weak = app.as_weak();

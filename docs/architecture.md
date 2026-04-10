@@ -1,13 +1,14 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2 + Phase 19C fix-1 Shell Closeout)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2 + Phase 19C fix-1 Shell Closeout + Phase 19D Workspace Session Tabs + Phase 19D fix-1 Session Reset Semantics)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation, the accepted `Phase 19B fix-2` compare-tree MVP, and the landed `Phase 19C fix-1` shell closeout inside that shell
+  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation, the accepted `Phase 19B fix-2` compare-tree MVP, the landed `Phase 19C fix-1` shell closeout, the landed `Phase 19D` outer workspace session-tab layer, and the landed `Phase 19D fix-1` session reset semantics
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
-- `Phase 19C fix-1` is now the current stable compare-workspace shell baseline.
-- `Phase 19B fix-2` remains the inherited compare-tree MVP foundation inside that `19C` shell.
+- `Phase 19D` is now the current stable compare-workspace session-shell baseline.
+- `Phase 19C fix-1` remains the inherited shell/language closeout inside that `19D` session shell.
+- `Phase 19B fix-2` remains the inherited compare-tree MVP foundation inside that `19C/19D` shell.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
 
 ## Stable Delivery Baseline
@@ -108,7 +109,7 @@
   - tree-internal search / content search / richer match-span semantics
   - compare-core contract widening
 
-## Current Phase 19 Status (`19A` landed, `19B fix-2` accepted, `19C fix-1` landed)
+## Current Phase 19 Status (`19A` landed, `19B fix-2` accepted, `19C fix-1` landed, `19D fix-1` landed)
 
 - `Phase 19A` foundation work is landed.
 - `Phase 19B fix-2` is now the accepted compare-tree MVP baseline.
@@ -125,12 +126,27 @@
     - dividers reduced to near-invisible gutters rather than visible table rules
     - compare header rewritten as compact bordered toolbar actions + compressed root context
   - `19C fix-1` still does not introduce auto-hide, whole-window compare takeover, or a true `File Compare View`
-- Workspace-level outer mode is now Rust-owned inside `fc-ui-slint` state:
-  - `FileView`
-  - `CompareView`
-- Current visible workspace behavior is now dual-mode:
-  - `Compare View` now renders one anchored compare-tree workspace for the current directory target
-  - `File View` keeps the existing attached `Diff / Analysis` shell and adds stable compare-context header support when the current file session was opened from Compare View
+- `Phase 19D` outer workspace session tabs plus `19D fix-1` session reset semantics are now landed:
+  - Rust state now owns explicit outer session-shell state:
+    - `workspace_sessions`
+    - `active_session_id`
+    - one `CompareTreeSession`
+    - compare-originated `FileSession`s
+  - the workspace is no longer modeled only as one global `CompareView / FileView` switch
+  - exactly one `Compare Tree` tab may exist at a time, and it is fixed at the left edge of the session strip
+  - `Results / Navigator` remains the global result browser rather than a compare-session internal entry surface:
+    - when a compare session is active, opening one file from Sidebar/Navigator now asks for confirmation before closing the current compare session and reopening that file through the standard `File View`
+    - Sidebar/Navigator no longer silently routes file opens into compare-originated file tabs
+  - explicit `Open in Compare View` now means "create or activate the unique Compare Tree tab, or reset the current compare session to the requested directory target"
+    - when related compare-originated file tabs exist, reset asks for confirmation first
+    - confirming keeps the single `Compare Tree` tab, retargets its compare anchor, and clears all related compare-originated file tabs together
+  - clicking a file leaf inside Compare View now opens or reuses one file tab for that relative path instead of depending on header back navigation
+  - Compare Tree header now keeps only compare context plus `Up one level`
+  - compare-originated file tabs keep the existing inner `Diff / Analysis` shell unchanged
+  - closing the Compare Tree tab now means ending the current compare session:
+    - when related file tabs exist, UI asks for confirmation
+    - confirming closes the compare tab and all derived file tabs together
+  - closing a file tab is immediate and does not prompt
 - Compare workspace target anchoring is now split explicitly:
   - `compare_focus_path` is the compare-side anchor for current Compare View navigation
   - `compare_row_focus_path` is the visible compare-tree row focus inside the current Compare View target
@@ -148,11 +164,8 @@
   - `compare_foundation -> Compare View compare-tree projection`
   - migration-era `entry_rows` still exist, but they are now a projection rather than the intended long-term source of truth
 - The current tree projection is now built from that foundation rather than reconstituting long-lived compare structure from flat row strings.
-- `19B fix-2` now uses that foundation directly for Compare View:
+- `19B fix-2` foundation still underpins the current Compare View surface:
   - explicit `Open in Compare View` entry from `Results / Navigator`
-  - `Back to Results`
-  - `Up one level`
-  - Compare View -> File View -> Back to Compare View closed-loop navigation
   - in-place directory expand / collapse inside Compare View
   - focused-row and ensure-visible preservation for Compare View
   - stable `Base | Relation | Target` geometry with header/body alignment and a narrower middle relation lane
@@ -208,23 +221,27 @@
   - current code baseline is dual-view:
     - tree mode for non-search navigation
     - flat mode for search results and explicit flat browsing
+  - it remains a global result browser, not a child surface of the current compare session
   - this remains an evolution inside the same block rather than a new IA
 
 ### Workspace: Stable Structure
 
-- Workspace stays `Tabs -> Header -> Content`.
-- Tabs remain `Diff` and `Analysis`.
-- Only one outer mode renders at a time:
-  - `Compare View`
-  - `File View`
-- `File View` still contains `Tabs -> Header -> Content`.
+- Workspace now stays `Session Tabs -> Session Content`.
+- The outer session strip is intentionally light-weight and currently carries only compare-side sessions:
+  - one fixed-left `Compare Tree` tab when a compare session is active
+  - zero or more compare-originated `File` tabs
+- compare-originated `File` tabs are child sessions of the current Compare Tree session and are cleared together when that compare session is reset or closed.
+- `File` sessions still contain `Tabs -> Header -> Content`.
+- Inner tabs remain `Diff` and `Analysis`; they are not flattened into the outer session strip.
 - The outer workspace wrapper stays visually subordinate to the inner workbench host/panel.
-- Rust state now owns outer workspace product state for the landed dual-mode work:
-  - `workspace_mode`
+- Rust state now owns outer workspace product/session state:
+  - `workspace_sessions`
+  - `active_session_id`
+  - `workspace_mode` as the currently rendered session-content mirror
   - `compare_focus_path`
   - `compare_row_focus_path`
 - Sidebar visibility is a sibling top-level shell state, not Compare View local state.
-- `Compare View` is now a real workspace surface rather than a later proposal.
+- `Compare View` is now a real session-backed workspace surface rather than a later proposal.
 
 ### Shared Control Primitive Contract
 
@@ -246,13 +263,13 @@
 - `DiffStateShell` remains the shared embedded state surface for non-ready rendering.
 - Embedded shell mode stays low-noise and subordinate to the workbench instead of reading as a second heavy card.
 - `Diff` keeps the ready-state diff table, and `Analysis` keeps the structured review-conclusion surface, but both reuse the same surrounding shell contract.
-- `Phase 19B` adds compare-context header support without redoing the content layer:
-  - `Back to Compare View` when current File View session came from Compare View
+- `Phase 19D` keeps compare-context header support without redoing the content layer:
+  - compare-originated file tabs reuse the compare-context header lane, but return/navigation now happens through the outer session tabs rather than a header back action
   - root-pair context
   - emphasized current filename
   - compact compare-status badge
   - compare-path context
-  - stable header height/layout with the compare-return lane kept clickable
+  - stable header height/layout without reopening the inner content structure
 
 ## Stable UI / Interaction Contract
 
@@ -287,7 +304,7 @@
   - adjacent same-tone compare rows intentionally merge their top/bottom gutters so one relation group reads as one continuous band
   - divider contrast is reduced to near-invisible gutters
   - `Relation` text now follows the flat-view semantic text palette
-  - Compare View header uses compact bordered toolbar buttons, keeps stable `Back to Results` wording even when the sidebar is hidden, and preserves compressed root/context text rather than reintroducing a label-heavy header
+  - Compare View header uses compact bordered toolbar buttons, preserves compressed root/context text, and keeps only compare-context actions plus `Up one level` rather than carrying session return/navigation duties
 - Compare View follows `Settings -> Behavior -> Hidden files` with the same product boundary as navigator:
   - no `fc-core` change
   - no compare-summary source-count change
@@ -641,45 +658,54 @@
 - Deeper Compare View / File View redesign beyond the MVP split:
   - trigger: only if later work proves the current `19B` MVP shell insufficient
 
-## Phase 19C fix-1 Landed Boundary
+## Phase 19D Landed Boundary
 
-- `Phase 19C fix-1` is now implemented as one shell/product closeout on top of the accepted `19B fix-2` baseline.
-- Landed `19C fix-1` scope:
-  - compare workspace polish on top of the current anchored compare-tree surface
-  - disclosure / glyph / relation-column visual closeout with semantic lane backgrounds and hidden dividers
-  - top-level manual sidebar hide / restore with a glyph-only always-visible chrome entry
-  - lighter top bar chrome without reopening window-system work
-  - compact compare header actions plus compressed root-context presentation
-- Explicitly not part of landed `19C fix-1`:
-  - narrow-width minimum-usable behavior
-  - minimal horizontal-overflow plan for left/right compare columns
+- `Phase 19D fix-1` is now implemented as the current outer workspace session-shell layer on top of the landed `19C fix-1` shell closeout.
+- Landed `19D / fix-1` scope:
+  - explicit Rust-owned outer workspace session state:
+    - one optional fixed-left `Compare Tree` session
+    - compare-originated `File` sessions
+    - `active_session_id`
+  - Sidebar/Navigator file-open semantics stay global:
+    - active compare session + Sidebar/Navigator file open now means "confirm, close current compare session, then open standard File View"
+    - Sidebar/Navigator no longer opens compare-originated file tabs behind the user's back
+  - `Open in Compare View` now creates or reactivates the unique Compare Tree tab, and when that tab already exists it resets the current compare session to the requested target rather than preserving stale child file tabs
+  - Compare Tree file leaves now open or reuse outer file tabs keyed by relative path
+  - Compare Tree header now keeps only compare context plus `Up one level`
+  - closing the Compare Tree tab now means ending the current compare session, with confirmation when derived file tabs still exist
+  - compare-originated file tabs keep the inherited inner `Diff / Analysis` shell unchanged
+- Explicitly not part of landed `19D`:
+  - multi-compare-session concurrency
   - true `File Compare View` implementation
   - sync scroll / reset / recenter
   - richer compare actions
   - compare search
+  - horizontal-overflow / horizontal-scrolling redesign
   - `fc-core` widening
-- Candidate follow-on split after `19C fix-1`:
-  - `19D`: true `File Compare View MVP`
-  - `19E`: advanced compare interaction / overflow / horizontal-scrolling layer
+- Candidate follow-on split after `19D`:
+  - `19E`: true `File Compare View` MVP
+  - later: advanced compare interaction / overflow / horizontal-scrolling layer
 
 ## Next-Stage Activation
 
-- Default baseline is now landed `Phase 19C fix-1` closeout.
-- `Phase 19A` has landed:
+- Default baseline is now landed `Phase 19D`.
+- `Phase 19A` through `19C fix-1` remain inherited inside that `19D` baseline:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`
   - independent `compare_row_focus_path`
   - structured `compare_foundation`
-- Current accepted `19C fix-1` product contract is:
-  - explicit entry from `Results / Navigator`
-  - anchored compare-tree workspace with in-place expand / collapse
   - top-level manual sidebar hide / restore through a glyph-only shell affordance
-  - Compare View / File View / Results navigation loop
-  - stable compare-context File View header with clickable `Back to Compare View`
-  - stable compare header with clickable bordered `Back to Results` / `Up one level`
+- Current accepted `19D` product contract is:
+  - explicit entry from `Results / Navigator`
+  - one unique fixed-left `Compare Tree` session tab per compare session
+  - compare-originated file tabs that reuse the inner `Diff / Analysis` shell
+  - Sidebar/Navigator remains the standard file-browsing surface even while a compare session is active
+  - explicit `Open in Compare View` resets the current compare session when one already exists, clearing all related compare file tabs together
+  - Compare Tree / File session navigation through the outer tab strip rather than header back buttons
+  - Compare Tree close meaning "end current compare session", with confirmation when related file tabs exist
   - compare-visible rows following `Hidden files`
-- Do not reopen `19B fix-*` or treat `19C fix-1` as draft unless a concrete regression requires it.
-- Only move default planning to `19D` or `19E` when a later thread explicitly scopes that stage.
+- Do not reopen `19B fix-*` or treat `19C fix-1` / `19D` as draft unless a concrete regression requires it.
+- Only move default planning to `19E` or later when a later thread explicitly scopes that stage.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
 ## Related Documents
