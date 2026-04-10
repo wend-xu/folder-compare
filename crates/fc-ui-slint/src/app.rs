@@ -461,7 +461,8 @@ slint::slint! {
         callback tapped();
         callback close_requested();
 
-        property <bool> hovered: tab_touch_area.has_hover;
+        property <bool> close_hovered: false;
+        property <bool> hovered: tab_touch_area.has_hover || root.close_hovered;
         property <length> close_slot_width: root.closable ? 20px : 0px;
         property <brush> active_fill: root.kind == "compare-tree" ? #eef4fb : #f8fbfe;
         property <brush> inactive_fill: root.kind == "compare-tree" ? #f2f6fa : #f4f7fb;
@@ -484,6 +485,16 @@ slint::slint! {
         border-radius: 6px;
         border-color: root.active ? root.active_border : root.inactive_border;
         background: root.active ? root.active_fill : root.inactive_fill;
+
+        // Keep the whole-tab hit area behind the dedicated close target so the
+        // close button is not shadowed by the selection hit region.
+        tab_touch_area := TouchArea {
+            width: parent.width;
+            height: parent.height;
+            clicked => {
+                root.tapped();
+            }
+        }
 
         HorizontalLayout {
             padding-left: 10px;
@@ -523,18 +534,13 @@ slint::slint! {
                     width: parent.width;
                     height: parent.height;
                     enabled: root.closable;
+                    changed has-hover => {
+                        root.close_hovered = self.has_hover;
+                    }
                     clicked => {
                         root.close_requested();
                     }
                 }
-            }
-        }
-
-        tab_touch_area := TouchArea {
-            width: parent.width;
-            height: parent.height;
-            clicked => {
-                root.tapped();
             }
         }
     }
