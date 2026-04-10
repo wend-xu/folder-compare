@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use unicode_width::UnicodeWidthStr;
 
 const RESULTS_LOCATE_AND_OPEN_ACTION_ID: &str = "results-locate-and-open";
 const RESULTS_OPEN_IN_COMPARE_VIEW_ACTION_ID: &str = "results-open-in-compare-view";
@@ -1623,6 +1624,7 @@ slint::slint! {
         in property <[string]> compare_file_row_right_suffixes;
         in property <[bool]> compare_file_row_left_padding;
         in property <[bool]> compare_file_row_right_padding;
+        in property <int> compare_file_content_width_px: 0;
         in property <string> workspace_mode;
         in property <[string]> workspace_session_ids;
         in property <[string]> workspace_session_labels;
@@ -4135,6 +4137,10 @@ slint::slint! {
                                                     row_right_suffixes: root.compare_file_row_right_suffixes;
                                                     row_left_padding: root.compare_file_row_left_padding;
                                                     row_right_padding: root.compare_file_row_right_padding;
+                                                    content_width_px: root.compare_file_content_width_px;
+                                                    copy_requested(copy_value, feedback_label) => {
+                                                        root.copy_requested(copy_value, feedback_label);
+                                                    }
                                                 }
                                             }
 
@@ -5643,6 +5649,29 @@ fn compare_file_segment_slots(
     (prefix, emphasis, suffix)
 }
 
+fn estimate_compare_file_text_width_px(text: &str) -> i32 {
+    const PX_PER_WIDTH_UNIT: usize = 8;
+    const EXTRA_PADDING_PX: usize = 28;
+    const MIN_TEXT_WIDTH_PX: usize = 32;
+
+    let normalized = text.replace('\t', "    ");
+    let width_units = UnicodeWidthStr::width(normalized.as_str());
+    let width_px = width_units
+        .saturating_mul(PX_PER_WIDTH_UNIT)
+        .saturating_add(EXTRA_PADDING_PX)
+        .max(MIN_TEXT_WIDTH_PX);
+    i32::try_from(width_px).unwrap_or(i32::MAX)
+}
+
+fn compare_file_content_width_px(rows: &[crate::view_models::CompareFileRowViewModel]) -> i32 {
+    rows.iter()
+        .flat_map(|row| [row.left_text.as_str(), row.right_text.as_str()])
+        .filter(|text| !text.is_empty())
+        .map(estimate_compare_file_text_width_px)
+        .max()
+        .unwrap_or(0)
+}
+
 fn sync_navigator_scroll_requests(
     window: &MainWindow,
     state: &AppState,
@@ -6210,6 +6239,7 @@ fn sync_window_state(
 
     if should_refresh_compare_file_models(last_state, state) {
         let compare_file_rows = state.compare_file_row_projections();
+        window.set_compare_file_content_width_px(compare_file_content_width_px(&compare_file_rows));
         let compare_file_row_kinds = compare_file_rows
             .iter()
             .map(|row| SharedString::from(row.row_kind.clone()))
@@ -7887,5 +7917,33 @@ mod tests {
         let (analysis_reset, _) = state.advance(false, false, true);
         let analysis_reset = analysis_reset.expect("phase switch should reset timeout copy");
         assert_eq!(analysis_reset.message, "Running AI analysis...");
+    }
+
+    #[test]
+    fn compare_file_content_width_tracks_wide_cjk_lines() {
+        let ascii = estimate_compare_file_text_width_px("aaaaaaaa");
+        let cjk = estimate_compare_file_text_width_px("测试测试测试测试");
+        assert!(cjk > ascii);
+    }
+
+    #[test]
+    fn compare_file_content_width_uses_longest_visible_side() {
+        let rows = vec![
+            crate::view_models::CompareFileRowViewModel {
+                left_text: "short".to_string(),
+                right_text: "also short".to_string(),
+                ..Default::default()
+            },
+            crate::view_models::CompareFileRowViewModel {
+                left_text: "非常长的比较行，用来验证横向滚动范围".to_string(),
+                right_text: String::new(),
+                ..Default::default()
+            },
+        ];
+
+        assert_eq!(
+            compare_file_content_width_px(&rows),
+            estimate_compare_file_text_width_px("非常长的比较行，用来验证横向滚动范围")
+        );
     }
 }

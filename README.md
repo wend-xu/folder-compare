@@ -43,12 +43,15 @@
   - 关闭 Compare Tree tab 等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
   - `Results / Navigator` 继续是全局结果浏览器；compare session 活跃时，从这里打开文件会先确认并关闭当前 compare session，然后进入标准 `File View`
   - 显式 `Open in Compare View` 在 compare session 已存在时会被定义为 reset 当前 compare session；如仍有 related compare file tabs，会先确认并一起清空
-- `Phase 19E` 已落地并成为当前稳定 compare file-content baseline：
+- `Phase 19E` 已落地并成为 compare-originated file tab 的 dedicated compare file view MVP 基线
+- `Phase 19F` 已落地并成为当前稳定 compare file-content / workbench baseline：
   - 只改 compare-originated `File` tabs；标准 `Sidebar -> File View` 保持原有 `Diff / Analysis`
   - compare-originated `File` tab 现在使用 dedicated `Compare File View`
   - `Compare File View` 保留 `Back to Compare Tree`、roots / compare path / compare status context
   - compare 文件内容采用单一纵向滚动 + Rust-owned side-by-side row projection
-  - 当前仍不做 horizontal scroll / sync scroll / merge actions / compare search
+  - compare 文件内容现在支持 shared horizontal scroll，且 gutter / relation lane 固定
+  - compare 文本现在可选择，并支持系统复制；行号可直接复制对应侧整行
+  - 当前仍不做 sync scroll / merge actions / compare search
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -151,6 +154,7 @@
   - compare-originated File tab 现在使用 dedicated `Compare File View`
   - Compare File View 保留 `Back to Compare Tree`、compare roots / path / status context
   - Compare File View 使用单一纵向 side-by-side 行投影，而不是双独立列表强同步
+  - Compare File View 现在额外具备 shared horizontal scroll、固定 gutter、可选择文本、以及行号复制整行
   - compare session reset 时，全部 related compare-originated `File` tabs 会被一起清空；当前不做复杂保留策略
   - File tab 默认可直接关闭，不弹确认
   - Compare Tree tab 关闭等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
@@ -309,18 +313,19 @@ cargo test --workspace
   - 当前只允许一个固定左侧的 `Compare Tree` session
   - Compare Tree 中文件 leaf 会打开或复用 compare-originated `File` tabs
   - Compare session 的进入、切换、结束语义现在由外层 tab strip 承担
-- `Phase 19E` 当前额外事实：
+- `Phase 19F` 当前额外事实：
   - compare-originated `File` tab 现已升级为 dedicated `Compare File View`
   - 标准 `Sidebar -> File View` 继续保留既有内层 `Diff / Analysis`
   - Compare File View 使用单一纵向 side-by-side 行投影，并保留 `Back to Compare Tree`
+  - Compare File View 现在支持 shared horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
 - 当前仍未实现：
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情
-  - narrow-width minimum-usable behavior / horizontal-overflow plan
+  - narrow-width minimum-usable behavior beyond the current compare-file baseline
   - compare core widening
   - sync scroll / reset / recenter / richer compare interaction
-  - 超出当前 `19E` 的更深层 `Compare View / File View` 重构
-- 后续只有在目标明确时才进入 `19F` 或更后阶段；不要把 landed `19E` 重新写回 proposal。
+  - 超出当前 `19F` 的更深层 `Compare View / File View` 重构
+- 后续只有在目标明确时才进入 `19G` 或更后阶段；不要把 landed `19F` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）
