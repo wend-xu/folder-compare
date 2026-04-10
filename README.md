@@ -49,7 +49,7 @@
   - compare-originated `File` tab 现在使用 dedicated `Compare File View`
   - `Compare File View` 保留 `Back to Compare Tree`、roots / compare path / compare status context
   - compare 文件内容采用单一纵向滚动 + Rust-owned side-by-side row projection
-  - compare 文件内容现在支持 shared horizontal scroll，且 gutter / relation lane 固定
+  - compare 文件内容现在支持左右各自独立 horizontal scroll，且 gutter / relation lane 固定
   - compare 文本现在可选择，并支持系统复制；行号可直接复制对应侧整行
   - 当前仍不做 sync scroll / merge actions / compare search
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
@@ -154,7 +154,7 @@
   - compare-originated File tab 现在使用 dedicated `Compare File View`
   - Compare File View 保留 `Back to Compare Tree`、compare roots / path / status context
   - Compare File View 使用单一纵向 side-by-side 行投影，而不是双独立列表强同步
-  - Compare File View 现在额外具备 shared horizontal scroll、固定 gutter、可选择文本、以及行号复制整行
+  - Compare File View 现在额外具备左右独立 horizontal scroll、固定 gutter、可选择文本、以及行号复制整行
   - compare session reset 时，全部 related compare-originated `File` tabs 会被一起清空；当前不做复杂保留策略
   - File tab 默认可直接关闭，不弹确认
   - Compare Tree tab 关闭等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
@@ -317,7 +317,7 @@ cargo test --workspace
   - compare-originated `File` tab 现已升级为 dedicated `Compare File View`
   - 标准 `Sidebar -> File View` 继续保留既有内层 `Diff / Analysis`
   - Compare File View 使用单一纵向 side-by-side 行投影，并保留 `Back to Compare Tree`
-  - Compare File View 现在支持 shared horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
+  - Compare File View 现在支持左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
 - 当前仍未实现：
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情

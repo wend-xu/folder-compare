@@ -2201,7 +2201,8 @@ impl AppState {
                 "Adjust filters or reopen the file from Compare Tree.".to_string()
             }
             CompareFileShellState::Loading => {
-                "Using one shared vertical projection with shared horizontal scroll.".to_string()
+                "Using one shared vertical projection with independent base/target horizontal scroll."
+                    .to_string()
             }
             CompareFileShellState::Ready => {
                 if self.compare_file_truncated() {

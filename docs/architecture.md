@@ -173,7 +173,7 @@
   - current long-file rendering strategy remains one `ListView`/single-scroll projection rather than dual independent synchronized lists
 - `Phase 19F` compare-file usability closeout is now landed on top of `19E`:
   - the dedicated compare-file surface remains one shared vertical `ListView`; it does not regress into dual independent vertically synchronized lists
-  - compare-file long lines now stay `no-wrap` and can be inspected through one shared horizontal scrollbar across the base/target text lanes
+  - compare-file long lines now stay `no-wrap` and can be inspected through independent base/target horizontal scrollbars while keeping one shared vertical projection
   - left/right line-number gutters and the middle relation lane stay physically fixed while horizontal scrolling moves only the text-content lanes
   - compare-file rows now render read-only selectable text surfaces rather than paint-only text runs:
     - native text selection is available inside compare-originated file tabs
@@ -181,8 +181,8 @@
   - line-number affordances now copy the corresponding side's full line content directly from Compare File View
   - missing-line rows now use restrained stripe padding rather than the earlier `No line` pill
   - relation lane markers now use stable semantic labels (`Diff / Left / Right`) rather than symbolic glyphs
-  - `19F` intentionally stops at baseline usability:
-    - horizontal scroll is shared across both content panes rather than offering a per-side policy toggle
+  - the current compare-file baseline intentionally still stops at focused usability:
+    - horizontal scroll is split per content pane without changing the shared vertical row model
     - no sync scroll
     - no recenter/reset
     - no merge/apply actions
@@ -313,8 +313,8 @@
   - emphasized current filename
   - compact compare-status badge
   - compare-path context
-  - stable single-scroll side-by-side compare surface below that header
-  - shared horizontal overflow handling inside the compare text lanes
+  - stable single-vertical-scroll side-by-side compare surface below that header
+  - independent horizontal overflow handling per compare text lane
   - selectable/copyable compare text without changing standard File View
 
 ## Stable UI / Interaction Contract

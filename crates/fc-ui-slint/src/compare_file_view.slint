@@ -156,8 +156,10 @@ component CompareFileRow inherits Rectangle {
     in property <bool> right_padding: false;
     in property <length> gutter_width: 48px;
     in property <length> relation_width: 40px;
-    in property <length> shared_horizontal_offset: 0px;
-    in property <length> content_width: 0px;
+    in property <length> left_horizontal_offset: 0px;
+    in property <length> right_horizontal_offset: 0px;
+    in property <length> left_content_width: 0px;
+    in property <length> right_content_width: 0px;
     callback copy_requested(string, string);
 
     property <string> left_copy_value: root.left_prefix_text + root.left_emphasis_text + root.left_suffix_text;
@@ -226,8 +228,8 @@ component CompareFileRow inherits Rectangle {
             emphasis_text: root.left_emphasis_text;
             suffix_text: root.left_suffix_text;
             padded: root.left_padding;
-            horizontal_offset: root.shared_horizontal_offset;
-            content_width: root.content_width;
+            horizontal_offset: root.left_horizontal_offset;
+            content_width: root.left_content_width;
         }
 
         Rectangle {
@@ -296,8 +298,8 @@ component CompareFileRow inherits Rectangle {
             emphasis_text: root.right_emphasis_text;
             suffix_text: root.right_suffix_text;
             padded: root.right_padding;
-            horizontal_offset: root.shared_horizontal_offset;
-            content_width: root.content_width;
+            horizontal_offset: root.right_horizontal_offset;
+            content_width: root.right_content_width;
         }
     }
 }
@@ -316,7 +318,8 @@ export component CompareFileView inherits Rectangle {
     in property <[string]> row_right_suffixes;
     in property <[bool]> row_left_padding;
     in property <[bool]> row_right_padding;
-    in property <int> content_width_px: 0;
+    in property <int> left_content_width_px: 0;
+    in property <int> right_content_width_px: 0;
     callback copy_requested(string, string);
 
     public function ensure_row_visible(target_row: int) {
@@ -330,21 +333,28 @@ export component CompareFileView inherits Rectangle {
         0px,
         (self.width - 2 * root.gutter_width - root.relation_width) / 2,
     );
-    property <length> shared_content_width: max(
+    property <length> left_content_width: max(
         root.visible_content_width,
-        root.content_width_px * 1px,
+        root.left_content_width_px * 1px,
     );
-    property <length> horizontal_overflow: max(
+    property <length> right_content_width: max(
+        root.visible_content_width,
+        root.right_content_width_px * 1px,
+    );
+    property <length> left_horizontal_overflow: max(
         0px,
-        root.shared_content_width - root.visible_content_width,
+        root.left_content_width - root.visible_content_width,
     );
-    property <bool> horizontal_scroll_visible: root.horizontal_overflow > 0px;
-    property <length> shared_horizontal_offset: shared_horizontal_scroll.viewport-x;
-    property <length> horizontal_controller_width: max(
+    property <length> right_horizontal_overflow: max(
         0px,
-        self.width - 2 * root.gutter_width,
+        root.right_content_width - root.visible_content_width,
     );
-    property <length> horizontal_controller_viewport_width: root.horizontal_controller_width + root.horizontal_overflow;
+    property <bool> left_horizontal_scroll_visible: root.left_horizontal_overflow > 0px;
+    property <bool> right_horizontal_scroll_visible: root.right_horizontal_overflow > 0px;
+    property <bool> horizontal_scroll_visible: root.left_horizontal_scroll_visible || root.right_horizontal_scroll_visible;
+    property <length> left_horizontal_offset: left_horizontal_scroll.viewport-x;
+    property <length> right_horizontal_offset: right_horizontal_scroll.viewport-x;
+    property <length> right_content_x: root.width - root.visible_content_width;
 
     clip: true;
 
@@ -400,28 +410,49 @@ export component CompareFileView inherits Rectangle {
             right_padding: root.row_right_padding[index];
             gutter_width: root.gutter_width;
             relation_width: root.relation_width;
-            shared_horizontal_offset: root.shared_horizontal_offset;
-            content_width: root.shared_content_width;
+            left_horizontal_offset: root.left_horizontal_offset;
+            right_horizontal_offset: root.right_horizontal_offset;
+            left_content_width: root.left_content_width;
+            right_content_width: root.right_content_width;
             copy_requested(copy_value, feedback_label) => {
                 root.copy_requested(copy_value, feedback_label);
             }
         }
     }
 
-    shared_horizontal_scroll := ScrollView {
+    left_horizontal_scroll := ScrollView {
         x: root.gutter_width;
         y: compare_file_list.height;
-        width: root.horizontal_controller_width;
+        width: root.visible_content_width;
         height: root.horizontal_scroll_visible ? root.scroll_bar_height : 0px;
-        visible: root.horizontal_scroll_visible;
-        enabled: root.horizontal_scroll_visible;
-        viewport-width: root.horizontal_controller_viewport_width;
+        visible: root.left_horizontal_scroll_visible;
+        enabled: root.left_horizontal_scroll_visible;
+        viewport-width: root.left_content_width;
         viewport-height: 1px;
         horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
         vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
 
         Rectangle {
-            width: root.horizontal_controller_viewport_width;
+            width: root.left_content_width;
+            height: 1px;
+            background: transparent;
+        }
+    }
+
+    right_horizontal_scroll := ScrollView {
+        x: root.right_content_x;
+        y: compare_file_list.height;
+        width: root.visible_content_width;
+        height: root.horizontal_scroll_visible ? root.scroll_bar_height : 0px;
+        visible: root.right_horizontal_scroll_visible;
+        enabled: root.right_horizontal_scroll_visible;
+        viewport-width: root.right_content_width;
+        viewport-height: 1px;
+        horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
+        vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+
+        Rectangle {
+            width: root.right_content_width;
             height: 1px;
             background: transparent;
         }

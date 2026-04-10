@@ -1624,7 +1624,8 @@ slint::slint! {
         in property <[string]> compare_file_row_right_suffixes;
         in property <[bool]> compare_file_row_left_padding;
         in property <[bool]> compare_file_row_right_padding;
-        in property <int> compare_file_content_width_px: 0;
+        in property <int> compare_file_left_content_width_px: 0;
+        in property <int> compare_file_right_content_width_px: 0;
         in property <string> workspace_mode;
         in property <[string]> workspace_session_ids;
         in property <[string]> workspace_session_labels;
@@ -4137,7 +4138,8 @@ slint::slint! {
                                                     row_right_suffixes: root.compare_file_row_right_suffixes;
                                                     row_left_padding: root.compare_file_row_left_padding;
                                                     row_right_padding: root.compare_file_row_right_padding;
-                                                    content_width_px: root.compare_file_content_width_px;
+                                                    left_content_width_px: root.compare_file_left_content_width_px;
+                                                    right_content_width_px: root.compare_file_right_content_width_px;
                                                     copy_requested(copy_value, feedback_label) => {
                                                         root.copy_requested(copy_value, feedback_label);
                                                     }
@@ -5663,9 +5665,20 @@ fn estimate_compare_file_text_width_px(text: &str) -> i32 {
     i32::try_from(width_px).unwrap_or(i32::MAX)
 }
 
-fn compare_file_content_width_px(rows: &[crate::view_models::CompareFileRowViewModel]) -> i32 {
+fn compare_file_left_content_width_px(rows: &[crate::view_models::CompareFileRowViewModel]) -> i32 {
     rows.iter()
-        .flat_map(|row| [row.left_text.as_str(), row.right_text.as_str()])
+        .map(|row| row.left_text.as_str())
+        .filter(|text| !text.is_empty())
+        .map(estimate_compare_file_text_width_px)
+        .max()
+        .unwrap_or(0)
+}
+
+fn compare_file_right_content_width_px(
+    rows: &[crate::view_models::CompareFileRowViewModel],
+) -> i32 {
+    rows.iter()
+        .map(|row| row.right_text.as_str())
         .filter(|text| !text.is_empty())
         .map(estimate_compare_file_text_width_px)
         .max()
@@ -6239,7 +6252,12 @@ fn sync_window_state(
 
     if should_refresh_compare_file_models(last_state, state) {
         let compare_file_rows = state.compare_file_row_projections();
-        window.set_compare_file_content_width_px(compare_file_content_width_px(&compare_file_rows));
+        window.set_compare_file_left_content_width_px(compare_file_left_content_width_px(
+            &compare_file_rows,
+        ));
+        window.set_compare_file_right_content_width_px(compare_file_right_content_width_px(
+            &compare_file_rows,
+        ));
         let compare_file_row_kinds = compare_file_rows
             .iter()
             .map(|row| SharedString::from(row.row_kind.clone()))
@@ -7927,7 +7945,7 @@ mod tests {
     }
 
     #[test]
-    fn compare_file_content_width_uses_longest_visible_side() {
+    fn compare_file_content_width_tracks_each_side_independently() {
         let rows = vec![
             crate::view_models::CompareFileRowViewModel {
                 left_text: "short".to_string(),
@@ -7942,8 +7960,12 @@ mod tests {
         ];
 
         assert_eq!(
-            compare_file_content_width_px(&rows),
+            compare_file_left_content_width_px(&rows),
             estimate_compare_file_text_width_px("非常长的比较行，用来验证横向滚动范围")
+        );
+        assert_eq!(
+            compare_file_right_content_width_px(&rows),
+            estimate_compare_file_text_width_px("also short")
         );
     }
 }

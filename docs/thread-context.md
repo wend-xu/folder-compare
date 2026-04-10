@@ -64,7 +64,7 @@
     - 明确区分于标准 `Sidebar -> File View`
     - 保留 `Back to Compare Tree`、roots / compare path / compare status context
     - 使用单一纵向滚动 + Rust-owned side-by-side row projection
-    - 当前已具备 shared horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
+    - 当前已具备左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
     - 继续不做 sync scroll / merge actions / compare search
   - Compare Tree header 只保留 compare context + `Up one level`
   - 关闭 Compare Tree tab 等于结束当前 compare session；存在派生 File tabs 时需确认，确认后一起清理
@@ -85,7 +85,7 @@
   - `Phase 19C fix-1` 已成为当前稳定 shell baseline：top-level sidebar hide / restore、轻量 top chrome、Compare workspace semantic lane 语言、Compare/File 头部语言继续统一，并补齐按钮宽度约束与 relation band 连片收边
   - `Phase 19D fix-1` 已成为当前稳定 compare workspace session-shell baseline：外层 session tabs、唯一 Compare Tree tab、compare-originated File tabs、明确 compare-session close / reset 语义、Sidebar/Navigator 与 compare session 的边界收口
   - `Phase 19E` 已成为 inherited compare file renderer MVP baseline：compare-originated File tab 使用 dedicated Compare File View、单一纵向 side-by-side row projection、Back to Compare Tree 与 compare-context 保留、标准 File View 不变
-  - `Phase 19F` 已成为当前稳定 compare file-content baseline：shared horizontal scroll 已接入当前 Compare File View，gutter / relation lane 固定，compare 文本可选择并支持系统复制，行号可复制对应侧整行
+  - `Phase 19F` 的单一纵向 compare file-content baseline 继续成立，其上 Compare File View 现已支持左右独立 horizontal scroll，gutter / relation lane 固定，compare 文本可选择并支持系统复制，行号可复制对应侧整行
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 当前线程已完成完整代码验证：
   - `cargo fmt --all`
@@ -342,7 +342,7 @@
 > 把 `Phase 19A` 也视为已落地事实，而不是 proposal：Rust state 中已有 `workspace_mode`；`compare_focus_path` 已与 `selected_row / selected_relative_path` 分离；`compare_foundation` 已在 `fc-ui-slint` 中成为 compare 数据基础；当前迁移方向已明确为 `compare_foundation -> navigator / legacy file-view projection`。  
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
 > 把 `Phase 19C fix-1` 视为已成立 shell 基线，把 `Phase 19D fix-1` 视为已成立的 outer session-shell 基线：workspace 现在有一个固定左侧且唯一的 `Compare Tree` tab，以及若干 compare-originated `File` tabs；Sidebar/Navigator 仍是全局结果浏览器，compare session 活跃时从这里打开文件必须先确认并回到标准 File View；`Open in Compare View` 会创建或激活该 Compare Tree tab，并在 compare session 已存在时把它视为 reset 当前 compare session；Compare Tree 中文件 leaf 会打开或复用 File tab；session 切换依赖外层 tab strip 而不是 header back button。不要把当前事实写回成 “`19D` 仍是 proposal”。  
-> 把 `Phase 19E` / `19F` 也视为已成立事实：compare-originated `File` tab 已是 dedicated Compare File View；它继续使用单一纵向 side-by-side row projection，但现在已经具备 shared horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行。标准 `Sidebar -> File View` 仍保持原有 `Diff / Analysis`。  
+> 把 `Phase 19E` / `19F` 也视为已成立事实：compare-originated `File` tab 已是 dedicated Compare File View；它继续使用单一纵向 side-by-side row projection，但现在已经具备左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行。标准 `Sidebar -> File View` 仍保持原有 `Diff / Analysis`。  
 > 当前默认下一入口不再是“是否进入 `19C` / `19D`”，而是明确判断是否真的需要进入 `19F` 或更后阶段；否则继续在 `19D` / `19E` / `19F` 稳定基线上做回归修复。  
 > 当前不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `19G` 或更后阶段的 richer Compare View surface 写成已实现。
 
