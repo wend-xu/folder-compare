@@ -1,47 +1,14 @@
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 
 component CompareFilePaddingCell inherits Rectangle {
     background: #f6f8fb;
     clip: true;
-
-    Rectangle {
-        x: 10px;
-        y: 7px;
-        width: max(0px, parent.width - 20px);
-        height: 1px;
-        background: rgba(196, 205, 216, 0.72);
-    }
-
-    Rectangle {
-        x: 18px;
-        y: 13px;
-        width: max(0px, parent.width - 36px);
-        height: 1px;
-        background: rgba(196, 205, 216, 0.54);
-    }
-
-    Rectangle {
-        x: 10px;
-        y: 19px;
-        width: max(0px, parent.width - 20px);
-        height: 1px;
-        background: rgba(196, 205, 216, 0.72);
-    }
-
-    Rectangle {
-        x: 18px;
-        y: 25px;
-        width: max(0px, parent.width - 36px);
-        height: 1px;
-        background: rgba(196, 205, 216, 0.54);
-    }
 }
 
 component CompareFileLineNumberCell inherits Rectangle {
     in property <string> label;
     in property <string> copy_value;
     in property <string> feedback_label;
-    in property <bool> align_left: false;
     callback copy_requested(string, string);
 
     property <bool> enabled: root.label != "";
@@ -52,7 +19,7 @@ component CompareFileLineNumberCell inherits Rectangle {
     clip: true;
 
     Text {
-        x: root.align_left ? 8px : 0px;
+        x: 0px;
         width: max(0px, parent.width - 8px);
         height: parent.height;
         text: root.label;
@@ -60,7 +27,7 @@ component CompareFileLineNumberCell inherits Rectangle {
             ? #a2aebb
             : (root.hovered ? #2f5a83 : #7f8fa0);
         font-size: 11px;
-        horizontal-alignment: root.align_left ? left : right;
+        horizontal-alignment: right;
         vertical-alignment: center;
         overflow: elide;
     }
@@ -315,7 +282,6 @@ component CompareFileRow inherits Rectangle {
                 label: root.right_line_no;
                 copy_value: root.right_copy_value;
                 feedback_label: root.right_feedback_label;
-                align_left: true;
                 copy_requested(copy_value, feedback_label) => {
                     root.copy_requested(copy_value, feedback_label);
                 }
@@ -359,30 +325,39 @@ export component CompareFileView inherits Rectangle {
 
     property <length> gutter_width: 48px;
     property <length> relation_width: 40px;
+    property <length> scroll_bar_height: 14px;
+    property <length> visible_content_width: max(
+        0px,
+        (self.width - 2 * root.gutter_width - root.relation_width) / 2,
+    );
+    property <length> shared_content_width: max(
+        root.visible_content_width,
+        root.content_width_px * 1px,
+    );
+    property <length> horizontal_overflow: max(
+        0px,
+        root.shared_content_width - root.visible_content_width,
+    );
+    property <bool> horizontal_scroll_visible: root.horizontal_overflow > 0px;
+    property <length> shared_horizontal_offset: shared_horizontal_scroll.viewport-x;
+    property <length> horizontal_controller_width: max(
+        0px,
+        self.width - 2 * root.gutter_width,
+    );
+    property <length> horizontal_controller_viewport_width: root.horizontal_controller_width + root.horizontal_overflow;
 
     clip: true;
 
     compare_file_list := ListView {
         width: parent.width;
-        height: parent.height;
+        height: max(
+            0px,
+            parent.height - (root.horizontal_scroll_visible ? root.scroll_bar_height : 0px),
+        );
         property <length> row_height: 32px;
         property <length> ensure_visible_padding: 10px;
-        property <length> visible_content_width: max(
-            0px,
-            (self.visible-width - 2 * root.gutter_width - root.relation_width) / 2,
-        );
-        property <length> shared_content_width: max(
-            self.visible_content_width,
-            root.content_width_px * 1px,
-        );
-        property <length> horizontal_overflow: max(
-            0px,
-            self.shared_content_width - self.visible_content_width,
-        );
 
-        viewport-width: max(self.visible-width, self.visible-width + self.horizontal_overflow);
         viewport-height: max(self.height, root.row_kinds.length * self.row_height);
-        horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
         vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
 
         function ensure_row_visible(target_row: int) {
@@ -409,7 +384,6 @@ export component CompareFileView inherits Rectangle {
         }
 
         for row_kind[index] in root.row_kinds : row_item := CompareFileRow {
-            x: -compare_file_list.viewport-x;
             width: compare_file_list.visible-width;
             row_kind: row_kind;
             relation_label: root.row_relation_labels[index];
@@ -426,11 +400,30 @@ export component CompareFileView inherits Rectangle {
             right_padding: root.row_right_padding[index];
             gutter_width: root.gutter_width;
             relation_width: root.relation_width;
-            shared_horizontal_offset: compare_file_list.viewport-x;
-            content_width: compare_file_list.shared_content_width;
+            shared_horizontal_offset: root.shared_horizontal_offset;
+            content_width: root.shared_content_width;
             copy_requested(copy_value, feedback_label) => {
                 root.copy_requested(copy_value, feedback_label);
             }
+        }
+    }
+
+    shared_horizontal_scroll := ScrollView {
+        x: root.gutter_width;
+        y: compare_file_list.height;
+        width: root.horizontal_controller_width;
+        height: root.horizontal_scroll_visible ? root.scroll_bar_height : 0px;
+        visible: root.horizontal_scroll_visible;
+        enabled: root.horizontal_scroll_visible;
+        viewport-width: root.horizontal_controller_viewport_width;
+        viewport-height: 1px;
+        horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
+        vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+
+        Rectangle {
+            width: root.horizontal_controller_viewport_width;
+            height: 1px;
+            background: transparent;
         }
     }
 }
