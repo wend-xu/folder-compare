@@ -132,7 +132,7 @@ fn save_settings_hiding_selected_row_marks_it_stale() {
 }
 
 #[test]
-fn selecting_file_row_switches_workspace_mode_to_file_view_without_resetting_compare_focus() {
+fn selecting_sidebar_file_row_with_compare_session_requests_standard_file_view_confirmation() {
     let mut state = state_from_entries(vec![text_diff_entry(
         "src/bin/main.rs",
         EntryStatus::Different,
@@ -147,17 +147,42 @@ fn selecting_file_row_switches_workspace_mode_to_file_view_without_resetting_com
     let presenter = presenter_from_state(state);
     presenter.handle_command(UiCommand::SelectRow(selected_index as i32));
     let snapshot = presenter.state_snapshot();
-    assert_eq!(snapshot.workspace_mode, WorkspaceMode::FileView);
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(snapshot.active_session_id.as_deref(), Some("compare-tree"));
+    assert!(snapshot.workspace_session_confirmation_open());
     assert_eq!(
-        snapshot.active_session_id.as_deref(),
-        Some("file:src/bin/main.rs")
+        snapshot.workspace_session_confirmation_title_text(),
+        "Open standard File View and close current Compare session?"
     );
+}
+
+#[test]
+fn confirming_sidebar_file_row_transition_closes_compare_session_and_loads_standard_file_view() {
+    let mut state = state_from_entries(vec![text_diff_entry(
+        "src/bin/main.rs",
+        EntryStatus::Different,
+    )]);
+    let selected_index = state
+        .row_index_for_relative_path("src/bin/main.rs")
+        .expect("file row should exist");
+    state.ensure_compare_tree_session();
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::SelectRow(selected_index as i32));
+    presenter.handle_command(UiCommand::ConfirmWorkspaceSessionAction);
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::FileView);
+    assert!(!snapshot.has_compare_tree_session());
+    assert!(!snapshot.workspace_sessions_visible());
+    assert_eq!(snapshot.selected_row, Some(selected_index));
     assert_eq!(
         snapshot.selected_relative_path.as_deref(),
         Some("src/bin/main.rs")
     );
-    assert_eq!(snapshot.selected_row, Some(selected_index));
+    assert!(snapshot.diff_loading || snapshot.selected_diff.is_some());
 }
 
 #[test]
@@ -323,11 +348,42 @@ fn closing_compare_tree_session_with_file_tabs_requires_confirmation() {
 
     presenter.handle_command(UiCommand::CloseWorkspaceSession("compare-tree".to_string()));
     let pending_snapshot = presenter.state_snapshot();
-    assert!(pending_snapshot.compare_tree_close_confirmation_open());
+    assert!(pending_snapshot.workspace_session_confirmation_open());
     assert!(pending_snapshot.workspace_sessions_visible());
 
-    presenter.handle_command(UiCommand::ConfirmCompareTreeSessionClose);
+    presenter.handle_command(UiCommand::ConfirmWorkspaceSessionAction);
     let final_snapshot = presenter.state_snapshot();
     assert!(!final_snapshot.workspace_sessions_visible());
-    assert!(!final_snapshot.compare_tree_close_confirmation_open());
+    assert!(!final_snapshot.workspace_session_confirmation_open());
+}
+
+#[test]
+fn opening_compare_view_with_existing_file_tabs_requests_reset_confirmation() {
+    let state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("docs/guide.md", EntryStatus::Different),
+    ]);
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenCompareView("src".to_string()));
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+        "src/main.rs".to_string(),
+    ));
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+        "docs/guide.md".to_string(),
+    ));
+
+    presenter.handle_command(UiCommand::OpenCompareView("docs".to_string()));
+    let pending_snapshot = presenter.state_snapshot();
+    assert!(pending_snapshot.workspace_session_confirmation_open());
+    assert_eq!(
+        pending_snapshot.workspace_session_confirmation_title_text(),
+        "Reset Compare session?"
+    );
+
+    presenter.handle_command(UiCommand::ConfirmWorkspaceSessionAction);
+    let final_snapshot = presenter.state_snapshot();
+    assert!(final_snapshot.has_compare_tree_session());
+    assert_eq!(final_snapshot.workspace_session_ids(), vec!["compare-tree"]);
+    assert_eq!(final_snapshot.compare_focus_path_raw_text(), "docs");
+    assert_eq!(final_snapshot.workspace_mode, WorkspaceMode::CompareView);
 }

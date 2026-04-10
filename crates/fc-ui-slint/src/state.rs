@@ -319,13 +319,37 @@ pub struct FileSessionOpenResult {
     pub has_cached_view_state: bool,
 }
 
-/// Pending confirmation before compare-session termination.
+/// Pending workspace session transition that requires confirmation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompareTreeCloseConfirmation {
-    /// Target compare-session id.
-    pub compare_session_id: String,
-    /// Number of file tabs that will be closed together.
+pub enum WorkspaceSessionConfirmationAction {
+    /// End the current compare session and close all compare-originated file tabs.
+    CloseCompareSession,
+    /// Leave compare-session mode and open the requested file through the standard File View.
+    OpenStandardFileView {
+        relative_path: String,
+        source_index: Option<usize>,
+    },
+    /// Reset the current compare session to a new compare anchor and close all child file tabs.
+    ResetCompareSession {
+        relative_path: String,
+        preferred_row_focus: Option<String>,
+    },
+}
+
+/// Pending confirmation before applying one workspace session transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSessionConfirmation {
+    /// Pending action to apply after confirmation.
+    pub action: WorkspaceSessionConfirmationAction,
+    /// Number of compare-originated file tabs that will be closed together.
     pub related_file_tab_count: usize,
+}
+
+/// Immediate follow-up requested after confirming one workspace session transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceSessionConfirmationEffect {
+    None,
+    LoadSelectedDiff,
 }
 
 /// In-memory UI state for compare workflow.
@@ -439,8 +463,8 @@ pub struct AppState {
     pub show_hidden_files: bool,
     /// Settings dialog error message.
     pub settings_error_message: Option<String>,
-    /// Pending compare-session close confirmation.
-    pub pending_compare_tree_close_confirmation: Option<CompareTreeCloseConfirmation>,
+    /// Pending workspace session transition confirmation.
+    pub pending_workspace_session_confirmation: Option<WorkspaceSessionConfirmation>,
 }
 
 impl Default for AppState {
@@ -500,7 +524,7 @@ impl Default for AppState {
             analysis_request_timeout_secs: 30,
             show_hidden_files: true,
             settings_error_message: None,
-            pending_compare_tree_close_confirmation: None,
+            pending_workspace_session_confirmation: None,
         }
     }
 }
@@ -890,82 +914,304 @@ impl AppState {
         true
     }
 
-    pub fn request_compare_tree_session_close(&mut self) -> bool {
-        let Some(compare_session) = self.compare_tree_session.as_ref() else {
-            return false;
-        };
-
-        let related_file_tab_count = self.compare_tree_file_tab_count();
-        if related_file_tab_count > 0 {
-            self.pending_compare_tree_close_confirmation = Some(CompareTreeCloseConfirmation {
-                compare_session_id: compare_session.session_id.clone(),
-                related_file_tab_count,
-            });
-            return true;
-        }
-        self.confirm_compare_tree_session_close()
+    fn clear_top_level_file_view_state(&mut self) {
+        self.file_view_mode = FileSessionMode::Diff;
+        self.selected_row = None;
+        self.selected_relative_path = None;
+        self.clear_diff_panel();
+        self.analysis_available = false;
+        self.clear_analysis_panel();
+        self.analysis_hint = Some("Select one changed text file to analyze.".to_string());
     }
 
-    pub fn confirm_compare_tree_session_close(&mut self) -> bool {
-        let Some(compare_session) = self.compare_tree_session.as_ref() else {
-            self.pending_compare_tree_close_confirmation = None;
-            return false;
-        };
-        let compare_session_id = compare_session.session_id.clone();
-
-        self.pending_compare_tree_close_confirmation = None;
+    fn clear_compare_session_shell(&mut self) {
         self.compare_tree_session = None;
-        self.file_sessions
-            .retain(|session| session.source_compare_session_id != compare_session_id);
+        self.file_sessions.clear();
         self.active_session_id = None;
         self.workspace_mode = WorkspaceMode::FileView;
         self.can_return_to_compare_view = false;
         self.compare_focus_path = CompareFocusPath::root();
         self.compare_row_focus_path = None;
         self.compare_view_expansion_overrides.clear();
+    }
+
+    fn apply_close_compare_session(&mut self) {
+        self.pending_workspace_session_confirmation = None;
+        self.clear_compare_session_shell();
+        self.clear_top_level_file_view_state();
+        self.refresh_workspace_sessions();
+    }
+
+    fn apply_standard_file_view_selection(
+        &mut self,
+        relative_path: &str,
+        source_index: Option<usize>,
+    ) -> WorkspaceSessionConfirmationEffect {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() {
+            return WorkspaceSessionConfirmationEffect::None;
+        }
+
+        let selected_index = source_index
+            .filter(|index| *index < self.entry_rows.len())
+            .filter(|index| self.entry_rows[*index].relative_path == normalized)
+            .filter(|index| self.entry_rows[*index].entry_kind == "file")
+            .filter(|index| self.is_row_member_in_active_results(*index))
+            .or_else(|| {
+                self.row_index_for_relative_path(normalized)
+                    .filter(|index| self.is_row_member_in_active_results(*index))
+                    .filter(|index| self.entry_rows[*index].entry_kind == "file")
+            });
+
+        self.workspace_mode = WorkspaceMode::FileView;
+        self.can_return_to_compare_view = false;
         self.file_view_mode = FileSessionMode::Diff;
-        self.diff_loading = false;
-        self.diff_error_message = None;
-        self.selected_relative_path = None;
-        self.selected_diff = None;
-        self.diff_warning = None;
-        self.diff_truncated = false;
+        self.clear_diff_panel();
         self.analysis_available = false;
-        self.analysis_loading = false;
-        self.analysis_hint = Some("Select one changed text file to analyze.".to_string());
-        self.analysis_error_message = None;
-        self.analysis_result = None;
+        self.clear_analysis_panel();
+
+        match selected_index
+            .and_then(|index| self.entry_rows.get(index).cloned().map(|row| (index, row)))
+        {
+            Some((index, row)) => {
+                self.selected_row = Some(index);
+                self.selected_relative_path = Some(row.relative_path.clone());
+                self.analysis_hint = Some(if !row.can_load_analysis {
+                    row.analysis_blocked_reason
+                        .unwrap_or_else(|| "selected row does not support AI analysis".to_string())
+                } else {
+                    "Load detailed diff, then click Analyze.".to_string()
+                });
+                WorkspaceSessionConfirmationEffect::LoadSelectedDiff
+            }
+            None => {
+                self.selected_row = None;
+                self.selected_relative_path = Some(normalized.to_string());
+                self.analysis_hint = Some(
+                    "Previous selection is no longer active in the current Results / Navigator set."
+                        .to_string(),
+                );
+                WorkspaceSessionConfirmationEffect::None
+            }
+        }
+    }
+
+    fn apply_compare_session_reset(
+        &mut self,
+        relative_path: &str,
+        preferred_row_focus: Option<&str>,
+    ) -> bool {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() {
+            return false;
+        }
+
+        if self.compare_tree_session.is_none() {
+            self.compare_tree_session = Some(CompareTreeSession::new(
+                self.left_root.as_str(),
+                self.right_root.as_str(),
+            ));
+        }
+        self.pending_workspace_session_confirmation = None;
+        self.file_sessions.clear();
+        self.active_session_id = Some(COMPARE_TREE_SESSION_ID.to_string());
+        self.workspace_mode = WorkspaceMode::CompareView;
+        self.can_return_to_compare_view = false;
+        self.compare_view_expansion_overrides.clear();
+
+        self.set_compare_focus_path(CompareFocusPath::relative(normalized));
+        if let Some(preferred) = preferred_row_focus {
+            self.reveal_compare_view_path(preferred);
+            self.set_compare_row_focus_path(Some(preferred));
+        }
+        if let Some(path) = self.compare_row_focus_path.clone() {
+            self.reveal_compare_view_path(path.as_str());
+            self.set_compare_row_focus_path(Some(path.as_str()));
+            self.request_compare_view_scroll_to_path(path.as_str());
+        }
         self.refresh_workspace_sessions();
         true
     }
 
-    pub fn cancel_compare_tree_session_close(&mut self) -> bool {
-        if self.pending_compare_tree_close_confirmation.is_none() {
+    pub fn request_compare_tree_session_close(&mut self) -> bool {
+        if self.compare_tree_session.is_none() {
             return false;
         }
-        self.pending_compare_tree_close_confirmation = None;
+
+        let related_file_tab_count = self.compare_tree_file_tab_count();
+        if related_file_tab_count > 0 {
+            self.pending_workspace_session_confirmation = Some(WorkspaceSessionConfirmation {
+                action: WorkspaceSessionConfirmationAction::CloseCompareSession,
+                related_file_tab_count,
+            });
+            return true;
+        }
+        self.apply_close_compare_session();
         true
     }
 
-    pub fn compare_tree_close_confirmation_open(&self) -> bool {
-        self.pending_compare_tree_close_confirmation.is_some()
+    pub fn request_standard_file_view_after_compare_session_close(
+        &mut self,
+        relative_path: &str,
+        source_index: Option<usize>,
+    ) -> bool {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() || self.compare_tree_session.is_none() {
+            return false;
+        }
+        self.pending_workspace_session_confirmation = Some(WorkspaceSessionConfirmation {
+            action: WorkspaceSessionConfirmationAction::OpenStandardFileView {
+                relative_path: normalized.to_string(),
+                source_index,
+            },
+            related_file_tab_count: self.compare_tree_file_tab_count(),
+        });
+        true
     }
 
-    pub fn compare_tree_close_confirmation_title_text(&self) -> String {
-        "Close Compare session?".to_string()
+    pub fn request_compare_session_reset(
+        &mut self,
+        relative_path: &str,
+        preferred_row_focus: Option<&str>,
+    ) -> bool {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() {
+            return false;
+        }
+        let related_file_tab_count = self.compare_tree_file_tab_count();
+        if related_file_tab_count > 0 {
+            self.pending_workspace_session_confirmation = Some(WorkspaceSessionConfirmation {
+                action: WorkspaceSessionConfirmationAction::ResetCompareSession {
+                    relative_path: normalized.to_string(),
+                    preferred_row_focus: preferred_row_focus.map(ToString::to_string),
+                },
+                related_file_tab_count,
+            });
+            return true;
+        }
+        self.apply_compare_session_reset(normalized, preferred_row_focus)
     }
 
-    pub fn compare_tree_close_confirmation_body_text(&self) -> String {
-        let Some(pending) = self.pending_compare_tree_close_confirmation.as_ref() else {
+    pub fn confirm_workspace_session_action(&mut self) -> WorkspaceSessionConfirmationEffect {
+        let Some(pending) = self.pending_workspace_session_confirmation.clone() else {
+            return WorkspaceSessionConfirmationEffect::None;
+        };
+
+        match pending.action {
+            WorkspaceSessionConfirmationAction::CloseCompareSession => {
+                self.apply_close_compare_session();
+                WorkspaceSessionConfirmationEffect::None
+            }
+            WorkspaceSessionConfirmationAction::OpenStandardFileView {
+                relative_path,
+                source_index,
+            } => {
+                self.apply_close_compare_session();
+                self.apply_standard_file_view_selection(relative_path.as_str(), source_index)
+            }
+            WorkspaceSessionConfirmationAction::ResetCompareSession {
+                relative_path,
+                preferred_row_focus,
+            } => {
+                self.apply_compare_session_reset(
+                    relative_path.as_str(),
+                    preferred_row_focus.as_deref(),
+                );
+                WorkspaceSessionConfirmationEffect::None
+            }
+        }
+    }
+
+    pub fn cancel_workspace_session_action(&mut self) -> bool {
+        if self.pending_workspace_session_confirmation.is_none() {
+            return false;
+        }
+        self.pending_workspace_session_confirmation = None;
+        true
+    }
+
+    pub fn workspace_session_confirmation_open(&self) -> bool {
+        self.pending_workspace_session_confirmation.is_some()
+    }
+
+    pub fn workspace_session_confirmation_title_text(&self) -> String {
+        match self
+            .pending_workspace_session_confirmation
+            .as_ref()
+            .map(|pending| &pending.action)
+        {
+            Some(WorkspaceSessionConfirmationAction::CloseCompareSession) => {
+                "Close Compare session?".to_string()
+            }
+            Some(WorkspaceSessionConfirmationAction::OpenStandardFileView { .. }) => {
+                "Open standard File View and close current Compare session?".to_string()
+            }
+            Some(WorkspaceSessionConfirmationAction::ResetCompareSession { .. }) => {
+                "Reset Compare session?".to_string()
+            }
+            None => String::new(),
+        }
+    }
+
+    pub fn workspace_session_confirmation_body_text(&self) -> String {
+        let Some(pending) = self.pending_workspace_session_confirmation.as_ref() else {
             return String::new();
         };
-        if pending.related_file_tab_count == 1 {
-            "Closing Compare Tree will also close 1 related file tab.".to_string()
-        } else {
-            format!(
-                "Closing Compare Tree will also close {} related file tabs.",
-                pending.related_file_tab_count
-            )
+        match &pending.action {
+            WorkspaceSessionConfirmationAction::CloseCompareSession => {
+                if pending.related_file_tab_count == 1 {
+                    "Closing Compare Tree will also close 1 related file tab.".to_string()
+                } else {
+                    format!(
+                        "Closing Compare Tree will also close {} related file tabs.",
+                        pending.related_file_tab_count
+                    )
+                }
+            }
+            WorkspaceSessionConfirmationAction::OpenStandardFileView { .. } => {
+                if pending.related_file_tab_count == 0 {
+                    "The current Compare Tree tab will be closed before opening the standard File View."
+                        .to_string()
+                } else if pending.related_file_tab_count == 1 {
+                    "The current Compare Tree tab and 1 related file tab will be closed before opening the standard File View."
+                        .to_string()
+                } else {
+                    format!(
+                        "The current Compare Tree tab and {} related file tabs will be closed before opening the standard File View.",
+                        pending.related_file_tab_count
+                    )
+                }
+            }
+            WorkspaceSessionConfirmationAction::ResetCompareSession { .. } => {
+                if pending.related_file_tab_count == 1 {
+                    "This will close 1 related file tab and retarget the current Compare Tree tab."
+                        .to_string()
+                } else {
+                    format!(
+                        "This will close {} related file tabs and retarget the current Compare Tree tab.",
+                        pending.related_file_tab_count
+                    )
+                }
+            }
+        }
+    }
+
+    pub fn workspace_session_confirmation_action_label_text(&self) -> String {
+        match self
+            .pending_workspace_session_confirmation
+            .as_ref()
+            .map(|pending| &pending.action)
+        {
+            Some(WorkspaceSessionConfirmationAction::CloseCompareSession) => {
+                "Close Session".to_string()
+            }
+            Some(WorkspaceSessionConfirmationAction::OpenStandardFileView { .. }) => {
+                "Open File View".to_string()
+            }
+            Some(WorkspaceSessionConfirmationAction::ResetCompareSession { .. }) => {
+                "Reset Session".to_string()
+            }
+            None => String::new(),
         }
     }
 

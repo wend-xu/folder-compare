@@ -42,6 +42,8 @@
   - Compare Tree 中文件 leaf 会打开或复用 compare-originated `File` tabs
   - `File` tab 内继续复用既有 attached `Diff / Analysis` shell
   - 关闭 Compare Tree tab 等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
+  - `Results / Navigator` 继续是全局结果浏览器；compare session 活跃时，从这里打开文件会先确认并关闭当前 compare session，然后进入标准 `File View`
+  - 显式 `Open in Compare View` 在 compare session 已存在时会被定义为 reset 当前 compare session；如仍有 related compare file tabs，会先确认并一起清空
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -120,6 +122,7 @@
   - tree 中目录节点点击只负责展开/收起
   - tree 中文件 leaf 节点点击复用既有 file-view 打开链路
   - flat results 中 file leaf 支持 `Locate and Open` 回 tree
+  - compare session 活跃时，Sidebar/Navigator 打开文件不会再偷偷创建 compare-originated `File` tab，而是先确认并回到标准 `File View`
   - 目录 compare target 可通过显式 `Open in Compare View` 动作进入 workspace `Compare View`
   - row tooltip 只做完整 filename + parent path completion
 - Top-level shell
@@ -136,9 +139,10 @@
   - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
 - Workspace Session Tabs
-  - `Open in Compare View` 会创建或激活唯一的 `Compare Tree` tab，并把 compare anchor 对准当前目录 target
+  - `Open in Compare View` 会创建或激活唯一的 `Compare Tree` tab；若 compare session 已存在，则它会 reset 当前 compare session，并把 compare anchor 对准当前目录 target
   - Compare Tree tab 固定在最左侧；不会创建第二个 compare session tab
   - Compare Tree 中文件 leaf 会打开或复用同一路径的 File tab
+  - compare session reset 时，全部 related compare-originated `File` tabs 会被一起清空；当前不做复杂保留策略
   - File tab 默认可直接关闭，不弹确认
   - Compare Tree tab 关闭等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
 - `Diff`

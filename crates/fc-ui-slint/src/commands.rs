@@ -43,10 +43,10 @@ pub enum UiCommand {
     SelectWorkspaceSession(String),
     /// Closes one outer workspace session tab.
     CloseWorkspaceSession(String),
-    /// Confirms compare-session termination and closes derived file tabs.
-    ConfirmCompareTreeSessionClose,
-    /// Cancels compare-session termination.
-    CancelCompareTreeSessionClose,
+    /// Confirms one pending workspace session transition.
+    ConfirmWorkspaceSessionAction,
+    /// Cancels one pending workspace session transition.
+    CancelWorkspaceSessionAction,
     /// Moves current Compare View target to its parent directory.
     CompareViewUpOneLevel,
     /// Toggles one expandable directory row inside Compare View.

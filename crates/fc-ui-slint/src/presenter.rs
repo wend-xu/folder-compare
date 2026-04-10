@@ -7,7 +7,9 @@ use crate::compare_foundation::CompareFocusPath;
 use crate::settings::{
     self, AppPreferences, BehaviorSettings, DefaultResultsView, ProviderSettings,
 };
-use crate::state::{AppState, FileSessionMode, NavigatorViewMode, WorkspaceMode};
+use crate::state::{
+    AppState, FileSessionMode, NavigatorViewMode, WorkspaceMode, WorkspaceSessionConfirmationEffect,
+};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -142,7 +144,7 @@ impl Presenter {
             }
             UiCommand::OpenCompareView(relative_path) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                Self::enter_compare_view(&mut state, relative_path.as_str(), None);
+                state.request_compare_session_reset(relative_path.as_str(), None);
             }
             UiCommand::SelectWorkspaceSession(session_id) => {
                 let should_load_selected_diff = {
@@ -160,13 +162,18 @@ impl Presenter {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.close_workspace_session(session_id.as_str());
             }
-            UiCommand::ConfirmCompareTreeSessionClose => {
-                let mut state = self.state.lock().expect("state mutex poisoned");
-                state.confirm_compare_tree_session_close();
+            UiCommand::ConfirmWorkspaceSessionAction => {
+                let effect = {
+                    let mut state = self.state.lock().expect("state mutex poisoned");
+                    state.confirm_workspace_session_action()
+                };
+                if matches!(effect, WorkspaceSessionConfirmationEffect::LoadSelectedDiff) {
+                    self.execute_load_selected_diff();
+                }
             }
-            UiCommand::CancelCompareTreeSessionClose => {
+            UiCommand::CancelWorkspaceSessionAction => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
-                state.cancel_compare_tree_session_close();
+                state.cancel_workspace_session_action();
             }
             UiCommand::CompareViewUpOneLevel => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
@@ -401,11 +408,10 @@ impl Presenter {
             if row.entry_kind != "file" {
                 return;
             }
-            let should_load =
-                Self::open_file_session(state, row.relative_path.as_str(), selected_index, true);
-            if !should_load {
-                state.sync_active_file_session_from_top_level();
-            }
+            state.request_standard_file_view_after_compare_session_close(
+                row.relative_path.as_str(),
+                selected_index,
+            );
             return;
         }
         Self::apply_row_selection(state, selected_index, false);
@@ -537,6 +543,9 @@ impl Presenter {
 
     fn prepare_selected_diff_load(&self) -> DiffLoadPlan {
         let mut state = self.state.lock().expect("state mutex poisoned");
+        if state.workspace_session_confirmation_open() {
+            return DiffLoadPlan::Noop;
+        }
         if state.diff_loading {
             return DiffLoadPlan::Noop;
         }
@@ -845,7 +854,11 @@ impl Presenter {
                 Some(index) => {
                     state.request_navigator_tree_scroll_to_source_index(index);
                     if state.has_compare_tree_session() {
-                        Self::open_file_session(&mut state, &relative_path, Some(index), true)
+                        state.request_standard_file_view_after_compare_session_close(
+                            &relative_path,
+                            Some(index),
+                        );
+                        false
                     } else {
                         Self::apply_row_selection(&mut state, Some(index), false);
                         true

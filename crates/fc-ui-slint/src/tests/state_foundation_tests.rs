@@ -173,13 +173,90 @@ fn compare_tree_session_close_requires_confirmation_when_file_tabs_exist() {
     assert!(state.open_or_activate_file_session("src/main.rs").is_some());
 
     assert!(state.close_workspace_session("compare-tree"));
-    assert!(state.compare_tree_close_confirmation_open());
+    assert!(state.workspace_session_confirmation_open());
     assert!(state.workspace_sessions_visible());
+    assert_eq!(
+        state.workspace_session_confirmation_title_text(),
+        "Close Compare session?"
+    );
 
-    assert!(state.confirm_compare_tree_session_close());
+    assert_eq!(
+        state.confirm_workspace_session_action(),
+        WorkspaceSessionConfirmationEffect::None
+    );
     assert!(!state.workspace_sessions_visible());
     assert_eq!(state.compare_tree_file_tab_count(), 0);
     assert_eq!(state.selected_relative_path.as_deref(), None);
+}
+
+#[test]
+fn sidebar_file_open_confirmation_closes_compare_session_and_restores_standard_file_view() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("src/lib.rs", EntryStatus::Different),
+    ]);
+    let main_index = state
+        .row_index_for_relative_path("src/main.rs")
+        .expect("main row should exist");
+
+    state.ensure_compare_tree_session();
+    assert!(state.open_or_activate_file_session("src/lib.rs").is_some());
+
+    assert!(
+        state.request_standard_file_view_after_compare_session_close(
+            "src/main.rs",
+            Some(main_index),
+        )
+    );
+    assert!(state.workspace_session_confirmation_open());
+    assert_eq!(
+        state.workspace_session_confirmation_title_text(),
+        "Open standard File View and close current Compare session?"
+    );
+
+    assert_eq!(
+        state.confirm_workspace_session_action(),
+        WorkspaceSessionConfirmationEffect::LoadSelectedDiff
+    );
+    assert!(!state.has_compare_tree_session());
+    assert!(!state.workspace_sessions_visible());
+    assert_eq!(state.workspace_mode_text(), "file-view");
+    assert_eq!(state.selected_row, Some(main_index));
+    assert_eq!(state.selected_relative_path.as_deref(), Some("src/main.rs"));
+}
+
+#[test]
+fn compare_session_reset_confirmation_clears_file_tabs_and_reanchors_compare_tree() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("docs/guide.md", EntryStatus::Different),
+    ]);
+
+    state.ensure_compare_tree_session();
+    assert!(state.open_or_activate_file_session("src/main.rs").is_some());
+    assert!(
+        state
+            .open_or_activate_file_session("docs/guide.md")
+            .is_some()
+    );
+
+    assert!(state.request_compare_session_reset("docs", None));
+    assert!(state.workspace_session_confirmation_open());
+    assert_eq!(
+        state.workspace_session_confirmation_title_text(),
+        "Reset Compare session?"
+    );
+
+    assert_eq!(
+        state.confirm_workspace_session_action(),
+        WorkspaceSessionConfirmationEffect::None
+    );
+    assert!(state.has_compare_tree_session());
+    assert_eq!(state.workspace_session_ids(), vec!["compare-tree"]);
+    assert_eq!(state.compare_tree_file_tab_count(), 0);
+    assert_eq!(state.active_session_id.as_deref(), Some("compare-tree"));
+    assert_eq!(state.workspace_mode_text(), "compare-view");
+    assert_eq!(state.compare_focus_path_raw_text(), "docs");
 }
 
 #[test]

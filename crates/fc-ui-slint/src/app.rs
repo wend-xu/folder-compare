@@ -1723,9 +1723,10 @@ slint::slint! {
         in-out property <length> tooltip_anchor_x: 0px;
         in-out property <length> tooltip_anchor_top: 0px;
         in-out property <length> tooltip_anchor_bottom: 0px;
-        in property <bool> compare_tree_close_confirm_open: false;
-        in property <string> compare_tree_close_confirm_title;
-        in property <string> compare_tree_close_confirm_body;
+        in property <bool> workspace_session_confirm_open: false;
+        in property <string> workspace_session_confirm_title;
+        in property <string> workspace_session_confirm_body;
+        in property <string> workspace_session_confirm_action_label;
         property <length> tooltip_gap: 6px;
         property <bool> compare_ready: !root.running && root.left_root != "" && root.right_root != "";
         property <string> compare_button_tooltip_text: root.running
@@ -1848,8 +1849,8 @@ slint::slint! {
         callback compare_view_row_context_menu_requested(string);
         callback file_view_diff_requested();
         callback file_view_analysis_requested();
-        callback compare_tree_close_confirmed();
-        callback compare_tree_close_cancelled();
+        callback workspace_session_confirmed();
+        callback workspace_session_cancelled();
         callback copy_requested(string, string);
         callback analyze_clicked();
         callback analysis_provider_mock_selected();
@@ -4289,7 +4290,7 @@ slint::slint! {
             }
         }
 
-        if root.compare_tree_close_confirm_open : Rectangle {
+        if root.workspace_session_confirm_open : Rectangle {
             x: 0px;
             y: 0px;
             width: parent.width;
@@ -4313,7 +4314,7 @@ slint::slint! {
                     spacing: 12px;
 
                     Text {
-                        text: root.compare_tree_close_confirm_title;
+                        text: root.workspace_session_confirm_title;
                         color: #274460;
                         font-size: 16px;
                         font-weight: 600;
@@ -4322,7 +4323,7 @@ slint::slint! {
                     }
 
                     Text {
-                        text: root.compare_tree_close_confirm_body;
+                        text: root.workspace_session_confirm_body;
                         color: #5e7084;
                         font-size: 13px;
                         horizontal-stretch: 1;
@@ -4346,16 +4347,16 @@ slint::slint! {
                             label: "Cancel";
                             button_min_width: 88px;
                             tapped => {
-                                root.compare_tree_close_cancelled();
+                                root.workspace_session_cancelled();
                             }
                         }
 
                         ToolButton {
-                            label: "Close Session";
+                            label: root.workspace_session_confirm_action_label;
                             primary: true;
                             button_min_width: 110px;
                             tapped => {
-                                root.compare_tree_close_confirmed();
+                                root.workspace_session_confirmed();
                             }
                         }
                     }
@@ -5388,12 +5389,17 @@ fn sync_window_state(
     window.set_compare_view_empty_title_text(state.compare_view_empty_title_text().into());
     window.set_compare_view_empty_body_text(state.compare_view_empty_body_text().into());
     window.set_compare_view_can_go_up(state.compare_view_can_go_up());
-    window.set_compare_tree_close_confirm_open(state.compare_tree_close_confirmation_open());
-    window.set_compare_tree_close_confirm_title(
-        state.compare_tree_close_confirmation_title_text().into(),
+    window.set_workspace_session_confirm_open(state.workspace_session_confirmation_open());
+    window.set_workspace_session_confirm_title(
+        state.workspace_session_confirmation_title_text().into(),
     );
-    window.set_compare_tree_close_confirm_body(
-        state.compare_tree_close_confirmation_body_text().into(),
+    window.set_workspace_session_confirm_body(
+        state.workspace_session_confirmation_body_text().into(),
+    );
+    window.set_workspace_session_confirm_action_label(
+        state
+            .workspace_session_confirmation_action_label_text()
+            .into(),
     );
     window.set_can_return_to_compare_view(state.can_return_to_compare_view());
     window.set_compare_row_focused_index(
@@ -6291,7 +6297,11 @@ pub fn run() -> anyhow::Result<()> {
                             &action_loading_mask_controller,
                             SyncMode::ProgrammaticInputs,
                         );
-                        window.invoke_focus_compare_rows();
+                        if !window.get_workspace_session_confirm_open()
+                            && window.get_workspace_mode() == "compare-view"
+                        {
+                            window.invoke_focus_compare_rows();
+                        }
                     }),
                 });
             }
@@ -6352,7 +6362,11 @@ pub fn run() -> anyhow::Result<()> {
                         &action_loading_mask_controller,
                         SyncMode::ProgrammaticInputs,
                     );
-                    window.invoke_focus_compare_rows();
+                    if !window.get_workspace_session_confirm_open()
+                        && window.get_workspace_mode() == "compare-view"
+                    {
+                        window.invoke_focus_compare_rows();
+                    }
                 }),
             });
         } else if source_index >= 0 {
@@ -6527,6 +6541,7 @@ pub fn run() -> anyhow::Result<()> {
         row_context_menu_controller.close();
         window.set_workspace_tab(0);
         if window.get_selected_row() == index
+            && !window.get_workspace_sessions_visible()
             && window.get_workspace_mode() == "file-view"
             && (window.get_diff_loaded() || window.get_diff_loading())
         {
@@ -6534,6 +6549,17 @@ pub fn run() -> anyhow::Result<()> {
         }
 
         row_bridge.dispatch(UiCommand::SelectRow(index));
+        sync_window_state_if_changed(
+            &window,
+            &row_bridge,
+            &row_cache,
+            Some(&row_context_menu_controller),
+            &row_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_session_confirm_open() {
+            return;
+        }
         row_bridge.dispatch(UiCommand::LoadSelectedDiff);
         sync_window_state_if_changed(
             &window,
@@ -6650,6 +6676,7 @@ pub fn run() -> anyhow::Result<()> {
         tree_file_context_menu_controller.close();
         window.set_workspace_tab(0);
         if window.get_selected_row() == index
+            && !window.get_workspace_sessions_visible()
             && window.get_workspace_mode() == "file-view"
             && (window.get_diff_loaded() || window.get_diff_loading())
         {
@@ -6657,6 +6684,17 @@ pub fn run() -> anyhow::Result<()> {
         }
 
         tree_file_bridge.dispatch(UiCommand::SelectRow(index));
+        sync_window_state_if_changed(
+            &window,
+            &tree_file_bridge,
+            &tree_file_cache,
+            Some(&tree_file_context_menu_controller),
+            &tree_file_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_session_confirm_open() {
+            return;
+        }
         tree_file_bridge.dispatch(UiCommand::LoadSelectedDiff);
         sync_window_state_if_changed(
             &window,
@@ -6769,13 +6807,13 @@ pub fn run() -> anyhow::Result<()> {
     let confirm_close_cache = Arc::clone(&sync_cache);
     let confirm_close_context_menu_controller = context_menu_controller.clone();
     let confirm_close_loading_mask_controller = loading_mask_controller.clone();
-    app.on_compare_tree_close_confirmed(move || {
+    app.on_workspace_session_confirmed(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         confirm_close_context_menu_controller.close();
-        confirm_close_bridge.dispatch(UiCommand::ConfirmCompareTreeSessionClose);
+        confirm_close_bridge.dispatch(UiCommand::ConfirmWorkspaceSessionAction);
         sync_window_state_if_changed(
             &window,
             &confirm_close_bridge,
@@ -6784,6 +6822,9 @@ pub fn run() -> anyhow::Result<()> {
             &confirm_close_loading_mask_controller,
             SyncMode::Passive,
         );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
     });
 
     let app_weak = app.as_weak();
@@ -6791,13 +6832,13 @@ pub fn run() -> anyhow::Result<()> {
     let cancel_close_cache = Arc::clone(&sync_cache);
     let cancel_close_context_menu_controller = context_menu_controller.clone();
     let cancel_close_loading_mask_controller = loading_mask_controller.clone();
-    app.on_compare_tree_close_cancelled(move || {
+    app.on_workspace_session_cancelled(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         cancel_close_context_menu_controller.close();
-        cancel_close_bridge.dispatch(UiCommand::CancelCompareTreeSessionClose);
+        cancel_close_bridge.dispatch(UiCommand::CancelWorkspaceSessionAction);
         sync_window_state_if_changed(
             &window,
             &cancel_close_bridge,

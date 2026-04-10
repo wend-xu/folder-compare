@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Phase 19D landed baseline)
+# Folder Compare Thread Context (Phase 19D fix-1 landed baseline)
 
 ## 目的
 
@@ -14,6 +14,7 @@
   - `Phase 19B fix-2` compare-tree MVP 收口并通过当前验收
   - `Phase 19C fix-1` Compare workspace 收边 + top-level sidebar hide / restore 已落地
   - `Phase 19D` outer workspace session tabs 已落地
+  - `Phase 19D fix-1` session reset semantics 已落地
 - 当前默认事实不再是“是否进入 `19C`”，而是“`19D` 已成为当前稳定 compare workspace baseline”。
 - 后续线程默认不要重开 `19B fix-*` 或把 `19C` / `19D` 重新当成 proposal；除非目标明确要求做 regression 或进入 `19E` 或更后阶段。
 - 当前必须继承的 navigator 事实已固定：
@@ -49,7 +50,13 @@
     - 唯一 `Compare Tree` session
     - compare-originated `File` sessions
   - Compare Tree tab 固定在 session strip 最左侧，且同一时刻只允许一个
-  - `Open in Compare View` 现在是创建/激活该唯一 Compare Tree tab，并重设 compare anchor
+  - Sidebar `Results / Navigator` 继续是全局结果浏览器：
+    - compare session 活跃时，从 Sidebar/Navigator 打开文件会先确认
+    - 确认后关闭当前 compare session，再进入标准 `File View`
+    - 不再偷偷打开 compare-originated file tab
+  - `Open in Compare View` 现在是创建/激活该唯一 Compare Tree tab；若 compare session 已存在，则视为 reset 当前 compare session
+    - 若当前存在 related compare file tabs，会先确认
+    - 确认后保留唯一 Compare Tree tab，重设 compare anchor，并清空全部 related compare file tabs
   - Compare Tree 中文件 leaf 会打开或复用外层 File tab；重复打开同一路径会切换到已有 tab
   - File tab 仍复用既有内层 `Diff / Analysis`，本轮未重构 File View 内容层
   - Compare Tree header 只保留 compare context + `Up one level`
@@ -62,14 +69,14 @@
 ## 快照（Snapshot）
 
 - 日期：`2026-04-10`（Asia/Shanghai）
-- 分支：`dev`
+- 分支：`dev-phase19D`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
   - `Phase 18` navigator baseline 已收口完成（含 `18C fix-1`）
   - `Phase 19A` compare workspace foundation 已落地
   - `Phase 19B fix-2` 已成为 accepted baseline：compare tree MVP、stable compare geometry、Hidden files 接入 Compare View 已通过当前验收
   - `Phase 19C fix-1` 已成为当前稳定 shell baseline：top-level sidebar hide / restore、轻量 top chrome、Compare workspace semantic lane 语言、Compare/File 头部语言继续统一，并补齐按钮宽度约束与 relation band 连片收边
-  - `Phase 19D` 已成为当前稳定 compare workspace baseline：外层 session tabs、唯一 Compare Tree tab、compare-originated File tabs、明确 compare-session close 语义
+  - `Phase 19D fix-1` 已成为当前稳定 compare workspace baseline：外层 session tabs、唯一 Compare Tree tab、compare-originated File tabs、明确 compare-session close / reset 语义、Sidebar/Navigator 与 compare session 的边界收口
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 当前线程已完成完整代码验证：
   - `cargo fmt --all`
@@ -80,6 +87,8 @@
   - Compare Tree -> File tab 打开与重复文件复用
   - Compare Tree / File tab 切换
   - Compare Tree tab 关闭确认与 compare-session 联动清理
+  - compare session 活跃时，Sidebar/Navigator 打开文件是否先确认并回到标准 File View
+  - `Open in Compare View` reset compare session 后，related file tabs 是否被一起清空
   - compare rerun / hidden-files / stale-selection 在 tab 模型下的稳定性
 - 字体链路后续收口阶段另已验证：
   - `cargo test -p fc-ui-slint`
@@ -187,6 +196,7 @@
     - 若干 compare-originated `File` sessions
   - `File` session 内 attached `Diff / Analysis` shell 继续保留
   - `Compare View` 当前实现目标已校正为 anchored compare tree surface
+  - Sidebar/Navigator 仍是标准 file-browsing 入口，而不是 compare session 子入口
   - tree 目录仍只 toggle，不接入 file-view selection
   - Compare Tree header 只保留 `Up one level` 与 compare context；session 切换不再由 header back button 承担
   - Compare View 已使用稳定 `Base / Relation / Target` 三列几何、轻量类型 glyph、Target 侧 disclosure 对称位、semantic lane background，以及相邻同 relation row 的动态连片
@@ -294,6 +304,8 @@
   - 重复文件打开是否复用已有 File tab
   - Compare Tree / File tab 切换
   - Compare Tree tab 关闭确认与 compare-session 联动清理
+  - compare session 活跃时 Sidebar/Navigator 打开文件是否确认后切回标准 File View
+  - `Open in Compare View` reset compare session 后 related File tabs 是否一起清空
   - File tab 关闭是否直接生效
   - compare rerun 后 expanded-path restore / pruning
   - status filter / hidden-files 在多层目录上的显示
@@ -308,7 +320,7 @@
 > 把 `Phase 18A + 18B + 18C` 已落地实现视为事实，而不是 proposal：`Results / Navigator` 已有 tree + flat 双视图；非搜索默认 mode 来自 `Settings -> Behavior -> Default view`；搜索非空强制 flat；tree logic 在 Rust presenter/state；目录节点只 toggle；文件 leaf 才进入右侧 file-view；tree / flat 切换会在目标视图 ensure-scroll 当前文件；flat results（搜索态或显式 flat）都有 `Locate and Open`；compare rerun 会 prune / restore expanded-path overrides。  
 > 把 `Phase 19A` 也视为已落地事实，而不是 proposal：Rust state 中已有 `workspace_mode`；`compare_focus_path` 已与 `selected_row / selected_relative_path` 分离；`compare_foundation` 已在 `fc-ui-slint` 中成为 compare 数据基础；当前迁移方向已明确为 `compare_foundation -> navigator / legacy file-view projection`。  
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
-> 把 `Phase 19C fix-1` 视为已成立 shell 基线，把 `Phase 19D` 视为已成立的 outer session-shell 基线：workspace 现在有一个固定左侧且唯一的 `Compare Tree` tab，以及若干 compare-originated `File` tabs；`Open in Compare View` 会创建或激活该 Compare Tree tab；Compare Tree 中文件 leaf 会打开或复用 File tab；session 切换依赖外层 tab strip 而不是 header back button。不要把当前事实写回成 “`19D` 仍是 proposal”。  
+> 把 `Phase 19C fix-1` 视为已成立 shell 基线，把 `Phase 19D fix-1` 视为已成立的 outer session-shell 基线：workspace 现在有一个固定左侧且唯一的 `Compare Tree` tab，以及若干 compare-originated `File` tabs；Sidebar/Navigator 仍是全局结果浏览器，compare session 活跃时从这里打开文件必须先确认并回到标准 File View；`Open in Compare View` 会创建或激活该 Compare Tree tab，并在 compare session 已存在时把它视为 reset 当前 compare session；Compare Tree 中文件 leaf 会打开或复用 File tab；session 切换依赖外层 tab strip 而不是 header back button。不要把当前事实写回成 “`19D` 仍是 proposal”。  
 > 当前默认下一入口不再是“是否进入 `19C` / `19D`”，而是明确判断是否真的需要进入 `19E` 或更后阶段；否则继续在 `19D` 稳定壳层内做回归修复。  
 > 当前不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `19E` 或更后阶段的 richer Compare View surface 写成已实现。
 
