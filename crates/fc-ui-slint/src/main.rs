@@ -3,6 +3,7 @@
 mod app;
 mod bridge;
 mod commands;
+mod compare_file;
 mod compare_foundation;
 mod compare_tree;
 mod context_menu;

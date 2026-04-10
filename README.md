@@ -40,10 +40,15 @@
   - 外层 workspace 现在是轻量 `session tabs -> session content`
   - 同一时刻只允许一个固定左侧的 `Compare Tree` tab
   - Compare Tree 中文件 leaf 会打开或复用 compare-originated `File` tabs
-  - `File` tab 内继续复用既有 attached `Diff / Analysis` shell
   - 关闭 Compare Tree tab 等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
   - `Results / Navigator` 继续是全局结果浏览器；compare session 活跃时，从这里打开文件会先确认并关闭当前 compare session，然后进入标准 `File View`
   - 显式 `Open in Compare View` 在 compare session 已存在时会被定义为 reset 当前 compare session；如仍有 related compare file tabs，会先确认并一起清空
+- `Phase 19E` 已落地并成为当前稳定 compare file-content baseline：
+  - 只改 compare-originated `File` tabs；标准 `Sidebar -> File View` 保持原有 `Diff / Analysis`
+  - compare-originated `File` tab 现在使用 dedicated `Compare File View`
+  - `Compare File View` 保留 `Back to Compare Tree`、roots / compare path / compare status context
+  - compare 文件内容采用单一纵向滚动 + Rust-owned side-by-side row projection
+  - 当前仍不做 horizontal scroll / sync scroll / merge actions / compare search
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -77,7 +82,8 @@
   - `Results / Navigator`
 - Workspace 当前稳定为：
   - 外层 `Session Tabs -> Session Content`
-  - 其中 `File` session 内继续是 `Tabs -> Header -> Content`
+  - 标准 `File` session 内继续是 `Tabs -> Header -> Content`
+  - compare-originated `File` session 使用 dedicated `Compare File View` surface
 - 当前外层 workspace foundation 也已进入 Rust state：
   - `sidebar_visible`
   - `workspace_sessions`
@@ -142,6 +148,9 @@
   - `Open in Compare View` 会创建或激活唯一的 `Compare Tree` tab；若 compare session 已存在，则它会 reset 当前 compare session，并把 compare anchor 对准当前目录 target
   - Compare Tree tab 固定在最左侧；不会创建第二个 compare session tab
   - Compare Tree 中文件 leaf 会打开或复用同一路径的 File tab
+  - compare-originated File tab 现在使用 dedicated `Compare File View`
+  - Compare File View 保留 `Back to Compare Tree`、compare roots / path / status context
+  - Compare File View 使用单一纵向 side-by-side 行投影，而不是双独立列表强同步
   - compare session reset 时，全部 related compare-originated `File` tabs 会被一起清空；当前不做复杂保留策略
   - File tab 默认可直接关闭，不弹确认
   - Compare Tree tab 关闭等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
@@ -299,16 +308,19 @@ cargo test --workspace
   - 外层 workspace session tabs 已落地
   - 当前只允许一个固定左侧的 `Compare Tree` session
   - Compare Tree 中文件 leaf 会打开或复用 compare-originated `File` tabs
-  - `File` tab 继续复用既有内层 `Diff / Analysis`
   - Compare session 的进入、切换、结束语义现在由外层 tab strip 承担
+- `Phase 19E` 当前额外事实：
+  - compare-originated `File` tab 现已升级为 dedicated `Compare File View`
+  - 标准 `Sidebar -> File View` 继续保留既有内层 `Diff / Analysis`
+  - Compare File View 使用单一纵向 side-by-side 行投影，并保留 `Back to Compare Tree`
 - 当前仍未实现：
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情
   - narrow-width minimum-usable behavior / horizontal-overflow plan
   - compare core widening
-  - true `File Compare View`
-  - 超出当前 shell closeout 的更深层 `Compare View / File View` 重构
-- 后续只有在目标明确时才进入 `19E` 或更后阶段；不要把 landed `19D` 重新写回 proposal。
+  - sync scroll / reset / recenter / richer compare interaction
+  - 超出当前 `19E` 的更深层 `Compare View / File View` 重构
+- 后续只有在目标明确时才进入 `19F` 或更后阶段；不要把 landed `19E` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

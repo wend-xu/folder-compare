@@ -30,6 +30,7 @@ const RESULTS_OPEN_IN_COMPARE_VIEW_ACTION_ID: &str = "results-open-in-compare-vi
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
+    import { CompareFileView } from "src/compare_file_view.slint";
     import { CompareView } from "src/compare_view.slint";
     import { NavigatorTree } from "src/navigator_tree.slint";
     import { UiPalette } from "src/ui_palette.slint";
@@ -1598,6 +1599,30 @@ slint::slint! {
         in property <[bool]> compare_row_is_expandable;
         in property <[bool]> compare_row_is_expanded;
         in property <int> compare_row_focused_index: -1;
+        in property <bool> compare_file_view_active: false;
+        in property <string> compare_file_summary_text;
+        in property <string> compare_file_warning_text;
+        in property <bool> compare_file_truncated: false;
+        in property <bool> compare_file_has_rows: false;
+        in property <string> compare_file_helper_text;
+        in property <string> compare_file_shell_state_label;
+        in property <string> compare_file_shell_state_tone;
+        in property <string> compare_file_shell_title_text;
+        in property <string> compare_file_shell_body_text;
+        in property <string> compare_file_shell_note_text;
+        in property <[string]> compare_file_row_kinds;
+        in property <[string]> compare_file_row_relation_labels;
+        in property <[string]> compare_file_row_relation_tones;
+        in property <[string]> compare_file_row_left_line_nos;
+        in property <[string]> compare_file_row_right_line_nos;
+        in property <[string]> compare_file_row_left_prefixes;
+        in property <[string]> compare_file_row_left_emphasis;
+        in property <[string]> compare_file_row_left_suffixes;
+        in property <[string]> compare_file_row_right_prefixes;
+        in property <[string]> compare_file_row_right_emphasis;
+        in property <[string]> compare_file_row_right_suffixes;
+        in property <[bool]> compare_file_row_left_padding;
+        in property <[bool]> compare_file_row_right_padding;
         in property <string> workspace_mode;
         in property <[string]> workspace_session_ids;
         in property <[string]> workspace_session_labels;
@@ -1761,6 +1786,7 @@ slint::slint! {
         property <length> diff_scrollbar_safe_inset: 18px;
         property <length> workbench_header_height: 66px;
         property <length> workbench_compare_context_header_height: 78px;
+        property <length> compare_file_header_height: 82px;
         property <length> compare_workspace_header_height: 56px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
@@ -1847,6 +1873,7 @@ slint::slint! {
         callback compare_view_row_toggle_requested(string);
         callback compare_view_row_activated(string);
         callback compare_view_row_context_menu_requested(string);
+        callback compare_file_back_requested();
         callback file_view_diff_requested();
         callback file_view_analysis_requested();
         callback workspace_session_confirmed();
@@ -2886,7 +2913,7 @@ slint::slint! {
                                 }
 
                                 workbench_panel := Rectangle {
-                                    visible: root.workspace_mode == "file-view";
+                                    visible: root.workspace_mode == "file-view" && !root.compare_file_view_active;
                                     x: 0px;
                                     y: root.workspace_session_strip_height + workbench_host.panel_top;
                                     width: parent.width;
@@ -3806,7 +3833,7 @@ slint::slint! {
                                 }
 
                                 Rectangle {
-                                    visible: root.workspace_mode == "file-view";
+                                    visible: root.workspace_mode == "file-view" && !root.compare_file_view_active;
                                     x: workbench_host.panel_corner_radius;
                                     y: root.workspace_session_strip_height + workbench_host.panel_top;
                                     width: max(0px, parent.width - workbench_host.panel_corner_radius * 2);
@@ -3815,7 +3842,7 @@ slint::slint! {
                                 }
 
                                 HorizontalLayout {
-                                    visible: root.workspace_mode == "file-view";
+                                    visible: root.workspace_mode == "file-view" && !root.compare_file_view_active;
                                     x: 0px;
                                     y: root.workspace_session_strip_height;
                                     width: parent.width;
@@ -3857,6 +3884,270 @@ slint::slint! {
                                         font-size: 12px;
                                         vertical-alignment: center;
                                         overflow: elide;
+                                    }
+                                }
+
+                                compare_file_surface := Rectangle {
+                                    visible: root.workspace_mode == "file-view" && root.compare_file_view_active;
+                                    x: 0px;
+                                    y: root.workspace_session_strip_height;
+                                    width: parent.width;
+                                    height: max(0px, parent.height - root.workspace_session_strip_height);
+                                    background: transparent;
+
+                                    Rectangle {
+                                        x: 0px;
+                                        y: 0px;
+                                        width: parent.width;
+                                        height: parent.height;
+                                        border-width: 1px;
+                                        border-color: workbench_host.panel_border;
+                                        border-radius: workbench_host.panel_corner_radius;
+                                        background: #fcfdff;
+                                        clip: true;
+
+                                        VerticalLayout {
+                                            padding: 0px;
+                                            spacing: 0px;
+
+                                            Rectangle {
+                                                height: root.compare_file_header_height;
+                                                background: #fafcfe;
+
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #e1e8f0;
+                                                }
+
+                                                VerticalLayout {
+                                                    padding-left: 10px;
+                                                    padding-right: 10px;
+                                                    padding-top: 9px;
+                                                    padding-bottom: 9px;
+                                                    spacing: 6px;
+
+                                                    Text {
+                                                        text: root.compare_root_pair_text;
+                                                        color: #6f7f90;
+                                                        font-size: 11px;
+                                                        horizontal-stretch: 1;
+                                                        overflow: elide;
+                                                    }
+
+                                                    Text {
+                                                        text: root.file_view_title_text;
+                                                        color: root.file_view_title_text == "No file selected" ? #607286 : #294b6b;
+                                                        font-size: 16px;
+                                                        font-weight: 600;
+                                                        horizontal-stretch: 1;
+                                                        overflow: elide;
+                                                    }
+
+                                                    HorizontalLayout {
+                                                        spacing: 8px;
+
+                                                        CompactToolbarButton {
+                                                            label: "Back to Compare Tree";
+                                                            button_width: 152px;
+                                                            enabled: root.can_return_to_compare_view;
+                                                            tapped => {
+                                                                root.compare_file_back_requested();
+                                                            }
+                                                        }
+
+                                                        StatusPill {
+                                                            label: "Compare File";
+                                                            tone: "neutral";
+                                                        }
+
+                                                        if root.file_view_compare_status_label != "Unavailable" : StatusPill {
+                                                            label: root.file_view_compare_status_label;
+                                                            tone: root.file_view_compare_status_tone;
+                                                        }
+
+                                                        Text {
+                                                            text: root.file_view_path_context_text;
+                                                            color: #617285;
+                                                            font-size: 12px;
+                                                            vertical-alignment: center;
+                                                            horizontal-stretch: 1;
+                                                            overflow: elide;
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                height: root.workbench_helper_strip_height;
+                                                background: #f5f8fc;
+
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #dbe4ef;
+                                                }
+
+                                                HorizontalLayout {
+                                                    padding: 7px;
+                                                    spacing: 8px;
+
+                                                    Text {
+                                                        text: root.compare_file_helper_text;
+                                                        color: #617285;
+                                                        font-size: 12px;
+                                                        vertical-alignment: center;
+                                                        horizontal-stretch: 1;
+                                                        overflow: elide;
+                                                    }
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                height: 24px;
+                                                background: #fafcfe;
+
+                                                Rectangle {
+                                                    x: 0px;
+                                                    y: parent.height - 1px;
+                                                    width: parent.width;
+                                                    height: 1px;
+                                                    background: #e1e8f0;
+                                                }
+
+                                                HorizontalLayout {
+                                                    padding: 0px;
+                                                    spacing: 0px;
+
+                                                    Rectangle {
+                                                        width: 48px;
+                                                        background: #f7f9fc;
+
+                                                        Text {
+                                                            x: 0px;
+                                                            width: parent.width - 8px;
+                                                            height: parent.height;
+                                                            text: "Line";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
+                                                            horizontal-alignment: right;
+                                                            vertical-alignment: center;
+                                                            overflow: elide;
+                                                        }
+                                                    }
+
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                        background: transparent;
+
+                                                        Text {
+                                                            x: 8px;
+                                                            width: max(0px, parent.width - 16px);
+                                                            height: parent.height;
+                                                            text: "Base";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
+                                                            vertical-alignment: center;
+                                                            overflow: elide;
+                                                        }
+                                                    }
+
+                                                    Rectangle {
+                                                        width: 40px;
+                                                        background: transparent;
+
+                                                        Text {
+                                                            width: parent.width;
+                                                            height: parent.height;
+                                                            text: "Rel";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
+                                                            horizontal-alignment: center;
+                                                            vertical-alignment: center;
+                                                            overflow: elide;
+                                                        }
+                                                    }
+
+                                                    Rectangle {
+                                                        width: 48px;
+                                                        background: #f7f9fc;
+
+                                                        Text {
+                                                            x: 8px;
+                                                            width: parent.width - 8px;
+                                                            height: parent.height;
+                                                            text: "Line";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
+                                                            horizontal-alignment: left;
+                                                            vertical-alignment: center;
+                                                            overflow: elide;
+                                                        }
+                                                    }
+
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                        background: transparent;
+
+                                                        Text {
+                                                            x: 8px;
+                                                            width: max(0px, parent.width - 16px);
+                                                            height: parent.height;
+                                                            text: "Target";
+                                                            color: #6a7c8f;
+                                                            font-size: 11px;
+                                                            font-weight: 600;
+                                                            vertical-alignment: center;
+                                                            overflow: elide;
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            if root.compare_file_has_rows : Rectangle {
+                                                vertical-stretch: 1;
+                                                background: #ffffff;
+                                                clip: true;
+
+                                                CompareFileView {
+                                                    x: 0px;
+                                                    y: 0px;
+                                                    width: parent.width;
+                                                    height: parent.height;
+                                                    row_kinds: root.compare_file_row_kinds;
+                                                    row_relation_labels: root.compare_file_row_relation_labels;
+                                                    row_relation_tones: root.compare_file_row_relation_tones;
+                                                    row_left_line_nos: root.compare_file_row_left_line_nos;
+                                                    row_right_line_nos: root.compare_file_row_right_line_nos;
+                                                    row_left_prefixes: root.compare_file_row_left_prefixes;
+                                                    row_left_emphasis: root.compare_file_row_left_emphasis;
+                                                    row_left_suffixes: root.compare_file_row_left_suffixes;
+                                                    row_right_prefixes: root.compare_file_row_right_prefixes;
+                                                    row_right_emphasis: root.compare_file_row_right_emphasis;
+                                                    row_right_suffixes: root.compare_file_row_right_suffixes;
+                                                    row_left_padding: root.compare_file_row_left_padding;
+                                                    row_right_padding: root.compare_file_row_right_padding;
+                                                }
+                                            }
+
+                                            if !root.compare_file_has_rows : DiffStateShell {
+                                                vertical-stretch: 1;
+                                                embedded: true;
+                                                state_label: root.compare_file_shell_state_label;
+                                                tone: root.compare_file_shell_state_tone;
+                                                title: root.compare_file_shell_title_text;
+                                                body: root.compare_file_shell_body_text;
+                                                note: root.compare_file_shell_note_text;
+                                            }
+                                        }
                                     }
                                 }
 
@@ -5226,6 +5517,19 @@ fn should_refresh_workspace_session_models(
     }
 }
 
+fn should_refresh_compare_file_models(
+    last_state: Option<&AppState>,
+    next_state: &AppState,
+) -> bool {
+    match last_state {
+        None => true,
+        Some(last) => {
+            last.selected_compare_file != next_state.selected_compare_file
+                || last.compare_file_view_active() != next_state.compare_file_view_active()
+        }
+    }
+}
+
 fn should_apply_compare_scroll_request(
     last_state: Option<&AppState>,
     next_state: &AppState,
@@ -5288,6 +5592,20 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_compare_row_is_directories(Rc::new(VecModel::<bool>::default()).into());
     window.set_compare_row_is_expandable(Rc::new(VecModel::<bool>::default()).into());
     window.set_compare_row_is_expanded(Rc::new(VecModel::<bool>::default()).into());
+    window.set_compare_file_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
+    window
+        .set_compare_file_row_relation_labels(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_relation_tones(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_left_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_right_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_left_prefixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_left_emphasis(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_left_suffixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_right_prefixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_right_emphasis(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_right_suffixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_left_padding(Rc::new(VecModel::<bool>::default()).into());
+    window.set_compare_file_row_right_padding(Rc::new(VecModel::<bool>::default()).into());
     window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_old_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_diff_new_line_nos(Rc::new(VecModel::<SharedString>::default()).into());
@@ -5301,6 +5619,28 @@ fn replace_model_contents<T: Clone + 'static>(model: ModelRc<T>, next_rows: Vec<
         .downcast_ref::<VecModel<T>>()
         .unwrap_or_else(|| panic!("{name} must be initialized as VecModel"));
     vec_model.set_vec(next_rows);
+}
+
+fn compare_file_segment_slots(
+    segments: &[crate::view_models::CompareFileTextSegmentViewModel],
+) -> (String, String, String) {
+    let mut prefix = String::new();
+    let mut emphasis = String::new();
+    let mut suffix = String::new();
+    let mut seen_emphasis = false;
+
+    for segment in segments {
+        if segment.tone == "emphasis" {
+            emphasis.push_str(&segment.text);
+            seen_emphasis = true;
+        } else if seen_emphasis {
+            suffix.push_str(&segment.text);
+        } else {
+            prefix.push_str(&segment.text);
+        }
+    }
+
+    (prefix, emphasis, suffix)
 }
 
 fn sync_navigator_scroll_requests(
@@ -5408,6 +5748,17 @@ fn sync_window_state(
             .and_then(|index| i32::try_from(index).ok())
             .unwrap_or(-1),
     );
+    window.set_compare_file_view_active(state.compare_file_view_active());
+    window.set_compare_file_summary_text(state.compare_file_summary_text().into());
+    window.set_compare_file_warning_text(state.compare_file_warning_text().into());
+    window.set_compare_file_truncated(state.compare_file_truncated());
+    window.set_compare_file_has_rows(state.compare_file_has_rows());
+    window.set_compare_file_helper_text(state.compare_file_helper_text().into());
+    window.set_compare_file_shell_state_label(state.compare_file_shell_state_label().into());
+    window.set_compare_file_shell_state_tone(state.compare_file_shell_state_tone().into());
+    window.set_compare_file_shell_title_text(state.compare_file_shell_title_text().into());
+    window.set_compare_file_shell_body_text(state.compare_file_shell_body_text().into());
+    window.set_compare_file_shell_note_text(state.compare_file_shell_note_text().into());
     window.set_workspace_tab(state.file_view_mode_tab_index());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
@@ -5854,6 +6205,139 @@ fn sync_window_state(
             window.get_compare_row_is_expanded(),
             compare_row_is_expanded,
             "compare_row_is_expanded",
+        );
+    }
+
+    if should_refresh_compare_file_models(last_state, state) {
+        let compare_file_rows = state.compare_file_row_projections();
+        let compare_file_row_kinds = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(row.row_kind.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_kinds(),
+            compare_file_row_kinds,
+            "compare_file_row_kinds",
+        );
+        let compare_file_row_relation_labels = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(row.relation_label.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_relation_labels(),
+            compare_file_row_relation_labels,
+            "compare_file_row_relation_labels",
+        );
+        let compare_file_row_relation_tones = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(row.relation_tone.clone()))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_relation_tones(),
+            compare_file_row_relation_tones,
+            "compare_file_row_relation_tones",
+        );
+        let compare_file_row_left_line_nos = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    row.left_line_no
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_line_nos(),
+            compare_file_row_left_line_nos,
+            "compare_file_row_left_line_nos",
+        );
+        let compare_file_row_right_line_nos = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    row.right_line_no
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_line_nos(),
+            compare_file_row_right_line_nos,
+            "compare_file_row_right_line_nos",
+        );
+        let compare_file_row_left_prefixes = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(compare_file_segment_slots(&row.left_segments).0))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_prefixes(),
+            compare_file_row_left_prefixes,
+            "compare_file_row_left_prefixes",
+        );
+        let compare_file_row_left_emphasis = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(compare_file_segment_slots(&row.left_segments).1))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_emphasis(),
+            compare_file_row_left_emphasis,
+            "compare_file_row_left_emphasis",
+        );
+        let compare_file_row_left_suffixes = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(compare_file_segment_slots(&row.left_segments).2))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_suffixes(),
+            compare_file_row_left_suffixes,
+            "compare_file_row_left_suffixes",
+        );
+        let compare_file_row_right_prefixes = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(compare_file_segment_slots(&row.right_segments).0))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_prefixes(),
+            compare_file_row_right_prefixes,
+            "compare_file_row_right_prefixes",
+        );
+        let compare_file_row_right_emphasis = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(compare_file_segment_slots(&row.right_segments).1))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_emphasis(),
+            compare_file_row_right_emphasis,
+            "compare_file_row_right_emphasis",
+        );
+        let compare_file_row_right_suffixes = compare_file_rows
+            .iter()
+            .map(|row| SharedString::from(compare_file_segment_slots(&row.right_segments).2))
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_suffixes(),
+            compare_file_row_right_suffixes,
+            "compare_file_row_right_suffixes",
+        );
+        let compare_file_row_left_padding = compare_file_rows
+            .iter()
+            .map(|row| row.left_padding)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_padding(),
+            compare_file_row_left_padding,
+            "compare_file_row_left_padding",
+        );
+        let compare_file_row_right_padding = compare_file_rows
+            .iter()
+            .map(|row| row.right_padding)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_padding(),
+            compare_file_row_right_padding,
+            "compare_file_row_right_padding",
         );
     }
 
@@ -6914,6 +7398,33 @@ pub fn run() -> anyhow::Result<()> {
             SyncMode::Passive,
         );
         window.invoke_focus_compare_rows();
+    });
+
+    let app_weak = app.as_weak();
+    let compare_file_back_bridge = bridge.clone();
+    let compare_file_back_cache = Arc::clone(&sync_cache);
+    let compare_file_back_context_menu_controller = context_menu_controller.clone();
+    let compare_file_back_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_file_back_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_file_back_context_menu_controller.close();
+        compare_file_back_bridge.dispatch(UiCommand::SelectWorkspaceSession(
+            "compare-tree".to_string(),
+        ));
+        sync_window_state_if_changed(
+            &window,
+            &compare_file_back_bridge,
+            &compare_file_back_cache,
+            Some(&compare_file_back_context_menu_controller),
+            &compare_file_back_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
     });
 
     let app_weak = app.as_weak();

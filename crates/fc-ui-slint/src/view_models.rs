@@ -40,6 +40,59 @@ pub struct CompareResultViewModel {
     pub truncated: bool,
 }
 
+/// One inline segment inside one compare-file content line.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CompareFileTextSegmentViewModel {
+    /// Visible text content for this segment.
+    pub text: String,
+    /// Semantic tone token used for restrained inline emphasis.
+    pub tone: String,
+}
+
+/// One side-by-side compare row rendered inside Compare File View.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CompareFileRowViewModel {
+    /// Row kind token (`context`, `modified`, `left-only`, `right-only`).
+    pub row_kind: String,
+    /// Restrained relation label rendered in the middle lane.
+    pub relation_label: String,
+    /// Relation tone token for lane/background styling.
+    pub relation_tone: String,
+    /// Left/base line number when present.
+    pub left_line_no: Option<usize>,
+    /// Right/target line number when present.
+    pub right_line_no: Option<usize>,
+    /// Full left/base line text.
+    pub left_text: String,
+    /// Full right/target line text.
+    pub right_text: String,
+    /// Structured left/base inline segments.
+    pub left_segments: Vec<CompareFileTextSegmentViewModel>,
+    /// Structured right/target inline segments.
+    pub right_segments: Vec<CompareFileTextSegmentViewModel>,
+    /// Whether the left/base side is only padding for alignment.
+    pub left_padding: bool,
+    /// Whether the right/target side is only padding for alignment.
+    pub right_padding: bool,
+    /// Whether this row remains a meaningful compare row for focus/copy affordances.
+    pub focusable: bool,
+}
+
+/// Dedicated compare-file payload for compare-originated file tabs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CompareFilePanelViewModel {
+    /// Relative path currently rendered inside Compare File View.
+    pub relative_path: String,
+    /// Compact compare summary for helper/header strips.
+    pub summary_text: String,
+    /// Ordered visible compare rows.
+    pub rows: Vec<CompareFileRowViewModel>,
+    /// Optional warning emitted while building the compare-file payload.
+    pub warning: Option<String>,
+    /// Whether the underlying compare payload was truncated.
+    pub truncated: bool,
+}
+
 /// Detailed diff panel payload for one selected row.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DiffPanelViewModel {

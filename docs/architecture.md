@@ -1,12 +1,13 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2 + Phase 19C fix-1 Shell Closeout + Phase 19D Workspace Session Tabs + Phase 19D fix-1 Session Reset Semantics)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2 + Phase 19C fix-1 Shell Closeout + Phase 19D Workspace Session Tabs + Phase 19D fix-1 Session Reset Semantics + Phase 19E True File Compare View MVP)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation, the accepted `Phase 19B fix-2` compare-tree MVP, the landed `Phase 19C fix-1` shell closeout, the landed `Phase 19D` outer workspace session-tab layer, and the landed `Phase 19D fix-1` session reset semantics
+  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation, the accepted `Phase 19B fix-2` compare-tree MVP, the landed `Phase 19C fix-1` shell closeout, the landed `Phase 19D` outer workspace session-tab layer, the landed `Phase 19D fix-1` session reset semantics, and the landed `Phase 19E` dedicated compare-file renderer MVP
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
-- `Phase 19D` is now the current stable compare-workspace session-shell baseline.
+- `Phase 19E` is now the current stable compare-workspace file-session baseline.
+- `Phase 19D fix-1` remains the inherited session-shell/reset-semantics baseline underneath `19E`.
 - `Phase 19C fix-1` remains the inherited shell/language closeout inside that `19D` session shell.
 - `Phase 19B fix-2` remains the inherited compare-tree MVP foundation inside that `19C/19D` shell.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
@@ -109,7 +110,7 @@
   - tree-internal search / content search / richer match-span semantics
   - compare-core contract widening
 
-## Current Phase 19 Status (`19A` landed, `19B fix-2` accepted, `19C fix-1` landed, `19D fix-1` landed)
+## Current Phase 19 Status (`19A` landed, `19B fix-2` accepted, `19C fix-1` landed, `19D fix-1` landed, `19E` landed)
 
 - `Phase 19A` foundation work is landed.
 - `Phase 19B fix-2` is now the accepted compare-tree MVP baseline.
@@ -142,11 +143,33 @@
     - confirming keeps the single `Compare Tree` tab, retargets its compare anchor, and clears all related compare-originated file tabs together
   - clicking a file leaf inside Compare View now opens or reuses one file tab for that relative path instead of depending on header back navigation
   - Compare Tree header now keeps only compare context plus `Up one level`
-  - compare-originated file tabs keep the existing inner `Diff / Analysis` shell unchanged
   - closing the Compare Tree tab now means ending the current compare session:
     - when related file tabs exist, UI asks for confirmation
     - confirming closes the compare tab and all derived file tabs together
   - closing a file tab is immediate and does not prompt
+- `Phase 19E` dedicated compare-file renderer MVP is now landed:
+  - only compare-originated `File` tabs changed; standard `Sidebar -> File View` still reuses the existing attached `Diff / Analysis` shell unchanged
+  - compare-originated `File` tabs no longer use the old inner `Diff / Analysis` shell as their main content structure
+  - compare-originated `File` tabs now render one dedicated `Compare File View` surface with:
+    - `Back to Compare Tree`
+    - root-pair context
+    - compare path / file status context
+    - one shared vertical row projection
+    - side-by-side `left gutter | left content | relation lane | right gutter | right content`
+  - compare-file rows are now projected in Rust inside `fc-ui-slint` rather than parsed ad hoc in Slint:
+    - row kind / relation tone
+    - left/right line numbers
+    - left/right text
+    - left/right inline emphasis segments
+    - explicit padding-side metadata
+  - current `19E` renderer intentionally stays MVP-scoped:
+    - no horizontal scroll
+    - no sync scroll
+    - no recenter/reset interaction
+    - no minimap
+    - no merge/apply actions
+    - no compare search
+  - current long-file rendering strategy remains one `ListView`/single-scroll projection rather than dual independent synchronized lists
 - Compare workspace target anchoring is now split explicitly:
   - `compare_focus_path` is the compare-side anchor for current Compare View navigation
   - `compare_row_focus_path` is the visible compare-tree row focus inside the current Compare View target
@@ -231,8 +254,12 @@
   - one fixed-left `Compare Tree` tab when a compare session is active
   - zero or more compare-originated `File` tabs
 - compare-originated `File` tabs are child sessions of the current Compare Tree session and are cleared together when that compare session is reset or closed.
-- `File` sessions still contain `Tabs -> Header -> Content`.
-- Inner tabs remain `Diff` and `Analysis`; they are not flattened into the outer session strip.
+- standard `File` sessions still contain `Tabs -> Header -> Content`.
+- standard inner tabs remain `Diff` and `Analysis`; they are not flattened into the outer session strip.
+- compare-originated `File` sessions are now explicitly different from standard `File` sessions:
+  - they keep the same outer session-tab contract
+  - they render a dedicated `Compare File View` surface rather than the legacy inner `Diff / Analysis` shell
+  - they keep explicit compare-session return/context affordances (`Back to Compare Tree`, roots, compare path, compare status)
 - The outer workspace wrapper stays visually subordinate to the inner workbench host/panel.
 - Rust state now owns outer workspace product/session state:
   - `workspace_sessions`
@@ -262,14 +289,14 @@
   - shell/content body
 - `DiffStateShell` remains the shared embedded state surface for non-ready rendering.
 - Embedded shell mode stays low-noise and subordinate to the workbench instead of reading as a second heavy card.
-- `Diff` keeps the ready-state diff table, and `Analysis` keeps the structured review-conclusion surface, but both reuse the same surrounding shell contract.
-- `Phase 19D` keeps compare-context header support without redoing the content layer:
-  - compare-originated file tabs reuse the compare-context header lane, but return/navigation now happens through the outer session tabs rather than a header back action
+- `Diff` keeps the ready-state diff table, and `Analysis` keeps the structured review-conclusion surface, but both reuse the same surrounding shell contract for standard File View only.
+- `Phase 19E` now gives compare-originated file tabs their own file-content layer:
+  - dedicated compare-context header lane with explicit `Back to Compare Tree`
   - root-pair context
   - emphasized current filename
   - compact compare-status badge
   - compare-path context
-  - stable header height/layout without reopening the inner content structure
+  - stable single-scroll side-by-side compare surface below that header
 
 ## Stable UI / Interaction Contract
 
@@ -673,22 +700,20 @@
   - Compare Tree file leaves now open or reuse outer file tabs keyed by relative path
   - Compare Tree header now keeps only compare context plus `Up one level`
   - closing the Compare Tree tab now means ending the current compare session, with confirmation when derived file tabs still exist
-  - compare-originated file tabs keep the inherited inner `Diff / Analysis` shell unchanged
-- Explicitly not part of landed `19D`:
+  - compare-originated file tabs now render dedicated `Compare File View` content with compare-context return/header semantics preserved
+- Explicitly not part of landed `19E`:
   - multi-compare-session concurrency
-  - true `File Compare View` implementation
   - sync scroll / reset / recenter
   - richer compare actions
   - compare search
   - horizontal-overflow / horizontal-scrolling redesign
   - `fc-core` widening
-- Candidate follow-on split after `19D`:
-  - `19E`: true `File Compare View` MVP
-  - later: advanced compare interaction / overflow / horizontal-scrolling layer
+- Candidate follow-on split after `19E`:
+  - `19F`: advanced compare interaction / overflow / horizontal-scrolling layer
 
 ## Next-Stage Activation
 
-- Default baseline is now landed `Phase 19D`.
+- Default baseline is now landed `Phase 19E`.
 - `Phase 19A` through `19C fix-1` remain inherited inside that `19D` baseline:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`

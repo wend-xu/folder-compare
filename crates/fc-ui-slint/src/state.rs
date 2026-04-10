@@ -12,7 +12,10 @@ use crate::navigator_tree::{
     NavigatorTreeProjection, NavigatorTreeRowProjection, navigator_tree_reveal_targets,
     navigator_tree_toggle_target, project_navigator_tree_rows,
 };
-use crate::view_models::{AnalysisResultViewModel, CompareEntryRowViewModel, DiffPanelViewModel};
+use crate::view_models::{
+    AnalysisResultViewModel, CompareEntryRowViewModel, CompareFilePanelViewModel,
+    CompareFileRowViewModel, DiffPanelViewModel,
+};
 use fc_ai::{AiConfig, AiProviderKind};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -68,6 +71,23 @@ pub enum AnalysisPanelState {
     Error,
     /// Structured analysis result is ready.
     Success,
+}
+
+/// Compare File View shell state for compare-originated file tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareFileShellState {
+    /// No row selected in File View.
+    NoSelection,
+    /// Previously opened compare file is no longer active in current results.
+    StaleSelection,
+    /// Compare File View content is loading.
+    Loading,
+    /// Side-by-side compare rows are ready.
+    Ready,
+    /// Selection is valid but Compare File View cannot render content.
+    Unavailable,
+    /// Loading failed due to runtime error.
+    Error,
 }
 
 /// One filtered Results / Navigator row with presentation-friendly fields.
@@ -266,6 +286,8 @@ pub struct FileSession {
     pub diff_error_message: Option<String>,
     /// Structured detailed diff panel payload.
     pub selected_diff: Option<DiffPanelViewModel>,
+    /// Dedicated Compare File View payload for compare-originated file tabs.
+    pub selected_compare_file: Option<CompareFilePanelViewModel>,
     /// Optional warning from detailed diff result.
     pub diff_warning: Option<String>,
     /// Whether selected detailed diff is truncated.
@@ -299,6 +321,7 @@ impl FileSession {
             diff_loading: false,
             diff_error_message: None,
             selected_diff: None,
+            selected_compare_file: None,
             diff_warning: None,
             diff_truncated: false,
             analysis_available: false,
@@ -435,6 +458,8 @@ pub struct AppState {
     pub selected_relative_path: Option<String>,
     /// Structured detailed diff panel payload.
     pub selected_diff: Option<DiffPanelViewModel>,
+    /// Dedicated Compare File View payload for compare-originated file tabs.
+    pub selected_compare_file: Option<CompareFilePanelViewModel>,
     /// Optional warning from detailed diff result.
     pub diff_warning: Option<String>,
     /// Whether selected detailed diff is truncated.
@@ -510,6 +535,7 @@ impl Default for AppState {
             diff_error_message: None,
             selected_relative_path: None,
             selected_diff: None,
+            selected_compare_file: None,
             diff_warning: None,
             diff_truncated: false,
             analysis_available: false,
@@ -638,6 +664,7 @@ impl AppState {
         let diff_loading = self.diff_loading;
         let diff_error_message = self.diff_error_message.clone();
         let selected_diff = self.selected_diff.clone();
+        let selected_compare_file = self.selected_compare_file.clone();
         let diff_warning = self.diff_warning.clone();
         let diff_truncated = self.diff_truncated;
         let analysis_available = self.analysis_available;
@@ -665,6 +692,7 @@ impl AppState {
             session.diff_loading = diff_loading;
             session.diff_error_message = diff_error_message;
             session.selected_diff = selected_diff;
+            session.selected_compare_file = selected_compare_file;
             session.diff_warning = diff_warning;
             session.diff_truncated = diff_truncated;
             session.analysis_available = analysis_available;
@@ -686,6 +714,7 @@ impl AppState {
         self.diff_loading = session.diff_loading;
         self.diff_error_message = session.diff_error_message;
         self.selected_diff = session.selected_diff;
+        self.selected_compare_file = session.selected_compare_file;
         self.diff_warning = session.diff_warning;
         self.diff_truncated = session.diff_truncated;
         self.analysis_available = session.analysis_available;
@@ -699,6 +728,10 @@ impl AppState {
 
     pub fn has_compare_tree_session(&self) -> bool {
         self.compare_tree_session.is_some()
+    }
+
+    pub fn active_file_session_uses_compare_file_view(&self) -> bool {
+        self.compare_tree_session.is_some() && self.active_file_session_index().is_some()
     }
 
     pub fn active_workspace_session_index(&self) -> i32 {
@@ -841,6 +874,7 @@ impl AppState {
         if let Some(index) = self.file_session_index_for_relative_path(normalized) {
             let has_cached_view_state = self.file_sessions.get(index).is_some_and(|session| {
                 session.selected_diff.is_some()
+                    || session.selected_compare_file.is_some()
                     || session.diff_error_message.is_some()
                     || session.analysis_result.is_some()
                     || session.analysis_error_message.is_some()
@@ -919,6 +953,7 @@ impl AppState {
         self.selected_row = None;
         self.selected_relative_path = None;
         self.clear_diff_panel();
+        self.clear_compare_file_panel();
         self.analysis_available = false;
         self.clear_analysis_panel();
         self.analysis_hint = Some("Select one changed text file to analyze.".to_string());
@@ -1238,6 +1273,7 @@ impl AppState {
                 session.diff_loading = false;
                 session.diff_error_message = None;
                 session.selected_diff = None;
+                session.selected_compare_file = None;
                 session.diff_warning = None;
                 session.diff_truncated = false;
                 session.analysis_available = false;
@@ -1276,6 +1312,7 @@ impl AppState {
             session.diff_loading = false;
             session.diff_error_message = None;
             session.selected_diff = None;
+            session.selected_compare_file = None;
             session.diff_warning = None;
             session.diff_truncated = false;
             session.analysis_available = false;
@@ -1301,7 +1338,11 @@ impl AppState {
             self.active_workspace_session_kind(),
             Some(WorkspaceSessionKind::File)
         ) && self.selected_row.is_some()
-            && self.selected_diff.is_none()
+            && if self.active_file_session_uses_compare_file_view() {
+                self.selected_compare_file.is_none()
+            } else {
+                self.selected_diff.is_none()
+            }
             && !self.diff_loading
             && self.diff_error_message.is_none()
     }
@@ -2056,6 +2097,184 @@ impl AppState {
         self.can_return_to_compare_view
     }
 
+    /// Returns true when current file session should render dedicated Compare File View.
+    pub fn compare_file_view_active(&self) -> bool {
+        self.active_file_session_uses_compare_file_view()
+    }
+
+    /// Returns dedicated Compare File View shell state.
+    pub fn compare_file_shell_state(&self) -> CompareFileShellState {
+        if self.selected_row.is_none() {
+            return if self.has_stale_selection() {
+                CompareFileShellState::StaleSelection
+            } else {
+                CompareFileShellState::NoSelection
+            };
+        }
+        if self.diff_loading {
+            return CompareFileShellState::Loading;
+        }
+        if self
+            .diff_error_message
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return CompareFileShellState::Error;
+        }
+        match self.selected_compare_file.as_ref() {
+            Some(panel) if !panel.rows.is_empty() => CompareFileShellState::Ready,
+            Some(_) => CompareFileShellState::Unavailable,
+            None => CompareFileShellState::Unavailable,
+        }
+    }
+
+    pub fn compare_file_shell_state_label(&self) -> String {
+        match self.compare_file_shell_state() {
+            CompareFileShellState::NoSelection => "No Selection".to_string(),
+            CompareFileShellState::StaleSelection => "Stale".to_string(),
+            CompareFileShellState::Loading => "Loading".to_string(),
+            CompareFileShellState::Ready => "Compare Ready".to_string(),
+            CompareFileShellState::Unavailable => "Unavailable".to_string(),
+            CompareFileShellState::Error => "Load Failed".to_string(),
+        }
+    }
+
+    pub fn compare_file_shell_state_tone(&self) -> String {
+        match self.compare_file_shell_state() {
+            CompareFileShellState::NoSelection => "neutral".to_string(),
+            CompareFileShellState::StaleSelection => "warn".to_string(),
+            CompareFileShellState::Loading => "info".to_string(),
+            CompareFileShellState::Ready => "success".to_string(),
+            CompareFileShellState::Unavailable => "warn".to_string(),
+            CompareFileShellState::Error => "error".to_string(),
+        }
+    }
+
+    pub fn compare_file_shell_title_text(&self) -> String {
+        match self.compare_file_shell_state() {
+            CompareFileShellState::NoSelection => "No compare file selected".to_string(),
+            CompareFileShellState::StaleSelection => "Compare file no longer active".to_string(),
+            CompareFileShellState::Loading => "Loading file comparison".to_string(),
+            CompareFileShellState::Ready => "Side-by-side comparison ready".to_string(),
+            CompareFileShellState::Unavailable => "Compare File View unavailable".to_string(),
+            CompareFileShellState::Error => "Failed to load file comparison".to_string(),
+        }
+    }
+
+    pub fn compare_file_shell_body_text(&self) -> String {
+        match self.compare_file_shell_state() {
+            CompareFileShellState::NoSelection => {
+                "Choose one file from Compare Tree to open the dedicated Compare File View."
+                    .to_string()
+            }
+            CompareFileShellState::StaleSelection => {
+                "The previously opened compare file is no longer part of the current visible Results / Navigator set."
+                    .to_string()
+            }
+            CompareFileShellState::Loading => {
+                "Projecting aligned rows, line numbers, and inline compare highlights."
+                    .to_string()
+            }
+            CompareFileShellState::Ready => {
+                "Aligned base/target rows are ready for side-by-side reading.".to_string()
+            }
+            CompareFileShellState::Unavailable => {
+                "This selection does not currently provide compare-file content in the dedicated renderer."
+                    .to_string()
+            }
+            CompareFileShellState::Error => {
+                "The dedicated Compare File View could not be loaded in this session."
+                    .to_string()
+            }
+        }
+    }
+
+    pub fn compare_file_shell_note_text(&self) -> String {
+        match self.compare_file_shell_state() {
+            CompareFileShellState::NoSelection => {
+                "Compare-originated file tabs stay attached to the current Compare Tree session."
+                    .to_string()
+            }
+            CompareFileShellState::StaleSelection => {
+                "Adjust filters or reopen the file from Compare Tree.".to_string()
+            }
+            CompareFileShellState::Loading => "Using one shared vertical projection.".to_string(),
+            CompareFileShellState::Ready => {
+                if self.compare_file_truncated() {
+                    "Current compare rows were truncated by the underlying diff payload."
+                        .to_string()
+                } else {
+                    String::new()
+                }
+            }
+            CompareFileShellState::Unavailable => self.diff_warning_text(),
+            CompareFileShellState::Error => self
+                .diff_error_message
+                .clone()
+                .unwrap_or_else(|| "Compare File View failed to load.".to_string()),
+        }
+    }
+
+    pub fn compare_file_summary_text(&self) -> String {
+        self.selected_compare_file
+            .as_ref()
+            .map(|panel| panel.summary_text.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn compare_file_warning_text(&self) -> String {
+        self.selected_compare_file
+            .as_ref()
+            .and_then(|panel| panel.warning.clone())
+            .unwrap_or_else(|| self.diff_warning_text())
+    }
+
+    pub fn compare_file_truncated(&self) -> bool {
+        self.selected_compare_file
+            .as_ref()
+            .map(|panel| panel.truncated)
+            .unwrap_or(false)
+    }
+
+    pub fn compare_file_has_rows(&self) -> bool {
+        self.selected_compare_file
+            .as_ref()
+            .map(|panel| !panel.rows.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn compare_file_helper_text(&self) -> String {
+        match self.compare_file_shell_state() {
+            CompareFileShellState::Ready => {
+                let summary = self.compare_file_summary_text();
+                let warning = self.compare_file_warning_text();
+                match (
+                    summary.trim().is_empty(),
+                    warning.trim().is_empty(),
+                    self.compare_file_truncated(),
+                ) {
+                    (false, true, false) => summary,
+                    (false, false, false) => format!("{summary}  ·  {warning}"),
+                    (false, true, true) => format!("{summary}  ·  truncated"),
+                    (false, false, true) => format!("{summary}  ·  {warning}  ·  truncated"),
+                    (true, false, false) => warning,
+                    (true, false, true) => format!("{warning}  ·  truncated"),
+                    (true, true, true) => "Compare payload truncated".to_string(),
+                    (true, true, false) => String::new(),
+                }
+            }
+            _ => self.compare_file_shell_note_text(),
+        }
+    }
+
+    pub fn compare_file_row_projections(&self) -> Vec<CompareFileRowViewModel> {
+        self.selected_compare_file
+            .as_ref()
+            .map(|panel| panel.rows.clone())
+            .unwrap_or_default()
+    }
+
     /// Returns current File View title text derived from the selected file path.
     pub fn file_view_title_text(&self) -> String {
         self.selected_relative_path
@@ -2789,6 +3008,11 @@ impl AppState {
         self.selected_diff = None;
         self.diff_warning = None;
         self.diff_truncated = false;
+    }
+
+    /// Clears dedicated Compare File View state without changing compare selection.
+    pub fn clear_compare_file_panel(&mut self) {
+        self.selected_compare_file = None;
     }
 
     /// Clears AI analysis panel state without changing compare/diff state.

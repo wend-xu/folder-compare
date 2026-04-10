@@ -3,6 +3,7 @@
 use crate::bridge;
 use crate::commands::UiCommand;
 use crate::commands::{run_ai_analysis, run_compare, run_text_diff};
+use crate::compare_file::{build_preview_compare_file, map_text_diff_result_to_compare_file};
 use crate::compare_foundation::CompareFocusPath;
 use crate::settings::{
     self, AppPreferences, BehaviorSettings, DefaultResultsView, ProviderSettings,
@@ -20,7 +21,13 @@ type StateChangeNotifier = Arc<dyn Fn() + Send + Sync>;
 enum DiffLoadPlan {
     Noop,
     SyncOnly,
-    Background {
+    StandardBackground {
+        left_root: String,
+        right_root: String,
+        row: crate::view_models::CompareEntryRowViewModel,
+        state_ref: Arc<Mutex<AppState>>,
+    },
+    CompareFileBackground {
         left_root: String,
         right_root: String,
         row: crate::view_models::CompareEntryRowViewModel,
@@ -348,6 +355,7 @@ impl Presenter {
 
     fn clear_file_view_state(state: &mut AppState) {
         state.clear_diff_panel();
+        state.clear_compare_file_panel();
         state.analysis_available = false;
         state.clear_analysis_panel();
     }
@@ -549,8 +557,14 @@ impl Presenter {
         if state.diff_loading {
             return DiffLoadPlan::Noop;
         }
+        let use_compare_file_view = state.active_file_session_uses_compare_file_view();
+        let has_loaded_file_content = if use_compare_file_view {
+            state.selected_compare_file.is_some()
+        } else {
+            state.selected_diff.is_some()
+        };
         if state.selected_row.is_some()
-            && (state.selected_diff.is_some() || state.diff_error_message.is_some())
+            && (has_loaded_file_content || state.diff_error_message.is_some())
         {
             return DiffLoadPlan::Noop;
         }
@@ -560,15 +574,23 @@ impl Presenter {
             .and_then(|idx| state.entry_rows.get(idx).cloned());
         let Some(row) = selected_row else {
             state.diff_loading = false;
-            state.diff_error_message =
-                Some("select one compare row before loading detailed diff".to_string());
+            state.diff_error_message = Some(if use_compare_file_view {
+                "select one compare row before loading Compare File View".to_string()
+            } else {
+                "select one compare row before loading detailed diff".to_string()
+            });
             state.selected_diff = None;
+            state.selected_compare_file = None;
             state.diff_warning = None;
             state.diff_truncated = false;
             state.analysis_available = false;
             state.clear_analysis_panel();
             Self::set_analysis_no_selection_hint(&mut state);
-            state.status_text = "Detailed diff unavailable".to_string();
+            state.status_text = if use_compare_file_view {
+                "Compare File View unavailable".to_string()
+            } else {
+                "Detailed diff unavailable".to_string()
+            };
             state.sync_active_file_session_from_top_level();
             return DiffLoadPlan::SyncOnly;
         };
@@ -576,6 +598,7 @@ impl Presenter {
         state.selected_relative_path = Some(row.relative_path.clone());
         state.diff_error_message = None;
         state.selected_diff = None;
+        state.selected_compare_file = None;
         state.diff_warning = None;
         state.diff_truncated = false;
         state.analysis_available = false;
@@ -589,9 +612,14 @@ impl Presenter {
                 .unwrap_or_else(|| "selected row does not support detailed text diff".to_string());
             state.diff_loading = false;
             state.diff_warning = Some(reason);
-            state.analysis_hint =
-                Some("Detailed diff is unavailable; AI analysis is disabled.".to_string());
-            state.status_text = if is_preview_mode {
+            state.analysis_hint = Some(if use_compare_file_view {
+                "Compare File View is unavailable for this selection.".to_string()
+            } else {
+                "Detailed diff is unavailable; AI analysis is disabled.".to_string()
+            });
+            state.status_text = if use_compare_file_view {
+                "Compare File View unavailable for selected row".to_string()
+            } else if is_preview_mode {
                 "File preview unavailable for selected row".to_string()
             } else {
                 "Detailed diff unavailable for selected row".to_string()
@@ -601,17 +629,28 @@ impl Presenter {
         }
 
         state.diff_loading = true;
-        state.analysis_hint = Some(if is_preview_mode {
+        state.analysis_hint = Some(if use_compare_file_view {
+            "Compare File View is loading...".to_string()
+        } else if is_preview_mode {
             "File preview is loading...".to_string()
         } else {
             "Detailed diff is loading...".to_string()
         });
         state.sync_active_file_session_from_top_level();
-        DiffLoadPlan::Background {
-            left_root: state.left_root.clone(),
-            right_root: state.right_root.clone(),
-            row,
-            state_ref: Arc::clone(&self.state),
+        if use_compare_file_view {
+            DiffLoadPlan::CompareFileBackground {
+                left_root: state.left_root.clone(),
+                right_root: state.right_root.clone(),
+                row,
+                state_ref: Arc::clone(&self.state),
+            }
+        } else {
+            DiffLoadPlan::StandardBackground {
+                left_root: state.left_root.clone(),
+                right_root: state.right_root.clone(),
+                row,
+                state_ref: Arc::clone(&self.state),
+            }
         }
     }
 
@@ -742,97 +781,163 @@ impl Presenter {
     fn execute_load_selected_diff(&self) {
         let state_change_notifier = Arc::clone(&self.state_change_notifier);
         let plan = self.prepare_selected_diff_load();
-        let (left_root, right_root, selected_row, state_ref) = match plan {
+        match plan {
             DiffLoadPlan::Noop => return,
             DiffLoadPlan::SyncOnly => {
                 self.notify_state_changed();
                 return;
             }
-            DiffLoadPlan::Background {
+            DiffLoadPlan::StandardBackground {
                 left_root,
                 right_root,
                 row,
                 state_ref,
             } => {
                 self.notify_state_changed();
-                (left_root, right_root, Some(row), state_ref)
-            }
-        };
+                thread::spawn(move || {
+                    // Give UI one short frame to render loading state before heavy work.
+                    thread::sleep(BACKGROUND_START_DELAY);
 
-        thread::spawn(move || {
-            // Give UI one short frame to render loading state before heavy work.
-            thread::sleep(BACKGROUND_START_DELAY);
-
-            let result = selected_row
-                .ok_or_else(|| "select one compare row before loading detailed diff".to_string())
-                .and_then(|row| {
-                    if row.status == "left-only"
+                    let result = if row.status == "left-only"
                         || row.status == "right-only"
                         || row.status == "equal"
                     {
                         let preview_vm =
                             bridge::map_single_side_file_preview(&left_root, &right_root, &row);
-                        return Ok((row, preview_vm));
-                    }
-                    let relative_path = row.relative_path.clone();
-                    bridge::build_text_diff_request(&left_root, &right_root, &row)
-                        .and_then(run_text_diff)
-                        .map(|diff_result| {
-                            (
-                                row,
-                                bridge::map_text_diff_result(&relative_path, diff_result),
-                            )
-                        })
-                });
-
-            {
-                let mut state = state_ref.lock().expect("state mutex poisoned");
-                state.diff_loading = false;
-                match result {
-                    Ok((row, diff_vm)) => {
-                        let is_preview_mode = row.status == "left-only"
-                            || row.status == "right-only"
-                            || row.status == "equal";
-                        state.selected_relative_path = Some(diff_vm.relative_path.clone());
-                        state.diff_warning = diff_vm.warning.clone();
-                        state.diff_truncated = diff_vm.truncated;
-                        state.diff_error_message = None;
-                        state.selected_diff = Some(diff_vm);
-                        state.analysis_available = row.can_load_analysis;
-                        state.analysis_error_message = None;
-                        state.analysis_result = None;
-                        state.analysis_loading = false;
-                        state.analysis_hint = Some(if row.can_load_analysis {
-                            "Click Analyze to run AI risk review.".to_string()
-                        } else {
-                            row.analysis_blocked_reason.unwrap_or_else(|| {
-                                "selected row does not support AI analysis".to_string()
+                        Ok((row, preview_vm))
+                    } else {
+                        let relative_path = row.relative_path.clone();
+                        bridge::build_text_diff_request(&left_root, &right_root, &row)
+                            .and_then(run_text_diff)
+                            .map(|diff_result| {
+                                (
+                                    row,
+                                    bridge::map_text_diff_result(&relative_path, diff_result),
+                                )
                             })
-                        });
-                        state.status_text = if is_preview_mode {
-                            "File preview loaded".to_string()
-                        } else {
-                            "Detailed diff loaded".to_string()
-                        };
-                        state.sync_active_file_session_from_top_level();
+                    };
+
+                    {
+                        let mut state = state_ref.lock().expect("state mutex poisoned");
+                        state.diff_loading = false;
+                        match result {
+                            Ok((row, diff_vm)) => {
+                                let is_preview_mode = row.status == "left-only"
+                                    || row.status == "right-only"
+                                    || row.status == "equal";
+                                state.selected_relative_path = Some(diff_vm.relative_path.clone());
+                                state.diff_warning = diff_vm.warning.clone();
+                                state.diff_truncated = diff_vm.truncated;
+                                state.diff_error_message = None;
+                                state.selected_diff = Some(diff_vm);
+                                state.selected_compare_file = None;
+                                state.analysis_available = row.can_load_analysis;
+                                state.analysis_error_message = None;
+                                state.analysis_result = None;
+                                state.analysis_loading = false;
+                                state.analysis_hint = Some(if row.can_load_analysis {
+                                    "Click Analyze to run AI risk review.".to_string()
+                                } else {
+                                    row.analysis_blocked_reason.unwrap_or_else(|| {
+                                        "selected row does not support AI analysis".to_string()
+                                    })
+                                });
+                                state.status_text = if is_preview_mode {
+                                    "File preview loaded".to_string()
+                                } else {
+                                    "Detailed diff loaded".to_string()
+                                };
+                                state.sync_active_file_session_from_top_level();
+                            }
+                            Err(message) => {
+                                state.diff_error_message = Some(message);
+                                state.selected_diff = None;
+                                state.selected_compare_file = None;
+                                state.diff_warning = None;
+                                state.diff_truncated = false;
+                                state.analysis_available = false;
+                                state.clear_analysis_panel();
+                                state.analysis_hint = Some(
+                                    "Detailed diff is unavailable; AI analysis is disabled."
+                                        .to_string(),
+                                );
+                                state.status_text = "Detailed diff unavailable".to_string();
+                                state.sync_active_file_session_from_top_level();
+                            }
+                        }
                     }
-                    Err(message) => {
-                        state.diff_error_message = Some(message);
-                        state.selected_diff = None;
-                        state.diff_warning = None;
-                        state.diff_truncated = false;
-                        state.analysis_available = false;
-                        state.clear_analysis_panel();
-                        state.analysis_hint = Some(
-                            "Detailed diff is unavailable; AI analysis is disabled.".to_string(),
-                        );
-                        state.status_text = "Detailed diff unavailable".to_string();
-                        state.sync_active_file_session_from_top_level();
-                    }
-                }
+                    Self::notify_state_changed_with(&state_change_notifier);
+                });
             }
-            Self::notify_state_changed_with(&state_change_notifier);
-        });
+            DiffLoadPlan::CompareFileBackground {
+                left_root,
+                right_root,
+                row,
+                state_ref,
+            } => {
+                self.notify_state_changed();
+                thread::spawn(move || {
+                    // Give UI one short frame to render loading state before heavy work.
+                    thread::sleep(BACKGROUND_START_DELAY);
+
+                    let result = if row.status == "left-only"
+                        || row.status == "right-only"
+                        || row.status == "equal"
+                    {
+                        build_preview_compare_file(&left_root, &right_root, &row)
+                    } else {
+                        let relative_path = row.relative_path.clone();
+                        bridge::build_text_diff_request(&left_root, &right_root, &row)
+                            .and_then(run_text_diff)
+                            .map(|diff_result| {
+                                map_text_diff_result_to_compare_file(&relative_path, diff_result)
+                            })
+                    };
+
+                    {
+                        let mut state = state_ref.lock().expect("state mutex poisoned");
+                        state.diff_loading = false;
+                        match result {
+                            Ok(compare_vm) => {
+                                state.selected_relative_path =
+                                    Some(compare_vm.relative_path.clone());
+                                state.diff_warning = compare_vm.warning.clone();
+                                state.diff_truncated = compare_vm.truncated;
+                                state.diff_error_message = None;
+                                state.selected_diff = None;
+                                state.selected_compare_file = Some(compare_vm);
+                                state.analysis_available = false;
+                                state.analysis_error_message = None;
+                                state.analysis_result = None;
+                                state.analysis_loading = false;
+                                state.analysis_hint = Some(
+                                    "Dedicated Compare File View is active for this tab."
+                                        .to_string(),
+                                );
+                                state.status_text = "Compare file loaded".to_string();
+                                state.sync_active_file_session_from_top_level();
+                            }
+                            Err(message) => {
+                                state.diff_error_message = Some(message);
+                                state.selected_diff = None;
+                                state.selected_compare_file = None;
+                                state.diff_warning = None;
+                                state.diff_truncated = false;
+                                state.analysis_available = false;
+                                state.clear_analysis_panel();
+                                state.analysis_hint = Some(
+                                    "Compare File View is unavailable for this selection."
+                                        .to_string(),
+                                );
+                                state.status_text = "Compare File View unavailable".to_string();
+                                state.sync_active_file_session_from_top_level();
+                            }
+                        }
+                    }
+                    Self::notify_state_changed_with(&state_change_notifier);
+                });
+            }
+        }
     }
 
     fn execute_locate_and_open(&self, relative_path: String) {
@@ -1482,6 +1587,53 @@ mod tests {
                 .unwrap_or(false)
         );
         assert_eq!(snapshot.analysis_available, false);
+    }
+
+    #[test]
+    fn opening_compare_originated_file_session_loads_dedicated_compare_file_view() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::create_dir_all(left.path().join("src")).expect("left src directory should exist");
+        fs::create_dir_all(right.path().join("src")).expect("right src directory should exist");
+        fs::write(left.path().join("src/main.txt"), "你好\nleft value\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("src/main.txt"), "你好\nright value\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+
+        presenter.handle_command(UiCommand::OpenCompareView("src".to_string()));
+        presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+            "src/main.txt".to_string(),
+        ));
+        let snapshot = wait_until(&presenter, |state| {
+            !state.diff_loading && state.selected_compare_file.is_some()
+        });
+
+        assert!(snapshot.compare_file_view_active());
+        assert!(snapshot.selected_compare_file.is_some());
+        assert!(snapshot.selected_diff.is_none());
+        assert!(snapshot.compare_file_has_rows());
+        assert_eq!(snapshot.status_text, "Compare file loaded");
+        assert!(
+            snapshot
+                .compare_file_row_projections()
+                .iter()
+                .any(|row| row.row_kind == "modified")
+        );
+        assert!(
+            snapshot
+                .compare_file_row_projections()
+                .iter()
+                .flat_map(|row| row.left_segments.iter().chain(row.right_segments.iter()))
+                .any(|segment| segment.tone == "emphasis")
+        );
     }
 
     #[test]
