@@ -218,62 +218,29 @@ slint::slint! {
         }
     }
 
-    component CompactToolbarButton inherits Rectangle {
-        in property <string> label;
-        in property <bool> enabled: true;
-        in property <length> button_width: 104px;
-        callback tapped();
-
-        property <bool> hovered: button_touch_area.has_hover && root.enabled;
-
-        width: root.button_width;
-        height: 22px;
-        border-width: 1px;
-        border-radius: 5px;
-        border-color: root.hovered ? #cdd9e6 : #d8e2ec;
-        background: root.hovered ? #f3f7fb : #f8fbfe;
-        opacity: root.enabled ? 1 : 0.52;
-
-        Text {
-            x: 10px;
-            width: max(0px, parent.width - 18px);
-            text: root.label;
-            color: #55697d;
-            font-size: 12px;
-            font-weight: 500;
-            horizontal-alignment: left;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-
-        button_touch_area := TouchArea {
-            width: parent.width;
-            height: parent.height;
-            enabled: root.enabled;
-            clicked => {
-                root.tapped();
-            }
-        }
-    }
-
     component CompareHeaderGhostButton inherits Rectangle {
         in property <string> label;
         in property <bool> enabled: true;
         in property <length> button_width: 152px;
         in property <string> tooltip_text: "";
+        in property <string> icon_kind: "back";
         callback tapped();
         callback tooltip_requested(string, length, length, length);
         callback tooltip_closed();
 
         property <bool> hovered: button_touch_area.has_hover && root.enabled;
         property <length> horizontal_padding: 8px;
-        property <length> icon_width: 7px;
-        property <length> icon_height: 8px;
-        property <length> icon_gap: 6px;
-        property <length> text_x: root.horizontal_padding + root.icon_width + root.icon_gap;
+        property <length> icon_width: root.icon_kind == "reset" ? 10px : 9px;
+        property <length> icon_height: root.icon_kind == "lock" || root.icon_kind == "unlock"
+            ? 10px
+            : (root.icon_kind == "recenter" ? 11px : 9px);
+        property <length> icon_gap: root.icon_kind == "none" ? 0px : 6px;
+        property <length> text_x: root.icon_kind == "none"
+            ? root.horizontal_padding
+            : root.horizontal_padding + root.icon_width + root.icon_gap;
 
         width: root.button_width;
-        height: 17px;
+        height: 20px;
         border-width: 0px;
         border-radius: 6px;
         background: transparent;
@@ -284,41 +251,144 @@ slint::slint! {
             width: parent.width;
             height: parent.height;
             border-radius: 6px;
-            background: #edf4fc;
+            border-width: root.hovered ? 1px : 0px;
+            border-color: #d7e4f0;
+            background: rgba(237, 244, 252, 0.72);
             opacity: root.hovered ? 1 : 0;
 
-            animate opacity {
+            animate opacity, border-width {
                 duration: 140ms;
             }
         }
 
-        Path {
+        if root.icon_kind == "back" : Path {
             x: root.horizontal_padding;
             y: (parent.height - root.icon_height) / 2;
             width: root.icon_width;
             height: root.icon_height;
-            viewbox-width: 7;
-            viewbox-height: 8;
+            viewbox-width: 9;
+            viewbox-height: 9;
             fill: transparent;
             stroke: root.hovered ? #4f6b84 : #6f8397;
             stroke-width: 1.1px;
             stroke-line-cap: round;
             stroke-line-join: round;
 
-            MoveTo {
-                x: 5.5;
-                y: 1.0;
+            MoveTo { x: 7.0; y: 1.0; }
+            LineTo { x: 2.5; y: 4.5; }
+            LineTo { x: 7.0; y: 8.0; }
+        }
+
+        if root.icon_kind == "up" : Path {
+            x: root.horizontal_padding;
+            y: (parent.height - root.icon_height) / 2;
+            width: root.icon_width;
+            height: root.icon_height;
+            viewbox-width: 9;
+            viewbox-height: 9;
+            fill: transparent;
+            stroke: root.hovered ? #4f6b84 : #6f8397;
+            stroke-width: 1.1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo { x: 4.5; y: 1.2; }
+            LineTo { x: 1.5; y: 4.4; }
+            LineTo { x: 4.0; y: 4.4; }
+            LineTo { x: 4.0; y: 8.0; }
+            MoveTo { x: 4.5; y: 1.2; }
+            LineTo { x: 7.5; y: 4.4; }
+        }
+
+        if root.icon_kind == "lock" || root.icon_kind == "unlock" : Rectangle {
+            x: root.horizontal_padding + 1px;
+            y: (parent.height - root.icon_height) / 2 + 3px;
+            width: root.icon_width - 1px;
+            height: root.icon_height - 4px;
+            border-width: 1px;
+            border-radius: 2px;
+            border-color: root.hovered ? #4f6b84 : #6f8397;
+            background: transparent;
+
+            if root.icon_kind == "lock" : Path {
+                x: 1px;
+                y: -4px;
+                width: 6px;
+                height: 6px;
+                viewbox-width: 6;
+                viewbox-height: 6;
+                fill: transparent;
+                stroke: root.hovered ? #4f6b84 : #6f8397;
+                stroke-width: 1px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                MoveTo { x: 1; y: 3.5; }
+                LineTo { x: 1; y: 2.5; }
+                CubicTo { x: 1; y: 1.0; control-1-x: 1; control-1-y: 1.4; control-2-x: 1.6; control-2-y: 1.0; }
+                CubicTo { x: 5; y: 2.5; control-1-x: 2.4; control-1-y: 1.0; control-2-x: 5; control-2-y: 1.4; }
+                LineTo { x: 5; y: 3.5; }
             }
 
-            LineTo {
-                x: 2.25;
-                y: 4.0;
+            if root.icon_kind == "unlock" : Path {
+                x: 1px;
+                y: -4px;
+                width: 6px;
+                height: 6px;
+                viewbox-width: 6;
+                viewbox-height: 6;
+                fill: transparent;
+                stroke: root.hovered ? #4f6b84 : #6f8397;
+                stroke-width: 1px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                MoveTo { x: 2; y: 3.5; }
+                LineTo { x: 2; y: 2.4; }
+                CubicTo { x: 5; y: 2.4; control-1-x: 2; control-1-y: 1.1; control-2-x: 5; control-2-y: 1.2; }
+                LineTo { x: 5; y: 3.5; }
+            }
+        }
+
+        if root.icon_kind == "reset" : Path {
+            x: root.horizontal_padding;
+            y: (parent.height - root.icon_height) / 2;
+            width: root.icon_width;
+            height: root.icon_height;
+            viewbox-width: 10;
+            viewbox-height: 10;
+            fill: transparent;
+            stroke: root.hovered ? #4f6b84 : #6f8397;
+            stroke-width: 1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo { x: 2.0; y: 3.0; }
+            LineTo { x: 2.0; y: 1.5; }
+            LineTo { x: 4.0; y: 1.5; }
+            MoveTo { x: 2.1; y: 3.0; }
+            CubicTo { x: 8.0; y: 4.8; control-1-x: 2.1; control-1-y: 1.8; control-2-x: 7.2; control-2-y: 2.0; }
+            CubicTo { x: 3.8; y: 8.3; control-1-x: 8.6; control-1-y: 7.0; control-2-x: 6.2; control-2-y: 8.6; }
+        }
+
+        if root.icon_kind == "recenter" : Rectangle {
+            x: root.horizontal_padding;
+            y: (parent.height - root.icon_height) / 2;
+            width: root.icon_width;
+            height: root.icon_height;
+            background: transparent;
+
+            Rectangle {
+                x: 3px;
+                y: 3px;
+                width: 3px;
+                height: 3px;
+                border-radius: 2px;
+                background: root.hovered ? #4f6b84 : #6f8397;
             }
 
-            LineTo {
-                x: 5.5;
-                y: 7.0;
-            }
+            Rectangle { x: 0px; y: 4px; width: 2px; height: 1px; background: root.hovered ? #4f6b84 : #6f8397; }
+            Rectangle { x: 7px; y: 4px; width: 2px; height: 1px; background: root.hovered ? #4f6b84 : #6f8397; }
+            Rectangle { x: 4px; y: 0px; width: 1px; height: 2px; background: root.hovered ? #4f6b84 : #6f8397; }
+            Rectangle { x: 4px; y: 7px; width: 1px; height: 2px; background: root.hovered ? #4f6b84 : #6f8397; }
         }
 
         Text {
@@ -370,22 +440,15 @@ slint::slint! {
         height: 20px;
         background: transparent;
 
-        Path {
-            x: 2px;
-            y: 5px;
-            width: 6px;
-            height: 10px;
-            viewbox-width: 6;
-            viewbox-height: 10;
-            fill: transparent;
-            stroke: #91a2b4;
-            stroke-width: 1px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
-
-            MoveTo { x: 1; y: 1; }
-            LineTo { x: 5; y: 5; }
-            LineTo { x: 1; y: 9; }
+        Text {
+            width: parent.width;
+            height: parent.height;
+            text: ">";
+            color: #97a8b8;
+            font-size: 12px;
+            font-weight: 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
         }
     }
 
@@ -398,19 +461,29 @@ slint::slint! {
         property <bool> interactive: root.enabled && !root.active;
         property <bool> hovered: segment_touch_area.has_hover && root.interactive;
         property <length> segment_width: min(
-            max(44px, measure_text.preferred-width + 18px),
+            max(24px, measure_text.preferred-width + 8px),
             180px,
         );
 
         width: root.segment_width;
         height: 20px;
-        border-width: root.active || root.hovered ? 1px : 0px;
+        border-width: 0px;
         border-radius: 5px;
-        border-color: root.active ? #d4e0ec : #dbe6f0;
-        background: root.active
-            ? #eef4fb
-            : (root.hovered ? #f5f9fd : transparent);
+        background: transparent;
+        clip: true;
         opacity: root.active || root.interactive ? 1 : 0.78;
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: 5px;
+            background: rgba(232, 239, 247, 0.62);
+            opacity: root.hovered ? 1 : 0;
+
+            animate opacity {
+                duration: 120ms;
+            }
+        }
 
         measure_text := Text {
             visible: false;
@@ -422,13 +495,13 @@ slint::slint! {
         }
 
         Text {
-            x: 9px;
-            width: max(0px, parent.width - 18px);
+            x: 4px;
+            width: max(0px, parent.width - 8px);
             height: parent.height;
             text: root.label;
             color: root.active
-                ? #2d4b69
-                : (root.hovered ? #40627f : #617487);
+                ? #2d5b86
+                : (root.hovered ? #476885 : #63788d);
             font-size: 12px;
             font-weight: root.active ? 650 : 500;
             vertical-alignment: center;
@@ -439,6 +512,234 @@ slint::slint! {
             enabled: root.interactive;
             clicked => {
                 root.tapped();
+            }
+        }
+    }
+
+    component CompareBreadcrumbNavButton inherits Rectangle {
+        in property <string> direction: "left";
+        in property <bool> enabled: true;
+        callback tapped();
+        callback double_tapped();
+
+        property <bool> hovered: nav_touch_area.has_hover && root.enabled;
+
+        width: 22px;
+        height: 22px;
+        border-width: root.hovered ? 1px : 0px;
+        border-radius: 11px;
+        border-color: rgba(180, 194, 208, 0.76);
+        background: root.hovered ? rgba(248, 251, 255, 0.96) : rgba(243, 248, 252, 0.72);
+        opacity: root.enabled ? 1 : 0.36;
+        clip: true;
+
+        animate opacity, border-width {
+            duration: 120ms;
+        }
+
+        if root.direction == "left" : Path {
+            x: (parent.width - 6px) / 2;
+            y: (parent.height - 10px) / 2;
+            width: 6px;
+            height: 10px;
+            viewbox-width: 6;
+            viewbox-height: 10;
+            fill: transparent;
+            stroke: root.hovered ? #486988 : #6d8297;
+            stroke-width: 1.1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo { x: 5; y: 1; }
+            LineTo { x: 1; y: 5; }
+            LineTo { x: 5; y: 9; }
+        }
+
+        if root.direction == "right" : Path {
+            x: (parent.width - 6px) / 2;
+            y: (parent.height - 10px) / 2;
+            width: 6px;
+            height: 10px;
+            viewbox-width: 6;
+            viewbox-height: 10;
+            fill: transparent;
+            stroke: root.hovered ? #486988 : #6d8297;
+            stroke-width: 1.1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo { x: 1; y: 1; }
+            LineTo { x: 5; y: 5; }
+            LineTo { x: 1; y: 9; }
+        }
+
+        nav_touch_area := TouchArea {
+            width: parent.width;
+            height: parent.height;
+            enabled: true;
+
+            clicked => {
+                if root.enabled {
+                    root.tapped();
+                }
+            }
+
+            double-clicked => {
+                if root.enabled {
+                    root.double_tapped();
+                }
+            }
+        }
+    }
+
+    component CompareBreadcrumbViewport inherits Rectangle {
+        in property <[string]> labels;
+        in property <[string]> paths;
+        callback segment_requested(string);
+
+        property <length> scroll_step: 80px;
+        property <duration> motion_duration: 150ms;
+        property <length> scroll_offset: 0px;
+        property <bool> follow_active_tail: true;
+        property <length> content_width: breadcrumb_row.preferred-width;
+        property <length> max_scroll: max(0px, root.content_width - root.width);
+        property <length> effective_scroll_offset: root.follow_active_tail
+            ? root.max_scroll
+            : min(root.scroll_offset, root.max_scroll);
+        property <bool> has_overflow: root.max_scroll > 1px;
+        property <bool> can_scroll_left: root.effective_scroll_offset > 1px;
+        property <bool> can_scroll_right: root.max_scroll > root.effective_scroll_offset + 1px;
+
+        function clamp_scroll(target: length) -> length {
+            return min(max(0px, target), root.max_scroll);
+        }
+
+        function set_scroll(target: length, animated: bool) {
+            root.follow_active_tail = false;
+            root.motion_duration = animated ? 150ms : 0ms;
+            root.scroll_offset = root.clamp_scroll(target);
+        }
+
+        function jump_to_start() {
+            root.follow_active_tail = false;
+            root.motion_duration = 0ms;
+            root.scroll_offset = 0px;
+        }
+
+        function jump_to_end() {
+            root.follow_active_tail = true;
+            root.motion_duration = 0ms;
+            root.scroll_offset = root.max_scroll;
+        }
+
+        changed paths => {
+            root.jump_to_end();
+        }
+
+        changed max_scroll => {
+            if root.follow_active_tail {
+                root.scroll_offset = root.max_scroll;
+            } else if root.scroll_offset > root.max_scroll {
+                root.scroll_offset = root.max_scroll;
+            }
+        }
+
+        background: transparent;
+        clip: true;
+
+        viewport_touch_area := TouchArea {
+            width: parent.width;
+            height: parent.height;
+            enabled: root.has_overflow;
+
+            scroll-event(event) => {
+                if !root.has_overflow {
+                    return reject;
+                }
+                if event.delta-x != 0px {
+                    root.set_scroll(root.effective_scroll_offset - event.delta-x, true);
+                    return accept;
+                }
+                if event.delta-y != 0px {
+                    root.set_scroll(root.effective_scroll_offset - event.delta-y, true);
+                    return accept;
+                }
+                reject
+            }
+        }
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            background: transparent;
+            clip: true;
+
+            breadcrumb_track := Rectangle {
+                x: -root.effective_scroll_offset;
+                y: 0px;
+                width: max(parent.width, root.content_width);
+                height: parent.height;
+                background: transparent;
+
+                animate x {
+                    duration: root.motion_duration;
+                    easing: ease;
+                }
+
+                breadcrumb_row := HorizontalLayout {
+                    padding-left: 2px;
+                    padding-right: 2px;
+                    spacing: 6px;
+
+                    for segment_path[index] in root.paths : HorizontalLayout {
+                        spacing: 6px;
+
+                        if index > 0 : CompareBreadcrumbChevron {}
+
+                        CompareBreadcrumbSegment {
+                            label: root.labels[index];
+                            active: index + 1 == root.paths.length;
+                            enabled: index + 1 < root.paths.length;
+                            tapped => {
+                                root.segment_requested(segment_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if root.has_overflow : Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: transparent;
+
+            CompareBreadcrumbNavButton {
+                x: 2px;
+                y: (parent.height - self.height) / 2;
+                direction: "left";
+                enabled: root.can_scroll_left;
+                tapped => {
+                    root.set_scroll(root.effective_scroll_offset - root.scroll_step, true);
+                }
+                double_tapped => {
+                    root.jump_to_start();
+                }
+            }
+
+            CompareBreadcrumbNavButton {
+                x: parent.width - self.width - 2px;
+                y: (parent.height - self.height) / 2;
+                direction: "right";
+                enabled: root.can_scroll_right;
+                tapped => {
+                    root.set_scroll(root.effective_scroll_offset + root.scroll_step, true);
+                }
+                double_tapped => {
+                    root.jump_to_end();
+                }
             }
         }
     }
@@ -4437,16 +4738,7 @@ slint::slint! {
                                                     }
 
                                                     HorizontalLayout {
-                                                        spacing: 8px;
-
-                                                        CompactToolbarButton {
-                                                            label: "Up";
-                                                            button_width: 50px;
-                                                            enabled: root.compare_view_can_go_up;
-                                                            tapped => {
-                                                                root.compare_view_up_requested();
-                                                            }
-                                                        }
+                                                        spacing: 10px;
 
                                                         breadcrumb_lane := Rectangle {
                                                             horizontal-stretch: 1;
@@ -4454,49 +4746,71 @@ slint::slint! {
                                                             background: transparent;
 
                                                             HorizontalLayout {
-                                                                spacing: 4px;
+                                                                spacing: 8px;
 
-                                                                for segment_path[index] in root.compare_view_breadcrumb_paths : HorizontalLayout {
-                                                                    spacing: 4px;
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Up";
+                                                                    icon_kind: "up";
+                                                                    button_width: 48px;
+                                                                    enabled: root.compare_view_can_go_up;
+                                                                    tapped => {
+                                                                        root.compare_view_up_requested();
+                                                                    }
+                                                                }
 
-                                                                    if index > 0 : CompareBreadcrumbChevron {}
-
-                                                                    CompareBreadcrumbSegment {
-                                                                        label: root.compare_view_breadcrumb_labels[index];
-                                                                        active: index + 1 == root.compare_view_breadcrumb_paths.length;
-                                                                        enabled: index + 1 < root.compare_view_breadcrumb_paths.length;
-                                                                        tapped => {
-                                                                            root.compare_view_breadcrumb_requested(segment_path);
-                                                                        }
+                                                                CompareBreadcrumbViewport {
+                                                                    horizontal-stretch: 1;
+                                                                    height: 22px;
+                                                                    labels: root.compare_view_breadcrumb_labels;
+                                                                    paths: root.compare_view_breadcrumb_paths;
+                                                                    segment_requested(segment_path) => {
+                                                                        root.compare_view_breadcrumb_requested(segment_path);
                                                                     }
                                                                 }
                                                             }
                                                         }
 
-                                                        CompactToolbarButton {
-                                                            label: root.compare_view_horizontal_scroll_locked ? "Locked" : "Unlocked";
-                                                            button_width: 86px;
-                                                            enabled: root.compare_view_has_targets;
-                                                            tapped => {
-                                                                root.compare_view_scroll_lock_toggled();
-                                                            }
-                                                        }
+                                                        Rectangle {
+                                                            width: 250px;
+                                                            background: transparent;
 
-                                                        CompactToolbarButton {
-                                                            label: "Reset";
-                                                            button_width: 64px;
-                                                            enabled: root.compare_view_has_targets;
-                                                            tapped => {
-                                                                compare_workspace_view.reset_horizontal_scroll();
-                                                            }
-                                                        }
+                                                            HorizontalLayout {
+                                                                spacing: 6px;
 
-                                                        CompactToolbarButton {
-                                                            label: "Recenter";
-                                                            button_width: 82px;
-                                                            enabled: root.compare_view_has_targets;
-                                                            tapped => {
-                                                                compare_workspace_view.recenter_focused_row();
+                                                                Rectangle {
+                                                                    horizontal-stretch: 1;
+                                                                    background: transparent;
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: root.compare_view_horizontal_scroll_locked ? "Locked" : "Unlocked";
+                                                                    icon_kind: root.compare_view_horizontal_scroll_locked ? "lock" : "unlock";
+                                                                    button_width: 88px;
+                                                                    enabled: root.compare_view_has_targets;
+                                                                    tapped => {
+                                                                        root.compare_view_scroll_lock_toggled();
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Reset";
+                                                                    icon_kind: "reset";
+                                                                    button_width: 64px;
+                                                                    enabled: root.compare_view_has_targets;
+                                                                    tapped => {
+                                                                        compare_workspace_view.reset_horizontal_scroll();
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Recenter";
+                                                                    icon_kind: "recenter";
+                                                                    button_width: 84px;
+                                                                    enabled: root.compare_view_has_targets;
+                                                                    tapped => {
+                                                                        compare_workspace_view.recenter_focused_row();
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
