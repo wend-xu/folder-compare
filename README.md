@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-10）：
+当前项目状态（2026-04-11）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -52,6 +52,12 @@
   - compare 文件内容现在支持左右各自独立 horizontal scroll，且 gutter / relation lane 固定
   - compare 文本现在可选择，并支持系统复制；行号可直接复制对应侧整行
   - 当前仍不做 sync scroll / merge actions / compare search
+- `Phase 19G` 已落地并成为当前稳定 compare tree navigation / scrolling baseline：
+  - compare root 现在可以直接进入 Compare View
+  - Compare Tree 顶部路径已升级为 breadcrumb-first 导航，`Up` 只保留为轻量父级动作
+  - Compare Tree 现已支持左右内容 pane 的 horizontal scroll，relation lane 保持固定
+  - Compare Tree 现已具备 `Reset` / `Recenter`
+  - Compare Tree horizontal scroll 现已支持 `Locked / Unlocked`
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -142,9 +148,13 @@
   - 基于 `compare_foundation` 的 anchored compare tree 投影渲染
   - 使用稳定 `Base | Relation | Target` 三列布局，header/body 共用同一套列几何
   - 目录主交互是树内 expand / collapse，不再以列表钻取作为主模型
-  - Compare Tree header 现在只保留 `Up one level` 与 compare context；Compare / File session 切换改由外层 tab strip 完成
+  - compare root 现在可直接进入 Compare View
+  - Compare Tree header 现已升级为 breadcrumb-first compare navigation；Compare / File session 切换仍由外层 tab strip 完成
+  - `Up` 只保留为轻量父级动作，不再与 breadcrumb 分裂成两套导航
   - 轻量类型标识复用 navigator 风格，不再使用 compare tree 内的 pill 风格类型 badge
   - Compare tree 行背景按 `Diff / Equal / Left / Right` 复用 flat view 语义色，并补齐 Target 侧 disclosure 对称性
+  - Compare Tree 现在支持左右内容 pane horizontal scroll，relation lane 保持固定
+  - Compare Tree 现在具备 `Reset` / `Recenter` 与 `Locked / Unlocked` horizontal scroll 模式
   - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
 - Workspace Session Tabs
@@ -313,19 +323,20 @@ cargo test --workspace
   - 当前只允许一个固定左侧的 `Compare Tree` session
   - Compare Tree 中文件 leaf 会打开或复用 compare-originated `File` tabs
   - Compare session 的进入、切换、结束语义现在由外层 tab strip 承担
-- `Phase 19F` 当前额外事实：
+- `Phase 19G` 当前额外事实：
   - compare-originated `File` tab 现已升级为 dedicated `Compare File View`
   - 标准 `Sidebar -> File View` 继续保留既有内层 `Diff / Analysis`
   - Compare File View 使用单一纵向 side-by-side 行投影，并保留 `Back to Compare Tree`
   - Compare File View 现在支持左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
+  - Compare Tree 现在支持 compare root 直接进入、breadcrumb 导航、horizontal scroll、`Reset` / `Recenter`、以及 `Locked / Unlocked`
 - 当前仍未实现：
   - tree 内搜索 / 内容搜索
   - 目录 selection / 目录详情
   - narrow-width minimum-usable behavior beyond the current compare-file baseline
   - compare core widening
-  - sync scroll / reset / recenter / richer compare interaction
-  - 超出当前 `19F` 的更深层 `Compare View / File View` 重构
-- 后续只有在目标明确时才进入 `19G` 或更后阶段；不要把 landed `19F` 重新写回 proposal。
+  - cross-surface sync scroll / compare-file reset-recenter / richer compare interaction
+  - 超出当前 `19G` 的更深层 `Compare View / File View` 重构
+- 后续只有在目标明确时才进入 `19H` 或更后阶段；不要把 landed `19G` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

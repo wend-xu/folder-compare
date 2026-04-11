@@ -214,6 +214,23 @@ fn opening_compare_view_switches_workspace_mode_without_clearing_file_selection(
 }
 
 #[test]
+fn opening_compare_view_at_compare_root_is_allowed() {
+    let state = state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenCompareView(String::new()));
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert!(snapshot.has_compare_tree_session());
+    assert_eq!(snapshot.active_session_id.as_deref(), Some("compare-tree"));
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "");
+    assert_eq!(
+        snapshot.compare_view_breadcrumb_labels(),
+        vec!["Compare Root"]
+    );
+}
+
+#[test]
 fn opening_file_view_from_compare_preserves_compare_return_context() {
     let mut state =
         state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
@@ -306,6 +323,30 @@ fn compare_view_up_one_level_focuses_previous_child_directory() {
     assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
     assert_eq!(snapshot.compare_row_focus_path.as_deref(), Some("src/bin"));
+}
+
+#[test]
+fn breadcrumb_navigation_reanchors_without_resetting_compare_session() {
+    let state = state_from_entries(vec![
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+        file_entry("src/lib.rs", EntryStatus::Equal),
+    ]);
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenCompareView("src/bin".to_string()));
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+        "src/bin/main.rs".to_string(),
+    ));
+    presenter.handle_command(UiCommand::NavigateCompareView("src".to_string()));
+
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(snapshot.compare_row_focus_path.as_deref(), Some("src/bin"));
+    assert_eq!(
+        snapshot.workspace_session_ids(),
+        vec!["compare-tree", "file:src/bin/main.rs"]
+    );
 }
 
 #[test]

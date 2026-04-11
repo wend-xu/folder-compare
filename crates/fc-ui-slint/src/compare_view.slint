@@ -1,4 +1,4 @@
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { NavigatorDisclosureChevron } from "navigator_tree.slint";
 import { UiPalette } from "ui_palette.slint";
 
@@ -110,82 +110,93 @@ component CompareSideEntryCell inherits Rectangle {
     in property <bool> emphasized: false;
     in property <bool> disclosure_visible: false;
     in property <bool> disclosure_interactive: false;
+    in property <length> horizontal_offset: 0px;
+    in property <length> content_width: 0px;
     callback toggle_requested();
 
     property <length> indent_width: 12px * root.depth;
     clip: true;
     background: transparent;
 
-    HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 8px;
-        spacing: 6px;
+    content_surface := Rectangle {
+        x: root.horizontal_offset;
+        y: 0px;
+        width: max(root.content_width, content_row.preferred-width);
+        height: parent.height;
+        background: transparent;
 
-        Rectangle {
-            width: root.indent_width;
-            background: transparent;
-        }
+        content_row := HorizontalLayout {
+            width: parent.width;
+            height: parent.height;
+            padding-left: 6px;
+            padding-right: 8px;
+            spacing: 6px;
 
-        disclosure_slot := Rectangle {
-            width: 13px;
-            background: transparent;
-
-            NavigatorDisclosureChevron {
-                visible: root.disclosure_visible;
-                expanded: root.expanded;
-                stroke: root.emphasized
-                    ? UiPalette.results_row_selected_context_text
-                    : UiPalette.results_row_tone_neutral_context_text;
-                opacity: root.disclosure_interactive ? 1 : 0.58;
-                x: 0px;
-                y: (parent.height - self.height) / 2;
+            Rectangle {
+                width: root.indent_width;
+                background: transparent;
             }
 
-            TouchArea {
-                width: parent.width;
-                height: parent.height;
-                enabled: root.disclosure_visible && root.disclosure_interactive;
-                clicked => {
-                    root.toggle_requested();
+            disclosure_slot := Rectangle {
+                width: 13px;
+                background: transparent;
+
+                NavigatorDisclosureChevron {
+                    visible: root.disclosure_visible;
+                    expanded: root.expanded;
+                    stroke: root.emphasized
+                        ? UiPalette.results_row_selected_context_text
+                        : UiPalette.results_row_tone_neutral_context_text;
+                    opacity: root.disclosure_interactive ? 1 : 0.58;
+                    x: 0px;
+                    y: (parent.height - self.height) / 2;
+                }
+
+                TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    enabled: root.disclosure_visible && root.disclosure_interactive;
+                    clicked => {
+                        root.toggle_requested();
+                    }
                 }
             }
-        }
 
-        glyph_slot := Rectangle {
-            width: 15px;
-            height: parent.height;
-            background: transparent;
+            glyph_slot := Rectangle {
+                width: 15px;
+                height: parent.height;
+                background: transparent;
 
-            CompareKindGlyph {
-                label: root.icon;
-                present: root.present;
-                emphasized: root.emphasized;
-                x: 0px;
-                y: (parent.height - self.height) / 2;
+                CompareKindGlyph {
+                    label: root.icon;
+                    present: root.present;
+                    emphasized: root.emphasized;
+                    x: 0px;
+                    y: (parent.height - self.height) / 2;
+                }
             }
-        }
 
-        label_clip := Rectangle {
-            horizontal-stretch: 1;
-            clip: true;
-            background: transparent;
+            label_surface := Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
 
-            Text {
-                width: parent.width;
-                text: root.name;
-                color: root.present
-                    ? (root.emphasized
-                        ? UiPalette.results_row_selected_path_text
-                        : (root.directory
-                            ? #38556d
-                            : UiPalette.results_row_tone_neutral_path_text))
-                    : #98a5b4;
-                font-size: 13px;
-                font-weight: root.present
-                    ? (root.directory ? 600 : 500)
-                    : 400;
-                vertical-alignment: center;
-                overflow: elide;
+                Text {
+                    width: parent.width;
+                    text: root.name;
+                    color: root.present
+                        ? (root.emphasized
+                            ? UiPalette.results_row_selected_path_text
+                            : (root.directory
+                                ? #38556d
+                                : UiPalette.results_row_tone_neutral_path_text))
+                        : #98a5b4;
+                    font-size: 13px;
+                    font-weight: root.present
+                        ? (root.directory ? 600 : 500)
+                        : 400;
+                    vertical-alignment: center;
+                    overflow: clip;
+                }
             }
         }
     }
@@ -299,6 +310,10 @@ component CompareViewRow inherits Rectangle {
     in property <length> column_inset: 10px;
     in property <length> column_divider_width: 0px;
     in property <length> status_column_width: 92px;
+    in property <length> left_horizontal_offset: 0px;
+    in property <length> right_horizontal_offset: 0px;
+    in property <length> left_content_width: 0px;
+    in property <length> right_content_width: 0px;
     in property <int> row_index: -1;
     in property <int> focused_row: -1;
     in property <bool> enabled: true;
@@ -424,6 +439,8 @@ component CompareViewRow inherits Rectangle {
             emphasized: root.row_focused_state;
             disclosure_visible: root.is_expandable && root.left_present;
             disclosure_interactive: true;
+            horizontal_offset: root.left_horizontal_offset;
+            content_width: root.left_content_width;
             toggle_requested => {
                 root.row_focused(root.row_path);
                 root.row_toggle_requested(root.row_path);
@@ -466,6 +483,8 @@ component CompareViewRow inherits Rectangle {
             expanded: root.is_expanded;
             emphasized: root.row_focused_state;
             disclosure_visible: root.is_expandable && root.right_present;
+            horizontal_offset: root.right_horizontal_offset;
+            content_width: root.right_content_width;
         }
     }
 
@@ -508,8 +527,11 @@ export component CompareView inherits Rectangle {
     in property <length> column_inset: 10px;
     in property <length> column_divider_width: 0px;
     in property <length> status_column_width: 92px;
+    in property <int> left_content_width_px: 0;
+    in property <int> right_content_width_px: 0;
     in property <int> focused_row: -1;
     in property <bool> interaction_enabled: true;
+    in property <bool> horizontal_scroll_locked: true;
     callback row_focused(string);
     callback row_toggle_requested(string);
     callback row_activated(string);
@@ -528,6 +550,17 @@ export component CompareView inherits Rectangle {
     property <length> status_column_x: root.left_divider_x + root.column_divider_width;
     property <length> right_divider_x: root.status_column_x + root.status_column_width;
     property <length> right_column_x: root.right_divider_x + root.column_divider_width;
+    property <length> scroll_bar_height: 14px;
+    property <length> left_content_width: max(root.side_column_width, root.left_content_width_px * 1px);
+    property <length> right_content_width: max(root.side_column_width, root.right_content_width_px * 1px);
+    property <length> left_horizontal_overflow: max(0px, root.left_content_width - root.side_column_width);
+    property <length> right_horizontal_overflow: max(0px, root.right_content_width - root.side_column_width);
+    property <bool> left_horizontal_scroll_visible: root.left_horizontal_overflow > 0px;
+    property <bool> right_horizontal_scroll_visible: root.right_horizontal_overflow > 0px;
+    property <bool> horizontal_scroll_visible: root.left_horizontal_scroll_visible || root.right_horizontal_scroll_visible;
+    property <length> left_horizontal_offset: left_horizontal_scroll.viewport-x;
+    property <length> right_horizontal_offset: right_horizontal_scroll.viewport-x;
+    property <bool> syncing_locked_scroll: false;
 
     public function ensure_row_visible(target_row: int) {
         compare_list.ensure_row_visible(target_row);
@@ -535,6 +568,51 @@ export component CompareView inherits Rectangle {
 
     public function focus_rows() {
         compare_focus_scope.focus();
+    }
+
+    public function reset_horizontal_scroll() {
+        root.syncing_locked_scroll = true;
+        left_horizontal_scroll.viewport-x = 0px;
+        right_horizontal_scroll.viewport-x = 0px;
+        root.syncing_locked_scroll = false;
+    }
+
+    public function recenter_focused_row() {
+        if root.row_paths.length == 0 {
+            root.reset_horizontal_scroll();
+            return;
+        }
+
+        compare_list.recenter_row(root.focused_row < 0 ? 0 : root.focused_row);
+        root.reset_horizontal_scroll();
+    }
+
+    function clamp_horizontal_offset(offset: length, overflow: length) -> length {
+        max(0px - overflow, min(0px, offset))
+    }
+
+    function synchronize_locked_horizontal_scroll(primary_offset: length, target_overflow: length, primary_left: bool) {
+        if !root.horizontal_scroll_locked || root.syncing_locked_scroll {
+            return;
+        }
+
+        root.syncing_locked_scroll = true;
+        if primary_left {
+            right_horizontal_scroll.viewport-x = root.clamp_horizontal_offset(primary_offset, target_overflow);
+        } else {
+            left_horizontal_scroll.viewport-x = root.clamp_horizontal_offset(primary_offset, target_overflow);
+        }
+        root.syncing_locked_scroll = false;
+    }
+
+    changed horizontal_scroll_locked => {
+        if root.horizontal_scroll_locked {
+            root.synchronize_locked_horizontal_scroll(
+                left_horizontal_scroll.viewport-x,
+                root.right_horizontal_overflow,
+                true,
+            );
+        }
     }
 
     compare_focus_scope := FocusScope {
@@ -579,9 +657,14 @@ export component CompareView inherits Rectangle {
 
     compare_list := ListView {
         width: parent.width;
-        height: parent.height;
+        height: max(
+            0px,
+            parent.height - (root.horizontal_scroll_visible ? root.scroll_bar_height : 0px),
+        );
         property <length> row_height: 28px;
         property <length> ensure_visible_padding: 10px;
+        viewport-height: max(self.height, root.row_paths.length * self.row_height);
+        vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
 
         function ensure_row_visible(target_row: int) {
             if target_row < 0 || target_row >= root.row_paths.length {
@@ -606,6 +689,17 @@ export component CompareView inherits Rectangle {
             }
         }
 
+        function recenter_row(target_row: int) {
+            if target_row < 0 || target_row >= root.row_paths.length {
+                return;
+            }
+
+            let max_scroll = max(0px, self.viewport-height - self.visible-height);
+            let center_offset = max(0px, (self.visible-height - self.row_height) / 2);
+            let desired_scroll = max(0px, target_row * self.row_height - center_offset);
+            self.viewport-y = 0px - min(max_scroll, desired_scroll);
+        }
+
         for row_path[index] in root.row_paths: row_item := CompareViewRow {
             row_path: row_path;
             row_index: index;
@@ -626,6 +720,10 @@ export component CompareView inherits Rectangle {
             column_inset: root.column_inset;
             column_divider_width: root.column_divider_width;
             status_column_width: root.status_column_width;
+            left_horizontal_offset: root.left_horizontal_offset;
+            right_horizontal_offset: root.right_horizontal_offset;
+            left_content_width: root.left_content_width;
+            right_content_width: root.right_content_width;
             merge_with_previous: index > 0
                 && root.row_status_tones[index] != "neutral"
                 && root.row_status_tones[index - 1] == root.row_status_tones[index];
@@ -648,6 +746,58 @@ export component CompareView inherits Rectangle {
                 compare_focus_scope.focus();
                 root.row_context_menu_requested(path, anchor_x, anchor_y);
             }
+        }
+    }
+
+    left_horizontal_scroll := ScrollView {
+        x: root.left_column_x;
+        y: compare_list.height;
+        width: root.side_column_width;
+        height: root.horizontal_scroll_visible ? root.scroll_bar_height : 0px;
+        visible: root.left_horizontal_scroll_visible;
+        enabled: root.left_horizontal_scroll_visible;
+        viewport-width: root.left_content_width;
+        viewport-height: 1px;
+        horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
+        vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+        scrolled => {
+            root.synchronize_locked_horizontal_scroll(
+                self.viewport-x,
+                root.right_horizontal_overflow,
+                true,
+            );
+        }
+
+        Rectangle {
+            width: root.left_content_width;
+            height: 1px;
+            background: transparent;
+        }
+    }
+
+    right_horizontal_scroll := ScrollView {
+        x: root.right_column_x;
+        y: compare_list.height;
+        width: root.side_column_width;
+        height: root.horizontal_scroll_visible ? root.scroll_bar_height : 0px;
+        visible: root.right_horizontal_scroll_visible;
+        enabled: root.right_horizontal_scroll_visible;
+        viewport-width: root.right_content_width;
+        viewport-height: 1px;
+        horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
+        vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+        scrolled => {
+            root.synchronize_locked_horizontal_scroll(
+                self.viewport-x,
+                root.left_horizontal_overflow,
+                false,
+            );
+        }
+
+        Rectangle {
+            width: root.right_content_width;
+            height: 1px;
+            background: transparent;
         }
     }
 }

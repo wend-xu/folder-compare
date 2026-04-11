@@ -194,6 +194,17 @@ impl Presenter {
                     );
                 }
             }
+            UiCommand::NavigateCompareView(relative_path) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                let current_focus = state.compare_focus_path_raw_text();
+                let preferred_row_focus =
+                    preferred_compare_child_focus(current_focus.as_str(), relative_path.as_str());
+                Self::enter_compare_view(
+                    &mut state,
+                    relative_path.as_str(),
+                    preferred_row_focus.as_deref(),
+                );
+            }
             UiCommand::ToggleCompareTreeNode(relative_path) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 let toggled = state.toggle_compare_view_node(relative_path.as_str());
@@ -210,6 +221,10 @@ impl Presenter {
                 if !changed && !scrolled {
                     return;
                 }
+            }
+            UiCommand::ToggleCompareViewScrollLock => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.toggle_compare_view_horizontal_scroll_locked();
             }
             UiCommand::OpenFileViewFromCompare(relative_path) => {
                 self.open_file_view_from_compare(relative_path);
@@ -1145,6 +1160,27 @@ impl Presenter {
             self.execute_load_selected_diff();
         }
     }
+}
+
+fn preferred_compare_child_focus(current_focus: &str, target_focus: &str) -> Option<String> {
+    let current_parts = current_focus
+        .split('/')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    let target_parts = target_focus
+        .split('/')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+
+    if current_parts.len() <= target_parts.len()
+        || !current_parts.starts_with(target_parts.as_slice())
+    {
+        return None;
+    }
+
+    Some(current_parts[..target_parts.len() + 1].join("/"))
 }
 
 fn parse_timeout_secs(raw: &str) -> Result<u64, String> {

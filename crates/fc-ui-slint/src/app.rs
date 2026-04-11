@@ -11,7 +11,7 @@ use crate::context_menu::{
 };
 use crate::folder_picker;
 use crate::presenter::Presenter;
-use crate::state::{AppState, CompareViewRowAction, NavigatorViewMode};
+use crate::state::{AppState, CompareViewRowAction, CompareViewRowProjection, NavigatorViewMode};
 use crate::toast_controller::{
     ToastPlacement, ToastQueueState, ToastRequest, ToastStrategy, ToastTone,
 };
@@ -361,6 +361,84 @@ slint::slint! {
                 if event.kind == PointerEventKind.cancel {
                     root.tooltip_closed();
                 }
+            }
+        }
+    }
+
+    component CompareBreadcrumbChevron inherits Rectangle {
+        width: 10px;
+        height: 20px;
+        background: transparent;
+
+        Path {
+            x: 2px;
+            y: 5px;
+            width: 6px;
+            height: 10px;
+            viewbox-width: 6;
+            viewbox-height: 10;
+            fill: transparent;
+            stroke: #91a2b4;
+            stroke-width: 1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo { x: 1; y: 1; }
+            LineTo { x: 5; y: 5; }
+            LineTo { x: 1; y: 9; }
+        }
+    }
+
+    component CompareBreadcrumbSegment inherits Rectangle {
+        in property <string> label;
+        in property <bool> active: false;
+        in property <bool> enabled: true;
+        callback tapped();
+
+        property <bool> interactive: root.enabled && !root.active;
+        property <bool> hovered: segment_touch_area.has_hover && root.interactive;
+        property <length> segment_width: min(
+            max(44px, measure_text.preferred-width + 18px),
+            180px,
+        );
+
+        width: root.segment_width;
+        height: 20px;
+        border-width: root.active || root.hovered ? 1px : 0px;
+        border-radius: 5px;
+        border-color: root.active ? #d4e0ec : #dbe6f0;
+        background: root.active
+            ? #eef4fb
+            : (root.hovered ? #f5f9fd : transparent);
+        opacity: root.active || root.interactive ? 1 : 0.78;
+
+        measure_text := Text {
+            visible: false;
+            width: 0px;
+            height: 0px;
+            text: root.label;
+            font-size: 12px;
+            font-weight: root.active ? 650 : 500;
+        }
+
+        Text {
+            x: 9px;
+            width: max(0px, parent.width - 18px);
+            height: parent.height;
+            text: root.label;
+            color: root.active
+                ? #2d4b69
+                : (root.hovered ? #40627f : #617487);
+            font-size: 12px;
+            font-weight: root.active ? 650 : 500;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        segment_touch_area := TouchArea {
+            enabled: root.interactive;
+            clicked => {
+                root.tapped();
             }
         }
     }
@@ -1746,11 +1824,17 @@ slint::slint! {
         in property <string> compare_focus_path_raw;
         in property <string> compare_root_pair_text;
         in property <string> compare_view_current_path_text;
+        in property <[string]> compare_view_breadcrumb_labels;
+        in property <[string]> compare_view_breadcrumb_paths;
         in property <string> compare_view_target_status_label;
         in property <string> compare_view_target_status_tone;
         in property <string> compare_view_empty_title_text;
         in property <string> compare_view_empty_body_text;
+        in property <bool> compare_view_has_targets: false;
         in property <bool> compare_view_can_go_up;
+        in property <bool> compare_view_horizontal_scroll_locked: true;
+        in property <int> compare_view_left_content_width_px: 0;
+        in property <int> compare_view_right_content_width_px: 0;
         in property <bool> can_return_to_compare_view;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
@@ -1899,7 +1983,7 @@ slint::slint! {
         property <length> workbench_header_height: 66px;
         property <length> workbench_compare_context_header_height: 78px;
         property <length> compare_file_header_height: 82px;
-        property <length> compare_workspace_header_height: 56px;
+        property <length> compare_workspace_header_height: 82px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
         property <length> compare_navigation_lane_width: 124px;
@@ -1910,8 +1994,8 @@ slint::slint! {
         property <length> workspace_session_strip_height: root.workspace_sessions_visible ? 34px : 0px;
         property <string> sidebar_toggle_label: root.sidebar_visible ? "Hide Sidebar" : "Show Sidebar";
         property <string> compare_view_empty_note_text: root.sidebar_visible
-            ? "Use Results / Navigator -> Open in Compare View to change targets."
-            : "Show Sidebar, then use Results / Navigator -> Open in Compare View to change targets.";
+            ? "Use Compare Status -> Open root or Results / Navigator -> Open in Compare View to change targets."
+            : "Show Sidebar, then use Compare Status or Results / Navigator to change targets.";
         property <string> diff_helper_strip_text: root.diff_shell_ready && root.diff_has_rows
             ? ("Select text or double-click a line number to copy the full row."
                 + (root.diff_content_char_capacity > 112
@@ -1980,7 +2064,10 @@ slint::slint! {
         callback sidebar_toggle_requested();
         callback workspace_session_selected(string);
         callback workspace_session_close_requested(string);
+        callback compare_root_view_requested();
         callback compare_view_up_requested();
+        callback compare_view_breadcrumb_requested(string);
+        callback compare_view_scroll_lock_toggled();
         callback compare_view_row_focused(string);
         callback compare_view_row_toggle_requested(string);
         callback compare_view_row_activated(string);
@@ -2289,6 +2376,14 @@ slint::slint! {
                                                                 );
                                                             }
                                                         }
+                                                    }
+                                                }
+
+                                                TextAction {
+                                                    visible: root.compare_view_has_targets;
+                                                    label: "Open root";
+                                                    tapped => {
+                                                        root.compare_root_view_requested();
                                                     }
                                                 }
 
@@ -4315,61 +4410,93 @@ slint::slint! {
                                                     background: #e1e8f0;
                                                 }
 
-                                                HorizontalLayout {
+                                                VerticalLayout {
                                                     padding-left: 8px;
                                                     padding-right: 8px;
                                                     padding-top: 6px;
                                                     padding-bottom: 6px;
-                                                    spacing: 10px;
+                                                    spacing: 8px;
 
-                                                    CompactToolbarButton {
-                                                        label: "Up one level";
-                                                        button_width: root.compare_navigation_button_width;
-                                                        enabled: root.compare_view_can_go_up;
-                                                        tapped => {
-                                                            root.compare_view_up_requested();
+                                                    HorizontalLayout {
+                                                        spacing: 8px;
+
+                                                        Text {
+                                                            text: root.compare_root_pair_text;
+                                                            color: #7a8b9c;
+                                                            font-size: 11px;
+                                                            font-weight: 500;
+                                                            horizontal-stretch: 1;
+                                                            vertical-alignment: center;
+                                                            overflow: elide;
+                                                        }
+
+                                                        if root.compare_view_has_targets : StatusPill {
+                                                            label: root.compare_view_target_status_label;
+                                                            tone: root.compare_view_target_status_tone;
                                                         }
                                                     }
 
-                                                    Rectangle {
-                                                        width: 1px;
-                                                        height: parent.height - 14px;
-                                                        background: #e8eef5;
-                                                    }
+                                                    HorizontalLayout {
+                                                        spacing: 8px;
 
-                                                    Rectangle {
-                                                        horizontal-stretch: 1;
-                                                        background: transparent;
-
-                                                        VerticalLayout {
-                                                            spacing: 4px;
-
-                                                            Text {
-                                                                text: root.compare_root_pair_text;
-                                                                color: #7a8b9c;
-                                                                font-size: 11px;
-                                                                font-weight: 500;
-                                                                horizontal-stretch: 1;
-                                                                overflow: elide;
+                                                        CompactToolbarButton {
+                                                            label: "Up";
+                                                            button_width: 50px;
+                                                            enabled: root.compare_view_can_go_up;
+                                                            tapped => {
+                                                                root.compare_view_up_requested();
                                                             }
+                                                        }
+
+                                                        breadcrumb_lane := Rectangle {
+                                                            horizontal-stretch: 1;
+                                                            clip: true;
+                                                            background: transparent;
 
                                                             HorizontalLayout {
-                                                                spacing: 8px;
+                                                                spacing: 4px;
 
-                                                                Text {
-                                                                    text: root.compare_view_current_path_text;
-                                                                    color: #294b6b;
-                                                                    font-size: 14px;
-                                                                    font-weight: 600;
-                                                                    horizontal-stretch: 1;
-                                                                    vertical-alignment: center;
-                                                                    overflow: elide;
-                                                                }
+                                                                for segment_path[index] in root.compare_view_breadcrumb_paths : HorizontalLayout {
+                                                                    spacing: 4px;
 
-                                                                StatusPill {
-                                                                    label: root.compare_view_target_status_label;
-                                                                    tone: root.compare_view_target_status_tone;
+                                                                    if index > 0 : CompareBreadcrumbChevron {}
+
+                                                                    CompareBreadcrumbSegment {
+                                                                        label: root.compare_view_breadcrumb_labels[index];
+                                                                        active: index + 1 == root.compare_view_breadcrumb_paths.length;
+                                                                        enabled: index + 1 < root.compare_view_breadcrumb_paths.length;
+                                                                        tapped => {
+                                                                            root.compare_view_breadcrumb_requested(segment_path);
+                                                                        }
+                                                                    }
                                                                 }
+                                                            }
+                                                        }
+
+                                                        CompactToolbarButton {
+                                                            label: root.compare_view_horizontal_scroll_locked ? "Locked" : "Unlocked";
+                                                            button_width: 86px;
+                                                            enabled: root.compare_view_has_targets;
+                                                            tapped => {
+                                                                root.compare_view_scroll_lock_toggled();
+                                                            }
+                                                        }
+
+                                                        CompactToolbarButton {
+                                                            label: "Reset";
+                                                            button_width: 64px;
+                                                            enabled: root.compare_view_has_targets;
+                                                            tapped => {
+                                                                compare_workspace_view.reset_horizontal_scroll();
+                                                            }
+                                                        }
+
+                                                        CompactToolbarButton {
+                                                            label: "Recenter";
+                                                            button_width: 82px;
+                                                            enabled: root.compare_view_has_targets;
+                                                            tapped => {
+                                                                compare_workspace_view.recenter_focused_row();
                                                             }
                                                         }
                                                     }
@@ -4467,8 +4594,11 @@ slint::slint! {
                                                     column_inset: root.compare_view_column_inset;
                                                     column_divider_width: root.compare_view_column_divider_width;
                                                     status_column_width: root.compare_view_relation_column_width;
+                                                    left_content_width_px: root.compare_view_left_content_width_px;
+                                                    right_content_width_px: root.compare_view_right_content_width_px;
                                                     focused_row: root.compare_row_focused_index;
                                                     interaction_enabled: !root.running && !root.diff_loading;
+                                                    horizontal_scroll_locked: root.compare_view_horizontal_scroll_locked;
                                                     row_focused(path) => {
                                                         root.compare_view_row_focused(path);
                                                     }
@@ -5721,6 +5851,8 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_compare_row_is_directories(Rc::new(VecModel::<bool>::default()).into());
     window.set_compare_row_is_expandable(Rc::new(VecModel::<bool>::default()).into());
     window.set_compare_row_is_expanded(Rc::new(VecModel::<bool>::default()).into());
+    window.set_compare_view_breadcrumb_labels(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_view_breadcrumb_paths(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
     window
         .set_compare_file_row_relation_labels(Rc::new(VecModel::<SharedString>::default()).into());
@@ -5806,6 +5938,46 @@ fn compare_file_right_content_width_px(
         .unwrap_or(0)
 }
 
+fn estimate_compare_view_label_width_px(text: &str) -> i32 {
+    const PX_PER_WIDTH_UNIT: usize = 8;
+    const EXTRA_PADDING_PX: usize = 12;
+    const MIN_LABEL_WIDTH_PX: usize = 24;
+
+    let normalized = text.replace('\t', "    ");
+    let width_units = UnicodeWidthStr::width(normalized.as_str());
+    let width_px = width_units
+        .saturating_mul(PX_PER_WIDTH_UNIT)
+        .saturating_add(EXTRA_PADDING_PX)
+        .max(MIN_LABEL_WIDTH_PX);
+    i32::try_from(width_px).unwrap_or(i32::MAX)
+}
+
+fn compare_view_side_content_width_px(rows: &[CompareViewRowProjection], left_side: bool) -> i32 {
+    const INDENT_PX_PER_LEVEL: i32 = 12;
+    const SIDE_FIXED_WIDTH_PX: i32 = 60;
+
+    rows.iter()
+        .filter_map(|row| {
+            let (present, name) = if left_side {
+                (row.left_present, row.left_name.as_str())
+            } else {
+                (row.right_present, row.right_name.as_str())
+            };
+            if !present || name.is_empty() {
+                return None;
+            }
+
+            Some(
+                i32::from(row.depth)
+                    .saturating_mul(INDENT_PX_PER_LEVEL)
+                    .saturating_add(SIDE_FIXED_WIDTH_PX)
+                    .saturating_add(estimate_compare_view_label_width_px(name)),
+            )
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 fn sync_navigator_scroll_requests(
     window: &MainWindow,
     state: &AppState,
@@ -5887,11 +6059,13 @@ fn sync_window_state(
     window.set_compare_focus_path_raw(state.compare_focus_path_raw_text().into());
     window.set_compare_root_pair_text(state.compare_root_pair_text().into());
     window.set_compare_view_current_path_text(state.compare_view_current_path_text().into());
+    window.set_compare_view_has_targets(state.compare_view_has_targets());
     window.set_compare_view_target_status_label(state.compare_view_target_status_label().into());
     window.set_compare_view_target_status_tone(state.compare_view_target_status_tone().into());
     window.set_compare_view_empty_title_text(state.compare_view_empty_title_text().into());
     window.set_compare_view_empty_body_text(state.compare_view_empty_body_text().into());
     window.set_compare_view_can_go_up(state.compare_view_can_go_up());
+    window.set_compare_view_horizontal_scroll_locked(state.compare_view_horizontal_scroll_locked());
     window.set_workspace_session_confirm_open(state.workspace_session_confirmation_open());
     window.set_workspace_session_confirm_title(
         state.workspace_session_confirmation_title_text().into(),
@@ -6252,6 +6426,26 @@ fn sync_window_state(
 
     if should_refresh_compare_view_models(last_state, state) {
         let projected_compare_rows = state.compare_view_row_projections();
+        let compare_view_breadcrumb_labels = state
+            .compare_view_breadcrumb_labels()
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_view_breadcrumb_labels(),
+            compare_view_breadcrumb_labels,
+            "compare_view_breadcrumb_labels",
+        );
+        let compare_view_breadcrumb_paths = state
+            .compare_view_breadcrumb_paths()
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_view_breadcrumb_paths(),
+            compare_view_breadcrumb_paths,
+            "compare_view_breadcrumb_paths",
+        );
         let compare_row_paths = projected_compare_rows
             .iter()
             .map(|projection| SharedString::from(projection.relative_path.clone()))
@@ -6369,6 +6563,14 @@ fn sync_window_state(
             compare_row_is_expanded,
             "compare_row_is_expanded",
         );
+        window.set_compare_view_left_content_width_px(compare_view_side_content_width_px(
+            &projected_compare_rows,
+            true,
+        ));
+        window.set_compare_view_right_content_width_px(compare_view_side_content_width_px(
+            &projected_compare_rows,
+            false,
+        ));
     }
 
     if should_refresh_compare_file_models(last_state, state) {
@@ -7547,6 +7749,33 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let compare_root_bridge = bridge.clone();
+    let compare_root_cache = Arc::clone(&sync_cache);
+    let compare_root_context_menu_controller = context_menu_controller.clone();
+    let compare_root_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_root_view_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_root_context_menu_controller.close();
+        compare_root_bridge.dispatch(UiCommand::OpenCompareView(String::new()));
+        sync_window_state_if_changed(
+            &window,
+            &compare_root_bridge,
+            &compare_root_cache,
+            Some(&compare_root_context_menu_controller),
+            &compare_root_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if !window.get_workspace_session_confirm_open()
+            && window.get_workspace_mode() == "compare-view"
+        {
+            window.invoke_focus_compare_rows();
+        }
+    });
+
+    let app_weak = app.as_weak();
     let compare_up_bridge = bridge.clone();
     let compare_up_cache = Arc::clone(&sync_cache);
     let compare_up_context_menu_controller = context_menu_controller.clone();
@@ -7567,6 +7796,57 @@ pub fn run() -> anyhow::Result<()> {
             SyncMode::Passive,
         );
         window.invoke_focus_compare_rows();
+    });
+
+    let app_weak = app.as_weak();
+    let compare_breadcrumb_bridge = bridge.clone();
+    let compare_breadcrumb_cache = Arc::clone(&sync_cache);
+    let compare_breadcrumb_context_menu_controller = context_menu_controller.clone();
+    let compare_breadcrumb_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_view_breadcrumb_requested(move |relative_path| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_breadcrumb_context_menu_controller.close();
+        compare_breadcrumb_bridge
+            .dispatch(UiCommand::NavigateCompareView(relative_path.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &compare_breadcrumb_bridge,
+            &compare_breadcrumb_cache,
+            Some(&compare_breadcrumb_context_menu_controller),
+            &compare_breadcrumb_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let compare_scroll_lock_bridge = bridge.clone();
+    let compare_scroll_lock_cache = Arc::clone(&sync_cache);
+    let compare_scroll_lock_context_menu_controller = context_menu_controller.clone();
+    let compare_scroll_lock_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_view_scroll_lock_toggled(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_scroll_lock_context_menu_controller.close();
+        compare_scroll_lock_bridge.dispatch(UiCommand::ToggleCompareViewScrollLock);
+        sync_window_state_if_changed(
+            &window,
+            &compare_scroll_lock_bridge,
+            &compare_scroll_lock_cache,
+            Some(&compare_scroll_lock_context_menu_controller),
+            &compare_scroll_lock_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
     });
 
     let app_weak = app.as_weak();
