@@ -256,6 +256,99 @@ slint::slint! {
         }
     }
 
+    component CompareHeaderGhostButton inherits Rectangle {
+        in property <string> label;
+        in property <bool> enabled: true;
+        in property <length> button_width: 152px;
+        callback tapped();
+
+        property <bool> hovered: button_touch_area.has_hover && root.enabled;
+
+        width: root.button_width;
+        height: 17px;
+        border-width: 0px;
+        border-radius: 6px;
+        background: transparent;
+        clip: true;
+        opacity: root.enabled ? 1 : 0.52;
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: 6px;
+            background: #edf4fc;
+            opacity: root.hovered ? 1 : 0;
+
+            animate opacity {
+                duration: 140ms;
+            }
+        }
+
+        HorizontalLayout {
+            width: parent.width;
+            height: parent.height;
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 5px;
+
+            Rectangle {
+                width: 10px;
+                height: parent.height;
+                background: transparent;
+
+                Path {
+                    x: 1px;
+                    y: 4px;
+                    width: 8px;
+                    height: 8px;
+                    viewbox-width: 8;
+                    viewbox-height: 8;
+                    fill: transparent;
+                    stroke: root.hovered ? #4f6b84 : #6f8397;
+                    stroke-width: 1.1px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+
+                    MoveTo {
+                        x: 5.75;
+                        y: 1.25;
+                    }
+
+                    LineTo {
+                        x: 2.75;
+                        y: 4.0;
+                    }
+
+                    LineTo {
+                        x: 5.75;
+                        y: 6.75;
+                    }
+                }
+            }
+
+            Text {
+                height: parent.height;
+                text: root.label;
+                color: root.hovered ? #4f6b84 : #607489;
+                font-size: 11px;
+                font-weight: 500;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+        }
+
+        button_touch_area := TouchArea {
+            width: parent.width;
+            height: parent.height;
+            enabled: root.enabled;
+            clicked => {
+                root.tapped();
+            }
+        }
+    }
+
     component TitleBarSurface inherits Rectangle {
         in property <length> leading_inset: 0px;
         in property <string> title_text: "Folder Compare";
@@ -3952,7 +4045,7 @@ slint::slint! {
                                                     HorizontalLayout {
                                                         spacing: 8px;
 
-                                                        CompactToolbarButton {
+                                                        CompareHeaderGhostButton {
                                                             label: "Back to Compare Tree";
                                                             button_width: 152px;
                                                             enabled: root.can_return_to_compare_view;
