@@ -16,6 +16,7 @@ tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "fmt"] }
 serde.workspace = true
 copypasta = "0.10.2"
 toml = "0.8"
+unicode-width = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["CFArray", "CFString", "CFURL", "std"] }

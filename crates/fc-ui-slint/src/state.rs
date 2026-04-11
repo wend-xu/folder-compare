@@ -2177,7 +2177,8 @@ impl AppState {
                     .to_string()
             }
             CompareFileShellState::Ready => {
-                "Aligned base/target rows are ready for side-by-side reading.".to_string()
+                "Aligned base/target rows are ready for side-by-side reading, scrolling, and copy."
+                    .to_string()
             }
             CompareFileShellState::Unavailable => {
                 "This selection does not currently provide compare-file content in the dedicated renderer."
@@ -2199,7 +2200,10 @@ impl AppState {
             CompareFileShellState::StaleSelection => {
                 "Adjust filters or reopen the file from Compare Tree.".to_string()
             }
-            CompareFileShellState::Loading => "Using one shared vertical projection.".to_string(),
+            CompareFileShellState::Loading => {
+                "Using one shared vertical projection with independent base/target horizontal scroll."
+                    .to_string()
+            }
             CompareFileShellState::Ready => {
                 if self.compare_file_truncated() {
                     "Current compare rows were truncated by the underlying diff payload."

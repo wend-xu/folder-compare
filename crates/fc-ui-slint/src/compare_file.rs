@@ -131,7 +131,7 @@ fn build_modified_row(left: &DiffLine, right: &DiffLine) -> CompareFileRowViewMo
         emphasize_inline_difference(&left.content, &right.content);
     CompareFileRowViewModel {
         row_kind: "modified".to_string(),
-        relation_label: "~".to_string(),
+        relation_label: "Diff".to_string(),
         relation_tone: "modified".to_string(),
         left_line_no: left.old_line_no,
         right_line_no: right.new_line_no,
@@ -148,7 +148,7 @@ fn build_modified_row(left: &DiffLine, right: &DiffLine) -> CompareFileRowViewMo
 fn build_left_only_row(left: &DiffLine) -> CompareFileRowViewModel {
     CompareFileRowViewModel {
         row_kind: "left-only".to_string(),
-        relation_label: "<".to_string(),
+        relation_label: "Left".to_string(),
         relation_tone: "left".to_string(),
         left_line_no: left.old_line_no,
         right_line_no: None,
@@ -165,7 +165,7 @@ fn build_left_only_row(left: &DiffLine) -> CompareFileRowViewModel {
 fn build_right_only_row(right: &DiffLine) -> CompareFileRowViewModel {
     CompareFileRowViewModel {
         row_kind: "right-only".to_string(),
-        relation_label: ">".to_string(),
+        relation_label: "Right".to_string(),
         relation_tone: "right".to_string(),
         left_line_no: None,
         right_line_no: right.new_line_no,
@@ -190,7 +190,7 @@ fn build_single_side_panel(
         .map(|(index, line)| match row_kind {
             "left-only" => CompareFileRowViewModel {
                 row_kind: "left-only".to_string(),
-                relation_label: "<".to_string(),
+                relation_label: "Left".to_string(),
                 relation_tone: "left".to_string(),
                 left_line_no: Some(index + 1),
                 right_line_no: None,
@@ -204,7 +204,7 @@ fn build_single_side_panel(
             },
             "right-only" => CompareFileRowViewModel {
                 row_kind: "right-only".to_string(),
-                relation_label: ">".to_string(),
+                relation_label: "Right".to_string(),
                 relation_tone: "right".to_string(),
                 left_line_no: None,
                 right_line_no: Some(index + 1),

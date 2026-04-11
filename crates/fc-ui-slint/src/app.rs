@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use unicode_width::UnicodeWidthStr;
 
 const RESULTS_LOCATE_AND_OPEN_ACTION_ID: &str = "results-locate-and-open";
 const RESULTS_OPEN_IN_COMPARE_VIEW_ACTION_ID: &str = "results-open-in-compare-view";
@@ -251,6 +252,115 @@ slint::slint! {
             enabled: root.enabled;
             clicked => {
                 root.tapped();
+            }
+        }
+    }
+
+    component CompareHeaderGhostButton inherits Rectangle {
+        in property <string> label;
+        in property <bool> enabled: true;
+        in property <length> button_width: 152px;
+        in property <string> tooltip_text: "";
+        callback tapped();
+        callback tooltip_requested(string, length, length, length);
+        callback tooltip_closed();
+
+        property <bool> hovered: button_touch_area.has_hover && root.enabled;
+        property <length> horizontal_padding: 8px;
+        property <length> icon_width: 7px;
+        property <length> icon_height: 8px;
+        property <length> icon_gap: 6px;
+        property <length> text_x: root.horizontal_padding + root.icon_width + root.icon_gap;
+
+        width: root.button_width;
+        height: 17px;
+        border-width: 0px;
+        border-radius: 6px;
+        background: transparent;
+        clip: true;
+        opacity: root.enabled ? 1 : 0.52;
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: 6px;
+            background: #edf4fc;
+            opacity: root.hovered ? 1 : 0;
+
+            animate opacity {
+                duration: 140ms;
+            }
+        }
+
+        Path {
+            x: root.horizontal_padding;
+            y: (parent.height - root.icon_height) / 2;
+            width: root.icon_width;
+            height: root.icon_height;
+            viewbox-width: 7;
+            viewbox-height: 8;
+            fill: transparent;
+            stroke: root.hovered ? #4f6b84 : #6f8397;
+            stroke-width: 1.1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo {
+                x: 5.5;
+                y: 1.0;
+            }
+
+            LineTo {
+                x: 2.25;
+                y: 4.0;
+            }
+
+            LineTo {
+                x: 5.5;
+                y: 7.0;
+            }
+        }
+
+        Text {
+            x: root.text_x;
+            width: max(0px, parent.width - root.text_x - root.horizontal_padding);
+            height: parent.height;
+            text: root.label;
+            color: root.hovered ? #4f6b84 : #607489;
+            font-size: 11px;
+            font-weight: 500;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        button_touch_area := TouchArea {
+            width: parent.width;
+            height: parent.height;
+            enabled: root.enabled || root.tooltip_text != "";
+            clicked => {
+                if root.enabled {
+                    root.tapped();
+                }
+            }
+
+            changed has-hover => {
+                if self.has-hover && root.tooltip_text != "" {
+                    root.tooltip_requested(
+                        root.tooltip_text,
+                        self.absolute-position.x + 6px,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
+                    );
+                } else {
+                    root.tooltip_closed();
+                }
+            }
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.cancel {
+                    root.tooltip_closed();
+                }
             }
         }
     }
@@ -1623,6 +1733,8 @@ slint::slint! {
         in property <[string]> compare_file_row_right_suffixes;
         in property <[bool]> compare_file_row_left_padding;
         in property <[bool]> compare_file_row_right_padding;
+        in property <int> compare_file_left_content_width_px: 0;
+        in property <int> compare_file_right_content_width_px: 0;
         in property <string> workspace_mode;
         in property <[string]> workspace_session_ids;
         in property <[string]> workspace_session_labels;
@@ -3949,12 +4061,24 @@ slint::slint! {
                                                     HorizontalLayout {
                                                         spacing: 8px;
 
-                                                        CompactToolbarButton {
-                                                            label: "Back to Compare Tree";
-                                                            button_width: 152px;
+                                                        CompareHeaderGhostButton {
+                                                            label: "Back";
+                                                            tooltip_text: "Back to Compare Tree";
+                                                            button_width: 58px;
                                                             enabled: root.can_return_to_compare_view;
                                                             tapped => {
                                                                 root.compare_file_back_requested();
+                                                            }
+                                                            tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                root.show_tooltip(
+                                                                    text,
+                                                                    anchor_x - root.absolute-position.x,
+                                                                    anchor_top - root.absolute-position.y,
+                                                                    anchor_bottom - root.absolute-position.y,
+                                                                );
+                                                            }
+                                                            tooltip_closed => {
+                                                                root.hide_tooltip();
                                                             }
                                                         }
 
@@ -4135,6 +4259,11 @@ slint::slint! {
                                                     row_right_suffixes: root.compare_file_row_right_suffixes;
                                                     row_left_padding: root.compare_file_row_left_padding;
                                                     row_right_padding: root.compare_file_row_right_padding;
+                                                    left_content_width_px: root.compare_file_left_content_width_px;
+                                                    right_content_width_px: root.compare_file_right_content_width_px;
+                                                    copy_requested(copy_value, feedback_label) => {
+                                                        root.copy_requested(copy_value, feedback_label);
+                                                    }
                                                 }
                                             }
 
@@ -5643,6 +5772,40 @@ fn compare_file_segment_slots(
     (prefix, emphasis, suffix)
 }
 
+fn estimate_compare_file_text_width_px(text: &str) -> i32 {
+    const PX_PER_WIDTH_UNIT: usize = 8;
+    const EXTRA_PADDING_PX: usize = 28;
+    const MIN_TEXT_WIDTH_PX: usize = 32;
+
+    let normalized = text.replace('\t', "    ");
+    let width_units = UnicodeWidthStr::width(normalized.as_str());
+    let width_px = width_units
+        .saturating_mul(PX_PER_WIDTH_UNIT)
+        .saturating_add(EXTRA_PADDING_PX)
+        .max(MIN_TEXT_WIDTH_PX);
+    i32::try_from(width_px).unwrap_or(i32::MAX)
+}
+
+fn compare_file_left_content_width_px(rows: &[crate::view_models::CompareFileRowViewModel]) -> i32 {
+    rows.iter()
+        .map(|row| row.left_text.as_str())
+        .filter(|text| !text.is_empty())
+        .map(estimate_compare_file_text_width_px)
+        .max()
+        .unwrap_or(0)
+}
+
+fn compare_file_right_content_width_px(
+    rows: &[crate::view_models::CompareFileRowViewModel],
+) -> i32 {
+    rows.iter()
+        .map(|row| row.right_text.as_str())
+        .filter(|text| !text.is_empty())
+        .map(estimate_compare_file_text_width_px)
+        .max()
+        .unwrap_or(0)
+}
+
 fn sync_navigator_scroll_requests(
     window: &MainWindow,
     state: &AppState,
@@ -6210,6 +6373,12 @@ fn sync_window_state(
 
     if should_refresh_compare_file_models(last_state, state) {
         let compare_file_rows = state.compare_file_row_projections();
+        window.set_compare_file_left_content_width_px(compare_file_left_content_width_px(
+            &compare_file_rows,
+        ));
+        window.set_compare_file_right_content_width_px(compare_file_right_content_width_px(
+            &compare_file_rows,
+        ));
         let compare_file_row_kinds = compare_file_rows
             .iter()
             .map(|row| SharedString::from(row.row_kind.clone()))
@@ -7887,5 +8056,37 @@ mod tests {
         let (analysis_reset, _) = state.advance(false, false, true);
         let analysis_reset = analysis_reset.expect("phase switch should reset timeout copy");
         assert_eq!(analysis_reset.message, "Running AI analysis...");
+    }
+
+    #[test]
+    fn compare_file_content_width_tracks_wide_cjk_lines() {
+        let ascii = estimate_compare_file_text_width_px("aaaaaaaa");
+        let cjk = estimate_compare_file_text_width_px("测试测试测试测试");
+        assert!(cjk > ascii);
+    }
+
+    #[test]
+    fn compare_file_content_width_tracks_each_side_independently() {
+        let rows = vec![
+            crate::view_models::CompareFileRowViewModel {
+                left_text: "short".to_string(),
+                right_text: "also short".to_string(),
+                ..Default::default()
+            },
+            crate::view_models::CompareFileRowViewModel {
+                left_text: "非常长的比较行，用来验证横向滚动范围".to_string(),
+                right_text: String::new(),
+                ..Default::default()
+            },
+        ];
+
+        assert_eq!(
+            compare_file_left_content_width_px(&rows),
+            estimate_compare_file_text_width_px("非常长的比较行，用来验证横向滚动范围")
+        );
+        assert_eq!(
+            compare_file_right_content_width_px(&rows),
+            estimate_compare_file_text_width_px("also short")
+        );
     }
 }
