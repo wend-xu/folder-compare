@@ -260,9 +260,17 @@ slint::slint! {
         in property <string> label;
         in property <bool> enabled: true;
         in property <length> button_width: 152px;
+        in property <string> tooltip_text: "";
         callback tapped();
+        callback tooltip_requested(string, length, length, length);
+        callback tooltip_closed();
 
         property <bool> hovered: button_touch_area.has_hover && root.enabled;
+        property <length> horizontal_padding: 8px;
+        property <length> icon_width: 7px;
+        property <length> icon_height: 8px;
+        property <length> icon_gap: 6px;
+        property <length> text_x: root.horizontal_padding + root.icon_width + root.icon_gap;
 
         width: root.button_width;
         height: 17px;
@@ -284,67 +292,75 @@ slint::slint! {
             }
         }
 
-        HorizontalLayout {
-            width: parent.width;
+        Path {
+            x: root.horizontal_padding;
+            y: (parent.height - root.icon_height) / 2;
+            width: root.icon_width;
+            height: root.icon_height;
+            viewbox-width: 7;
+            viewbox-height: 8;
+            fill: transparent;
+            stroke: root.hovered ? #4f6b84 : #6f8397;
+            stroke-width: 1.1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+
+            MoveTo {
+                x: 5.5;
+                y: 1.0;
+            }
+
+            LineTo {
+                x: 2.25;
+                y: 4.0;
+            }
+
+            LineTo {
+                x: 5.5;
+                y: 7.0;
+            }
+        }
+
+        Text {
+            x: root.text_x;
+            width: max(0px, parent.width - root.text_x - root.horizontal_padding);
             height: parent.height;
-            padding-left: 8px;
-            padding-right: 8px;
-            spacing: 5px;
-
-            Rectangle {
-                width: 10px;
-                height: parent.height;
-                background: transparent;
-
-                Path {
-                    x: 1px;
-                    y: 4px;
-                    width: 8px;
-                    height: 8px;
-                    viewbox-width: 8;
-                    viewbox-height: 8;
-                    fill: transparent;
-                    stroke: root.hovered ? #4f6b84 : #6f8397;
-                    stroke-width: 1.1px;
-                    stroke-line-cap: round;
-                    stroke-line-join: round;
-
-                    MoveTo {
-                        x: 5.75;
-                        y: 1.25;
-                    }
-
-                    LineTo {
-                        x: 2.75;
-                        y: 4.0;
-                    }
-
-                    LineTo {
-                        x: 5.75;
-                        y: 6.75;
-                    }
-                }
-            }
-
-            Text {
-                height: parent.height;
-                text: root.label;
-                color: root.hovered ? #4f6b84 : #607489;
-                font-size: 11px;
-                font-weight: 500;
-                horizontal-alignment: left;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-                overflow: elide;
-            }
+            text: root.label;
+            color: root.hovered ? #4f6b84 : #607489;
+            font-size: 11px;
+            font-weight: 500;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            overflow: elide;
         }
 
         button_touch_area := TouchArea {
             width: parent.width;
             height: parent.height;
-            enabled: root.enabled;
+            enabled: root.enabled || root.tooltip_text != "";
             clicked => {
-                root.tapped();
+                if root.enabled {
+                    root.tapped();
+                }
+            }
+
+            changed has-hover => {
+                if self.has-hover && root.tooltip_text != "" {
+                    root.tooltip_requested(
+                        root.tooltip_text,
+                        self.absolute-position.x + 6px,
+                        self.absolute-position.y,
+                        self.absolute-position.y + self.height,
+                    );
+                } else {
+                    root.tooltip_closed();
+                }
+            }
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.cancel {
+                    root.tooltip_closed();
+                }
             }
         }
     }
@@ -4046,11 +4062,23 @@ slint::slint! {
                                                         spacing: 8px;
 
                                                         CompareHeaderGhostButton {
-                                                            label: "Back to Compare Tree";
-                                                            button_width: 152px;
+                                                            label: "Back";
+                                                            tooltip_text: "Back to Compare Tree";
+                                                            button_width: 58px;
                                                             enabled: root.can_return_to_compare_view;
                                                             tapped => {
                                                                 root.compare_file_back_requested();
+                                                            }
+                                                            tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                root.show_tooltip(
+                                                                    text,
+                                                                    anchor_x - root.absolute-position.x,
+                                                                    anchor_top - root.absolute-position.y,
+                                                                    anchor_bottom - root.absolute-position.y,
+                                                                );
+                                                            }
+                                                            tooltip_closed => {
+                                                                root.hide_tooltip();
                                                             }
                                                         }
 
