@@ -777,6 +777,30 @@
 - Only move default planning to `19H` or later when a later thread explicitly scopes that stage.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
+## Phase 19H Draft Boundary (Not Landed)
+
+- `Phase 19H` is not implemented yet; the real stable baseline remains landed `19G`.
+- Current draft definition:
+  - tighten Compare Tree into a clearer compare-browsing workbench by clarifying entry semantics, directory reanchor affordances, and lightweight in-tree navigation aids without widening compare/file/session architecture
+- Why `19H` is the right next planning step:
+  - `19G` already closed the mechanical baseline for compare-root entry, breadcrumb reanchor, horizontal scroll, and recovery actions
+  - the remaining open questions are now product-model and affordance questions, not evidence that `19G` is still an unaccepted implementation baseline
+  - defaulting back into broad `19G fix-*` work would blur the accepted boundary between regression repair and the next compare-tree product pass
+- Candidate `19H` in-scope direction:
+  - a clearer primary Compare Tree entry near `Results / Navigator`, positioned as entering Compare Tree at compare root rather than as a whole-window/full-screen takeover affordance
+  - a directory-level reanchor action inside Compare Tree, such as `Set as Current Level`, built on the existing anchored `compare_focus_path` model rather than on compare-session reset semantics
+  - compare-tree quick locate / jump-to-match inside the current compare target, using path/name matching plus reveal/focus/ensure-visible, while explicitly not changing the visible tree set
+  - Compare Tree header / toolbar language cleanup and moderate density reduction where current semantics are already stable
+- Explicitly not `19H`:
+  - filtering-style compare search that hides or rewrites the visible tree
+  - Compare File View expansion, cross-surface reset/recenter, sync scroll, or richer compare-file workbench actions
+  - directory detail panes, multi-compare-session work, merge/apply flows, or `fc-core` widening
+- Current draft decisions to preserve in later threads:
+  - `Compare Status -> Open root` is serviceable as a secondary shortcut, but the primary compare-browsing entry should move closer to `Results / Navigator`, because Compare Tree is a browsing surface over compare results rather than a summary action inside `Compare Status`
+  - that primary entry should read as entering/opening Compare Tree at compare root, not as a "full-screen compare tree" affordance, because the landed shell remains `Top Bar -> Main Split -> Sidebar + Workspace`
+  - if row-level reanchor is added, it should be a compare-tree-local directory action and should not reuse the stronger "reset compare session" language that currently belongs to sidebar-originated `Open in Compare View`
+  - if compare-tree search is added in `19H`, it should stay non-filtering quick locate only; richer result lists, persistent multi-match traversal, content search, or highlight semantics can wait for `19I+`
+
 ## Related Documents
 
 - `docs/thread-context.md`

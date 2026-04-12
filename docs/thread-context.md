@@ -20,6 +20,10 @@
   - `Phase 19G` compare tree navigation / scrolling workbench 已落地
 - 当前默认事实不再是“是否进入 `19C`”，而是“`19G` 已成为当前稳定 compare workspace/tree-navigation baseline，`19F` 仍是其下层 compare-file baseline”。
 - 后续线程默认不要重开 `19B fix-*` 或把 `19C` / `19D` / `19E` / `19F` / `19G` 重新当成 proposal；除非目标明确要求做 regression 或进入更后阶段。
+- 当前线程已进入 `19H` 草案收口，但仍不是实现优先阶段：
+  - `19H` 当前建议定义为：在不改变 `19G` compare/session/file 边界的前提下，收口 Compare Tree 的入口语义、目录重锚定 affordance、以及轻量 in-tree quick-locate 模型
+  - 当前默认不是继续滚动 `19G fix-*`，而是先回答 compare-tree 入口、`Set as Current Level`、non-filter quick-locate、以及 header 语言/密度这些产品问题
+  - 不要把上述 `19H` 候选写成已实现事实
 - 当前必须继承的 navigator 事实已固定：
   - `Results / Navigator` 已是 `tree + flat` 双视图基线
   - 非搜索默认 view 来自 `Settings -> Behavior -> Default view`
@@ -255,6 +259,7 @@
   - 把 `Phase 19A`、`19B fix-2`、`19C fix-1`、`19D`、`19E`、`19F`、`19G` 视为已实现事实
   - 后续如有新线程，默认应从 `19G` 已成立 compare tree/file/session contract 出发，而不是重复 `19B` / `19C` / `19D` / `19E` / `19F` / `19G` 收口，或把这些阶段写回 proposal
   - 除非遇到新回归，否则不要继续把 `18C fix-*` 当作默认主线
+  - 若没有 concrete regression，下一入口优先是 `19H` 草案收口，而不是继续默认滚动 `19G fix-*`
   - 不要回退到 “可视区域/locate 仍 deferred” 的旧叙事
   - 不要把 compare workspace 的长期数据基础重新拉回到 `entry_rows` 字符串链路
   - 不要把 landed `19G` 顺手扩张成隐藏版 `19H+` / 多 compare session / compare-core widening

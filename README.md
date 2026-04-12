@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-11）：
+当前项目状态（2026-04-12）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -300,7 +300,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19D`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
+- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19G`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - top-level manual sidebar hide / restore
