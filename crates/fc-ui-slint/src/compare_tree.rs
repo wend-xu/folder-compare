@@ -41,6 +41,29 @@ pub fn project_compare_tree_rows(
     rows
 }
 
+pub(crate) fn compare_tree_search_paths(
+    foundation: &CompareFoundation,
+    focus: &CompareFocusPath,
+    show_hidden_files: bool,
+) -> Vec<String> {
+    let focus = foundation.clamp_compare_focus_path(focus);
+    let anchor_key = focus.as_relative_path().unwrap_or_default();
+    let Some(anchor_node) = foundation.node(anchor_key) else {
+        return Vec::new();
+    };
+
+    let mut paths = Vec::new();
+    for child_key in &anchor_node.child_relative_paths {
+        collect_compare_tree_search_paths(
+            foundation,
+            child_key.as_str(),
+            show_hidden_files,
+            &mut paths,
+        );
+    }
+    paths
+}
+
 fn flatten_compare_tree(
     foundation: &CompareFoundation,
     key: &str,
@@ -83,6 +106,25 @@ fn flatten_compare_tree(
             expansion_overrides,
             out,
         );
+    }
+}
+
+fn collect_compare_tree_search_paths(
+    foundation: &CompareFoundation,
+    key: &str,
+    show_hidden_files: bool,
+    out: &mut Vec<String>,
+) {
+    let Some(node) = foundation.node(key) else {
+        return;
+    };
+    if !show_hidden_files && is_hidden_relative_path(&node.relative_path) {
+        return;
+    }
+
+    out.push(node.relative_path.clone());
+    for child_key in &node.child_relative_paths {
+        collect_compare_tree_search_paths(foundation, child_key.as_str(), show_hidden_files, out);
     }
 }
 

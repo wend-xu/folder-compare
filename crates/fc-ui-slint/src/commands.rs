@@ -53,6 +53,10 @@ pub enum UiCommand {
     /// Reanchors current Compare View to one ancestor/root breadcrumb target without resetting the session.
     /// Empty string means the compare root itself.
     NavigateCompareView(String),
+    /// Updates Compare Tree quick-locate query and jumps to the current/first match in the current anchor.
+    UpdateCompareViewQuickLocate(String),
+    /// Jumps to the next quick-locate match inside the current Compare Tree anchor.
+    AdvanceCompareViewQuickLocate,
     /// Toggles one expandable directory row inside Compare View.
     ToggleCompareTreeNode(String),
     /// Focuses one visible row inside Compare View.

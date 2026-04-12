@@ -56,8 +56,12 @@
   - compare root 现在可以直接进入 Compare View
   - Compare Tree 顶部路径已升级为 breadcrumb-first 导航，`Up` 只保留为轻量父级动作
   - Compare Tree 现已支持左右内容 pane 的 horizontal scroll，relation lane 保持固定
-  - Compare Tree 现已具备 `Reset` / `Recenter`
-  - Compare Tree horizontal scroll 现已支持 `Locked / Unlocked`
+  - Compare Tree 现已具备稳定的 viewport recovery / scroll-lock 基线
+- `Phase 19H` 已落地并成为当前稳定 compare-tree affordance baseline：
+  - `Results / Navigator` 现已提供主入口 `Open Compare Tree`
+  - Compare Tree 目录行右键菜单现已提供 `Set as Current Level`
+  - Compare Tree 现已提供 non-filter quick locate 与 `Next`
+  - toolbar 现已收口为 icon-first scroll lock、`Reset Scroll`、`Center Row`
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -105,6 +109,7 @@
 - 当前 `Results / Navigator` 代码基线已进入双视图：
   - 非搜索默认 view 来自 `Settings -> Behavior -> Default view`
   - 搜索结果与集中扫描继续走 `flat mode`
+  - compare browsing 主入口现已在这里提供 `Open Compare Tree`
 - 层级结果视图仍然严格局限在同一 `Results / Navigator` block 内，不引入新 IA；详细边界见 `docs/architecture.md`
 - Results row 信息层级当前稳定为：
   - 主信息：status pill + filename
@@ -151,10 +156,13 @@
   - compare root 现在可直接进入 Compare View
   - Compare Tree header 现已升级为 breadcrumb-first compare navigation；Compare / File session 切换仍由外层 tab strip 完成
   - `Up` 只保留为轻量父级动作，不再与 breadcrumb 分裂成两套导航
+  - `Results / Navigator` 现已提供 `Open Compare Tree` 作为主 compare-browsing 入口
+  - 目录行右键菜单现已提供 `Set as Current Level`
   - 轻量类型标识复用 navigator 风格，不再使用 compare tree 内的 pill 风格类型 badge
   - Compare tree 行背景按 `Diff / Equal / Left / Right` 复用 flat view 语义色，并补齐 Target 侧 disclosure 对称性
   - Compare Tree 现在支持左右内容 pane horizontal scroll，relation lane 保持固定
-  - Compare Tree 现在具备 `Reset` / `Recenter` 与 `Locked / Unlocked` horizontal scroll 模式
+  - Compare Tree 现已提供 non-filter quick locate：`path / name only`、reveal / focus / ensure-visible、`Next`
+  - Compare Tree 现在具备 icon-first scroll lock、`Reset Scroll`、`Center Row`
   - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
 - Workspace Session Tabs
@@ -300,7 +308,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 `Phase 17D` 后稳定基线之上的 landed `Phase 19G`，不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
+- 当前默认入口是 landed `Phase 19H`（继承 `19G`），不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - top-level manual sidebar hide / restore
@@ -328,15 +336,23 @@ cargo test --workspace
   - 标准 `Sidebar -> File View` 继续保留既有内层 `Diff / Analysis`
   - Compare File View 使用单一纵向 side-by-side 行投影，并保留 `Back to Compare Tree`
   - Compare File View 现在支持左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
-  - Compare Tree 现在支持 compare root 直接进入、breadcrumb 导航、horizontal scroll、`Reset` / `Recenter`、以及 `Locked / Unlocked`
+  - Compare Tree 现在支持 compare root 直接进入、breadcrumb 导航、horizontal scroll、以及明确的 viewport recovery / scroll-lock 语义
+- `Phase 19H` 当前额外事实：
+  - `Results / Navigator` 现已提供主入口 `Open Compare Tree`
+  - Compare Tree 目录行右键菜单现已提供 `Set as Current Level`
+  - Compare Tree 现已提供 non-filter quick locate：
+    - `path / name only`
+    - reveal / focus / ensure-visible
+    - `Next`
+  - Compare Tree toolbar 现已收口为 icon-first scroll lock、`Reset Scroll`、`Center Row`
 - 当前仍未实现：
-  - tree 内搜索 / 内容搜索
+  - compare tree filtering search / search-results mode / 内容搜索
   - 目录 selection / 目录详情
   - narrow-width minimum-usable behavior beyond the current compare-file baseline
   - compare core widening
   - cross-surface sync scroll / compare-file reset-recenter / richer compare interaction
-  - 超出当前 `19G` 的更深层 `Compare View / File View` 重构
-- 后续只有在目标明确时才进入 `19H` 或更后阶段；不要把 landed `19G` 重新写回 proposal。
+  - 超出当前 `19H` 的更深层 `Compare View / File View` 重构
+- 后续只有在目标明确时才进入 `19I` 或更后阶段；不要把 landed `19H` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

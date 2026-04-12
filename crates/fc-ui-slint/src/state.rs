@@ -5,8 +5,8 @@ use crate::compare_foundation::{
     CompareFoundationNode, CompareNodeKind,
 };
 use crate::compare_tree::{
-    compare_tree_expansion_state, compare_tree_reveal_targets, compare_tree_toggle_target,
-    project_compare_tree_rows,
+    compare_tree_expansion_state, compare_tree_reveal_targets, compare_tree_search_paths,
+    compare_tree_toggle_target, project_compare_tree_rows,
 };
 use crate::navigator_tree::{
     NavigatorTreeProjection, NavigatorTreeRowProjection, navigator_tree_reveal_targets,
@@ -434,6 +434,8 @@ pub struct AppState {
     pub compare_row_focus_path: Option<String>,
     /// Whether Compare Tree horizontal scrolling is locked between left/right panes.
     pub compare_view_horizontal_scroll_locked: bool,
+    /// Current Compare Tree quick-locate query text.
+    pub compare_view_quick_locate_query: String,
     /// Revision for Compare View visible-tree projection refreshes.
     pub compare_view_projection_revision: u64,
     /// Revision for Compare View one-shot ensure-visible requests.
@@ -527,6 +529,7 @@ impl Default for AppState {
             compare_focus_path: CompareFocusPath::root(),
             compare_row_focus_path: None,
             compare_view_horizontal_scroll_locked: true,
+            compare_view_quick_locate_query: String::new(),
             compare_view_projection_revision: 0,
             compare_view_scroll_request_revision: 0,
             compare_view_scroll_target_relative_path: None,
@@ -978,6 +981,7 @@ impl AppState {
         self.compare_row_focus_path = None;
         self.compare_view_expansion_overrides.clear();
         self.compare_view_horizontal_scroll_locked = true;
+        self.compare_view_quick_locate_query.clear();
     }
 
     fn apply_close_compare_session(&mut self) {
@@ -2048,6 +2052,11 @@ impl AppState {
         self.compare_view_horizontal_scroll_locked
     }
 
+    /// Returns the current Compare Tree quick-locate query text.
+    pub fn compare_view_quick_locate_query(&self) -> String {
+        self.compare_view_quick_locate_query.clone()
+    }
+
     /// Updates Compare Tree horizontal scroll lock state.
     pub fn set_compare_view_horizontal_scroll_locked(&mut self, locked: bool) -> bool {
         if self.compare_view_horizontal_scroll_locked == locked {
@@ -2061,6 +2070,16 @@ impl AppState {
     /// Toggles Compare Tree horizontal scroll lock state.
     pub fn toggle_compare_view_horizontal_scroll_locked(&mut self) -> bool {
         self.set_compare_view_horizontal_scroll_locked(!self.compare_view_horizontal_scroll_locked)
+    }
+
+    /// Updates Compare Tree quick-locate query text.
+    pub fn set_compare_view_quick_locate_query(&mut self, query: &str) -> bool {
+        let next = query.trim().to_string();
+        if self.compare_view_quick_locate_query == next {
+            return false;
+        }
+        self.compare_view_quick_locate_query = next;
+        true
     }
 
     /// Returns one formatted root-pair context string for Compare/File view headers.
@@ -2128,7 +2147,7 @@ impl AppState {
     /// Returns empty-state body text for Compare View content.
     pub fn compare_view_empty_body_text(&self) -> String {
         if self.compare_foundation.source_entry_count() == 0 {
-            "Run Compare from the sidebar, then open one directory from Results / Navigator."
+            "Run Compare from the sidebar, then open Compare Tree from Results / Navigator."
                 .to_string()
         } else {
             "The current compare target has no visible compare tree rows under the current view settings."
@@ -2537,6 +2556,89 @@ impl AppState {
         self.compare_view_scroll_request_revision =
             self.compare_view_scroll_request_revision.wrapping_add(1);
         true
+    }
+
+    /// Jumps to the current or next quick-locate match inside the current Compare Tree anchor.
+    pub fn locate_next_in_compare_view(&mut self, advance: bool) -> bool {
+        let query = self.compare_view_quick_locate_query.trim().to_string();
+        let needle = normalize_filter_needle(query.as_str());
+        if needle.is_empty() {
+            return false;
+        }
+
+        let target_path = {
+            let foundation = self.compare_foundation_for_projections();
+            let candidates = compare_tree_search_paths(
+                foundation.as_ref(),
+                &self.compare_focus_path,
+                self.show_hidden_files,
+            );
+            if candidates.is_empty() {
+                return false;
+            }
+
+            let current_index = self
+                .compare_row_focus_path
+                .as_deref()
+                .and_then(|current| candidates.iter().position(|path| path == current));
+            let target_index = if advance {
+                candidates
+                    .iter()
+                    .enumerate()
+                    .find(|(index, path)| {
+                        *index > current_index.unwrap_or(usize::MAX)
+                            && compare_tree_locate_matches(
+                                foundation.as_ref(),
+                                path.as_str(),
+                                needle.as_str(),
+                            )
+                    })
+                    .or_else(|| {
+                        candidates.iter().enumerate().find(|(_, path)| {
+                            compare_tree_locate_matches(
+                                foundation.as_ref(),
+                                path.as_str(),
+                                needle.as_str(),
+                            )
+                        })
+                    })
+                    .map(|(index, _)| index)
+            } else {
+                candidates
+                    .iter()
+                    .enumerate()
+                    .find(|(index, path)| {
+                        current_index.is_none_or(|current| *index >= current)
+                            && compare_tree_locate_matches(
+                                foundation.as_ref(),
+                                path.as_str(),
+                                needle.as_str(),
+                            )
+                    })
+                    .or_else(|| {
+                        candidates.iter().enumerate().find(|(_, path)| {
+                            compare_tree_locate_matches(
+                                foundation.as_ref(),
+                                path.as_str(),
+                                needle.as_str(),
+                            )
+                        })
+                    })
+                    .map(|(index, _)| index)
+            };
+
+            target_index.and_then(|index| candidates.get(index).cloned())
+        };
+
+        let Some(target_path) = target_path else {
+            return false;
+        };
+
+        let mut changed = false;
+        changed |= self.reveal_compare_view_path(target_path.as_str());
+        changed |= self.set_compare_row_focus_path(Some(target_path.as_str()));
+        changed |= self.request_compare_view_scroll_to_path(target_path.as_str());
+        changed
     }
 
     /// Removes compare-tree expansion overrides that no longer map to expandable directories.
@@ -3817,6 +3919,7 @@ impl AppState {
         self.compare_focus_path = CompareFocusPath::root();
         self.compare_row_focus_path = None;
         self.compare_view_expansion_overrides.clear();
+        self.compare_view_quick_locate_query.clear();
         self.bump_compare_view_projection_revision();
         self.sync_compare_tree_session_from_top_level();
     }
@@ -4024,6 +4127,18 @@ fn normalize_status_filter_token(raw: &str) -> String {
 
 fn normalize_filter_needle(raw: &str) -> String {
     raw.trim().to_lowercase()
+}
+
+fn compare_tree_locate_matches(
+    foundation: &CompareFoundation,
+    relative_path: &str,
+    needle: &str,
+) -> bool {
+    let Some(node) = foundation.node(relative_path) else {
+        return false;
+    };
+    normalize_filter_needle(node.relative_path.as_str()).contains(needle)
+        || normalize_filter_needle(node.display_name.as_str()).contains(needle)
 }
 
 fn status_filter_matches(status: &str, filter: &str) -> bool {
