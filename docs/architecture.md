@@ -781,7 +781,7 @@
 
 - `Phase 19H` is now landed on top of inherited `19G`.
 - Landed scope:
-  - `Results / Navigator` now carries the primary compare-browsing root entry through `Open Compare Tree`
+  - `Results / Navigator` now carries the primary compare-browsing root entry through one icon-only affordance with tooltip `Open Compare Tree`
   - `Compare Status` no longer owns the primary root-entry affordance; the compare summary stays summary-first
   - Compare Tree directory rows now expose `Set as Current Level` through the row context menu
   - `Set as Current Level` is compare reanchor, not compare-session reset:
@@ -793,8 +793,10 @@
     - scope is `path / name only`
     - locate is non-filtering and does not rewrite the compare-tree visible-set model into sidebar-style filtering
     - matching jumps reveal ancestors, focus the target row, and issue ensure-visible
-    - the header keeps this lightweight through a compact query field plus `Prev / Next`, without introducing a separate search-results mode
+    - the header keeps this lightweight through a fixed-width query field plus `Prev / Next / Clear`, without introducing a separate search-results mode
+    - when the query is non-empty but the current compare anchor has no match, `Prev` / `Next` emit one restrained toast instead of silently failing
   - Compare Tree header/toolbar language is now clarified:
+    - the compare header now uses three lanes: root/status context, quick-locate + workbench actions, then breadcrumb-only navigation
     - scroll lock, reset, and center are compact/icon-first with tooltip-backed semantics
     - `Reset` is renamed to `Reset Scroll`
     - `Recenter` is renamed to `Center Row`

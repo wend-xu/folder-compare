@@ -23,13 +23,16 @@
 - 后续线程默认不要重开 `19B fix-*` 或把 `19C` / `19D` / `19E` / `19F` / `19G` 重新当成 proposal；除非目标明确要求做 regression 或进入更后阶段。
 - 当前 `19H` 已落地的新增事实：
   - `Results / Navigator` 现已承载主入口 `Open Compare Tree`
+    - 当前以 icon-only 按钮呈现，tooltip 为 `Open Compare Tree`
   - Compare Tree 目录行右键菜单现已提供 `Set as Current Level`
   - Compare Tree 已具备 non-filter quick locate：
     - scope 继续限制在 `path / name only`
     - 行为是 reveal / focus / ensure-visible
     - 不改 compare tree visible set，不进入 search-results mode
-    - header 现已提供 `Prev / Next`
+    - header 现已提供 fixed-width search + `Prev / Next / Clear`
+    - query 非空但当前 compare anchor 无匹配时，`Prev / Next` 会给出 restrained toast
   - Compare Tree header / toolbar 已收口为更明确的 viewport 语义：
+    - header 当前为三行：roots/status、quick locate + 右侧 actions、breadcrumb
     - scroll lock 变为 icon-first
     - `Reset Scroll`
     - `Center Row`
@@ -76,6 +79,7 @@
   - `Open Compare Tree` 现已成为 `Results / Navigator` 附近的主 compare-browsing 入口：
     - 默认打开/激活 Compare Tree 于 compare root
     - 不承担 compare session reset 语义
+    - 当前以 icon-only button 呈现，避免继续占用 navigator 标题区宽度
   - Compare Tree 中文件 leaf 会打开或复用外层 File tab；重复打开同一路径会切换到已有 tab
   - compare-originated File tab 现已升级为 dedicated `Compare File View`
     - 明确区分于标准 `Sidebar -> File View`
@@ -90,7 +94,8 @@
     - breadcrumb 超长时默认右对齐到当前尾部，优先展示最近目录
   - Compare Tree 现已具备左右内容 pane horizontal scroll，relation lane 继续固定
   - Compare Tree 现已具备 `Set as Current Level` 目录重锚定动作
-  - Compare Tree 现已具备 header quick locate：`path / name only`、non-filter、`Prev / Next`
+  - Compare Tree 现已具备 header quick locate：`path / name only`、non-filter、fixed-width search、`Prev / Next / Clear`
+  - query 非空但当前 compare anchor 无匹配时，`Prev / Next` 会 toast 提示，而不是静默失败
   - Compare Tree 现已具备 `Reset Scroll` / `Center Row`
   - Compare Tree horizontal scroll 当前已支持 icon-first scroll lock + tooltip 语义
   - compare/file header 当前已切到集中式 SVG 图标资源：
@@ -127,12 +132,15 @@
 - 当前代码验证已通过，但 `19H` 仍应重新做人工 smoke：
   - Compare Tree tab 创建 / 激活 / 固定左侧
   - `Results / Navigator -> Open Compare Tree` 是否稳定打开 compare root
+  - icon-only `Open Compare Tree` 在窄宽度下是否仍可清晰辨识且不挤压 title 区
   - `Compare Status` 是否已退回 summary-first，不再承担主入口
   - Compare Tree -> File tab 打开与重复文件复用
   - Compare Tree / File tab 切换
   - Compare Tree breadcrumb 导航与 `Up` 的融合是否自然
   - `Set as Current Level` 后 breadcrumb / focus / ensure-visible 是否合理
   - quick locate 是否为 locate 而非 filtering visible-set
+  - quick locate 的 `Prev / Next / Clear` 顺序、焦点保持、以及无匹配 toast 是否符合预期
+  - header 第二行在最小宽度下是否仍能完整容纳 search 与右侧三个 icon-only actions
   - Compare Tree horizontal scroll 是否能覆盖长目录名 / 深层路径 / 单侧超宽树
   - `Reset Scroll` / `Center Row` 是否符合预期
   - icon-first scroll lock 与 tooltip 语义是否符合预期
