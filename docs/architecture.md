@@ -196,6 +196,7 @@
     - breadcrumb segments carry real ancestor navigation semantics
     - a lightweight `Up` action remains, but it is now an alias of the same anchored compare-tree navigation model
     - ancestor reanchor preserves focused child continuity where possible instead of behaving like a blind shell back action
+    - when breadcrumb content overflows, the viewport now defaults to the right edge so the current/nearest directory remains visible first
   - Compare Tree now supports horizontal scrolling without changing Compare File View semantics:
     - left/right tree content panes can scroll horizontally for long names, deep indentation, and width asymmetry
     - the middle relation lane remains physically fixed
@@ -206,6 +207,10 @@
   - Compare Tree horizontal scrolling now supports a minimal lock model:
     - `Locked` keeps left/right horizontal offsets synchronized, with the shorter side clamping naturally when it reaches its own overflow limit
     - `Unlocked` allows left/right panes to scroll independently
+  - compare-workspace header iconography is now centralized as single-color SVG assets inside `fc-ui-slint`:
+    - `src/icons.slint` exposes the current icon source registry
+    - `src/assets/icons/` holds the concrete compare/file header and breadcrumb navigation SVGs
+    - Compare Tree / Compare File header actions no longer depend on hand-authored inline `Path` glyphs for this surface
   - `19G` intentionally does not widen `fc-core`, reopen compare-session boundaries, or expand Compare File View beyond the landed `19F` scope
 - Compare workspace target anchoring is now split explicitly:
   - `compare_focus_path` is the compare-side anchor for current Compare View navigation

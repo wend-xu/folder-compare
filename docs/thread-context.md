@@ -6,7 +6,7 @@
 - 只记录当前真实事实、当前边界、下一线程入口。
 - 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
-## 本轮更新说明（2026-04-11）
+## 本轮更新说明（2026-04-12）
 
 - 当前真实代码基线已明确包含：
   - `Phase 18` closeout（含 `18C fix-1`）
@@ -71,9 +71,14 @@
   - Compare Tree header 已升级为 breadcrumb-first compare navigation：
     - breadcrumb segment 承担祖先目录导航语义
     - `Up` 只保留为轻量父级动作，不再与 breadcrumb 割裂
+    - breadcrumb 超长时默认右对齐到当前尾部，优先展示最近目录
   - Compare Tree 现已具备左右内容 pane horizontal scroll，relation lane 继续固定
   - Compare Tree 现已具备 `Reset` / `Recenter`
   - Compare Tree horizontal scroll 当前已支持 `Locked / Unlocked`
+  - compare/file header 当前已切到集中式 SVG 图标资源：
+    - `crates/fc-ui-slint/src/icons.slint`
+    - `crates/fc-ui-slint/src/assets/icons/`
+    - 后续 header icon 调整优先改 SVG 资源，不再继续扩展内联 `Path` 方案
   - 关闭 Compare Tree tab 等于结束当前 compare session；存在派生 File tabs 时需确认，确认后一起清理
   - 关闭 File tab 默认直接关闭，不弹确认
 - tree 内搜索、内容搜索、目录详情、compare-core widening 仍是 deferred。
@@ -82,7 +87,7 @@
 
 ## 快照（Snapshot）
 
-- 日期：`2026-04-11`（Asia/Shanghai）
+- 日期：`2026-04-12`（Asia/Shanghai）
 - 分支：`dev`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
@@ -93,7 +98,8 @@
   - `Phase 19D fix-1` 已成为当前稳定 compare workspace session-shell baseline：外层 session tabs、唯一 Compare Tree tab、compare-originated File tabs、明确 compare-session close / reset 语义、Sidebar/Navigator 与 compare session 的边界收口
   - `Phase 19E` 已成为 inherited compare file renderer MVP baseline：compare-originated File tab 使用 dedicated Compare File View、单一纵向 side-by-side row projection、Back to Compare Tree 与 compare-context 保留、标准 File View 不变
   - `Phase 19F` 的单一纵向 compare file-content baseline 继续成立，其上 Compare File View 现已支持左右独立 horizontal scroll，gutter / relation lane 固定，compare 文本可选择并支持系统复制，行号可复制对应侧整行
-  - `Phase 19G` 已成为当前稳定 compare tree navigation/workbench baseline：compare root 可直接进入 Compare View、顶部 path 已升级为 breadcrumb、tree surface 已支持 horizontal scroll、`Reset` / `Recenter` 已具备明确语义、左右 horizontal scroll 当前支持 `Locked / Unlocked`
+  - `Phase 19G` 已成为当前稳定 compare tree navigation/workbench baseline：compare root 可直接进入 Compare View、顶部 path 已升级为 breadcrumb、breadcrumb overflow 默认优先展示当前最近目录、tree surface 已支持 horizontal scroll、`Reset` / `Recenter` 已具备明确语义、左右 horizontal scroll 当前支持 `Locked / Unlocked`
+  - compare/file header 当前已完成一轮图标资源收口：header action 与 breadcrumb nav 图标已迁到集中式单色 SVG 资源层，后续应优先维护 `icons.slint + assets/icons`
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 当前线程已完成完整代码验证：
   - `cargo fmt --all`

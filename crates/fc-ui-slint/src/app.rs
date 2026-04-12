@@ -33,6 +33,7 @@ slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
     import { CompareFileView } from "src/compare_file_view.slint";
     import { CompareView } from "src/compare_view.slint";
+    import { AppIcons } from "src/icons.slint";
     import { NavigatorTree } from "src/navigator_tree.slint";
     import { UiPalette } from "src/ui_palette.slint";
 
@@ -225,6 +226,7 @@ slint::slint! {
         in property <length> button_height: 20px;
         in property <string> tooltip_text: "";
         in property <string> icon_kind: "back";
+        in property <image> icon_source;
         in property <bool> outlined_hover: true;
         callback tapped();
         callback tooltip_requested(string, length, length, length);
@@ -268,134 +270,14 @@ slint::slint! {
             }
         }
 
-        if root.icon_kind == "back" : Path {
+        if root.icon_kind != "none" : Image {
             x: root.icon_x;
             y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
             width: root.icon_width;
             height: root.icon_height;
-            viewbox-width: 9;
-            viewbox-height: 9;
-            fill: transparent;
-            stroke: root.hovered ? #4f6b84 : #6f8397;
-            stroke-width: 1.1px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
-
-            MoveTo { x: 7.0; y: 1.0; }
-            LineTo { x: 2.5; y: 4.5; }
-            LineTo { x: 7.0; y: 8.0; }
-        }
-
-        if root.icon_kind == "up" : Path {
-            x: root.icon_x;
-            y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
-            width: root.icon_width;
-            height: root.icon_height;
-            viewbox-width: 9;
-            viewbox-height: 9;
-            fill: transparent;
-            stroke: root.hovered ? #4f6b84 : #6f8397;
-            stroke-width: 1.1px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
-
-            MoveTo { x: 4.5; y: 1.2; }
-            LineTo { x: 1.5; y: 4.4; }
-            LineTo { x: 4.0; y: 4.4; }
-            LineTo { x: 4.0; y: 8.0; }
-            MoveTo { x: 4.5; y: 1.2; }
-            LineTo { x: 7.5; y: 4.4; }
-        }
-
-        if root.icon_kind == "lock" || root.icon_kind == "unlock" : Rectangle {
-            x: root.icon_x + 1px;
-            y: (parent.height - root.icon_height) / 2 + 3px + root.content_y_offset;
-            width: root.icon_width - 1px;
-            height: root.icon_height - 4px;
-            border-width: 1px;
-            border-radius: 2px;
-            border-color: root.hovered ? #4f6b84 : #6f8397;
-            background: transparent;
-
-            if root.icon_kind == "lock" : Path {
-                x: 1px;
-                y: -4px;
-                width: 6px;
-                height: 6px;
-                viewbox-width: 6;
-                viewbox-height: 6;
-                fill: transparent;
-                stroke: root.hovered ? #4f6b84 : #6f8397;
-                stroke-width: 1px;
-                stroke-line-cap: round;
-                stroke-line-join: round;
-                MoveTo { x: 1; y: 3.5; }
-                LineTo { x: 1; y: 2.5; }
-                CubicTo { x: 1; y: 1.0; control-1-x: 1; control-1-y: 1.4; control-2-x: 1.6; control-2-y: 1.0; }
-                CubicTo { x: 5; y: 2.5; control-1-x: 2.4; control-1-y: 1.0; control-2-x: 5; control-2-y: 1.4; }
-                LineTo { x: 5; y: 3.5; }
-            }
-
-            if root.icon_kind == "unlock" : Path {
-                x: 1px;
-                y: -4px;
-                width: 6px;
-                height: 6px;
-                viewbox-width: 6;
-                viewbox-height: 6;
-                fill: transparent;
-                stroke: root.hovered ? #4f6b84 : #6f8397;
-                stroke-width: 1px;
-                stroke-line-cap: round;
-                stroke-line-join: round;
-                MoveTo { x: 2; y: 3.5; }
-                LineTo { x: 2; y: 2.4; }
-                CubicTo { x: 5; y: 2.4; control-1-x: 2; control-1-y: 1.1; control-2-x: 5; control-2-y: 1.2; }
-                LineTo { x: 5; y: 3.5; }
-            }
-        }
-
-        if root.icon_kind == "reset" : Path {
-            x: root.icon_x;
-            y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
-            width: root.icon_width;
-            height: root.icon_height;
-            viewbox-width: 10;
-            viewbox-height: 10;
-            fill: transparent;
-            stroke: root.hovered ? #4f6b84 : #6f8397;
-            stroke-width: 1px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
-
-            MoveTo { x: 2.0; y: 3.0; }
-            LineTo { x: 2.0; y: 1.5; }
-            LineTo { x: 4.0; y: 1.5; }
-            MoveTo { x: 2.1; y: 3.0; }
-            CubicTo { x: 8.0; y: 4.8; control-1-x: 2.1; control-1-y: 1.8; control-2-x: 7.2; control-2-y: 2.0; }
-            CubicTo { x: 3.8; y: 8.3; control-1-x: 8.6; control-1-y: 7.0; control-2-x: 6.2; control-2-y: 8.6; }
-        }
-
-        if root.icon_kind == "recenter" : Rectangle {
-            x: root.icon_x;
-            y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
-            width: root.icon_width;
-            height: root.icon_height;
-            background: transparent;
-
-            Rectangle {
-                x: 3px;
-                y: 3px;
-                width: 3px;
-                height: 3px;
-                border-radius: 2px;
-                background: root.hovered ? #4f6b84 : #6f8397;
-            }
-
-            Rectangle { x: 0px; y: 4px; width: 2px; height: 1px; background: root.hovered ? #4f6b84 : #6f8397; }
-            Rectangle { x: 7px; y: 4px; width: 2px; height: 1px; background: root.hovered ? #4f6b84 : #6f8397; }
-            Rectangle { x: 4px; y: 0px; width: 1px; height: 2px; background: root.hovered ? #4f6b84 : #6f8397; }
-            Rectangle { x: 4px; y: 7px; width: 1px; height: 2px; background: root.hovered ? #4f6b84 : #6f8397; }
+            source: root.icon_source;
+            image-fit: contain;
+            colorize: root.hovered ? #4f6b84 : #6f8397;
         }
 
         Text {
@@ -448,15 +330,12 @@ slint::slint! {
         height: 20px;
         background: transparent;
 
-        Text {
+        Image {
             width: parent.width;
             height: parent.height;
-            text: ">";
-            color: #97a8b8;
-            font-size: 11px;
-            font-weight: 500;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+            source: AppIcons.header-chevron-right;
+            image-fit: contain;
+            colorize: #97a8b8;
         }
     }
 
@@ -545,40 +424,16 @@ slint::slint! {
             duration: 120ms;
         }
 
-        if root.direction == "left" : Path {
+        Image {
             x: (parent.width - 6px) / 2;
             y: (parent.height - 10px) / 2;
             width: 6px;
             height: 10px;
-            viewbox-width: 6;
-            viewbox-height: 10;
-            fill: transparent;
-            stroke: root.hovered ? #486988 : #6d8297;
-            stroke-width: 1.1px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
-
-            MoveTo { x: 5; y: 1; }
-            LineTo { x: 1; y: 5; }
-            LineTo { x: 5; y: 9; }
-        }
-
-        if root.direction == "right" : Path {
-            x: (parent.width - 6px) / 2;
-            y: (parent.height - 10px) / 2;
-            width: 6px;
-            height: 10px;
-            viewbox-width: 6;
-            viewbox-height: 10;
-            fill: transparent;
-            stroke: root.hovered ? #486988 : #6d8297;
-            stroke-width: 1.1px;
-            stroke-line-cap: round;
-            stroke-line-join: round;
-
-            MoveTo { x: 1; y: 1; }
-            LineTo { x: 5; y: 5; }
-            LineTo { x: 1; y: 9; }
+            source: root.direction == "left"
+                ? AppIcons.header-chevron-left
+                : AppIcons.header-chevron-right;
+            image-fit: contain;
+            colorize: root.hovered ? #486988 : #6d8297;
         }
 
         nav_touch_area := TouchArea {
@@ -645,6 +500,32 @@ slint::slint! {
 
         changed paths => {
             root.jump_to_end();
+        }
+
+        changed labels => {
+            root.jump_to_end();
+        }
+
+        changed width => {
+            if root.has_overflow || root.follow_active_tail {
+                root.jump_to_end();
+            }
+        }
+
+        changed content_width => {
+            if root.has_overflow || root.follow_active_tail {
+                root.jump_to_end();
+            }
+        }
+
+        changed has_overflow => {
+            if root.has_overflow {
+                root.jump_to_end();
+            } else {
+                root.follow_active_tail = true;
+                root.motion_duration = 0ms;
+                root.scroll_offset = 0px;
+            }
         }
 
         changed max_scroll => {
@@ -4470,6 +4351,7 @@ slint::slint! {
 
                                                         CompareHeaderGhostButton {
                                                             label: "Back";
+                                                            icon_source: AppIcons.header-back;
                                                             tooltip_text: "Back to Compare Tree";
                                                             button_width: 58px;
                                                             enabled: root.can_return_to_compare_view;
@@ -4762,6 +4644,7 @@ slint::slint! {
                                                                 CompareHeaderGhostButton {
                                                                     label: "";
                                                                     icon_kind: "up";
+                                                                    icon_source: AppIcons.header-up;
                                                                     button_width: 24px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
@@ -4828,6 +4711,9 @@ slint::slint! {
                                                                 CompareHeaderGhostButton {
                                                                     label: root.compare_view_horizontal_scroll_locked ? "Locked" : "Unlocked";
                                                                     icon_kind: root.compare_view_horizontal_scroll_locked ? "lock" : "unlock";
+                                                                    icon_source: root.compare_view_horizontal_scroll_locked
+                                                                        ? AppIcons.header-lock
+                                                                        : AppIcons.header-unlock;
                                                                     button_width: 92px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
@@ -4854,6 +4740,7 @@ slint::slint! {
                                                                 CompareHeaderGhostButton {
                                                                     label: "Reset";
                                                                     icon_kind: "reset";
+                                                                    icon_source: AppIcons.header-reset;
                                                                     button_width: 92px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
@@ -4880,6 +4767,7 @@ slint::slint! {
                                                                 CompareHeaderGhostButton {
                                                                     label: "Recenter";
                                                                     icon_kind: "recenter";
+                                                                    icon_source: AppIcons.header-recenter;
                                                                     button_width: 92px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
