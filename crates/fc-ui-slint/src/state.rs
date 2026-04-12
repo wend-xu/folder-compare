@@ -2082,6 +2082,26 @@ impl AppState {
         true
     }
 
+    /// Returns whether the current Compare Tree anchor contains any quick-locate match.
+    pub fn compare_view_quick_locate_has_match(&self) -> bool {
+        let query = self.compare_view_quick_locate_query.trim().to_string();
+        let needle = normalize_filter_needle(query.as_str());
+        if needle.is_empty() {
+            return false;
+        }
+
+        let foundation = self.compare_foundation_for_projections();
+        compare_tree_search_paths(
+            foundation.as_ref(),
+            &self.compare_focus_path,
+            self.show_hidden_files,
+        )
+        .into_iter()
+        .any(|path| {
+            compare_tree_locate_matches(foundation.as_ref(), path.as_str(), needle.as_str())
+        })
+    }
+
     /// Returns one formatted root-pair context string for Compare/File view headers.
     pub fn compare_root_pair_text(&self) -> String {
         let (left_root, right_root) = self

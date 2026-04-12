@@ -245,7 +245,7 @@ slint::slint! {
                 ? 11px
                 : (root.icon_kind == "folder-git" ? 12px : 9px));
         property <length> icon_gap: root.icon_kind == "none" || root.icon_only ? 0px : 5px;
-        property <length> content_y_offset: 1px;
+        in property <length> content_y_offset: 1px;
         property <length> icon_x: root.icon_only
             ? (root.width - root.icon_width) / 2
             : root.horizontal_padding;
@@ -4658,7 +4658,7 @@ slint::slint! {
                                                         spacing: 8px;
 
                                                         Rectangle {
-                                                            horizontal-stretch: 1;
+                                                            width: 360px;
                                                             height: 24px;
                                                             background: transparent;
 
@@ -4667,8 +4667,7 @@ slint::slint! {
 
                                                                 TooltipLineEdit {
                                                                     text <=> root.compare_view_quick_locate_query;
-                                                                    horizontal-stretch: 1;
-                                                                    min-width: 160px;
+                                                                    width: 216px;
                                                                     height: 24px;
                                                                     enabled: root.compare_view_has_targets && !root.running && !root.diff_loading;
                                                                     placeholder_text: "Quick locate";
@@ -4691,7 +4690,7 @@ slint::slint! {
                                                                 CompareHeaderGhostButton {
                                                                     label: "Prev";
                                                                     icon_kind: "none";
-                                                                    button_width: 42px;
+                                                                    button_width: 40px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
                                                                     enabled: root.compare_view_has_targets
@@ -4716,7 +4715,7 @@ slint::slint! {
                                                                 CompareHeaderGhostButton {
                                                                     label: "Next";
                                                                     icon_kind: "none";
-                                                                    button_width: 42px;
+                                                                    button_width: 40px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
                                                                     enabled: root.compare_view_has_targets
@@ -4737,7 +4736,39 @@ slint::slint! {
                                                                         root.hide_tooltip();
                                                                     }
                                                                 }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Clear";
+                                                                    icon_kind: "none";
+                                                                    button_width: 46px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_view_has_targets
+                                                                        && root.compare_view_quick_locate_query != "";
+                                                                    tooltip_text: "Clear the quick-locate query.";
+                                                                    tapped => {
+                                                                        root.compare_view_quick_locate_query = "";
+                                                                        root.compare_view_quick_locate_changed("");
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
                                                             }
+                                                        }
+
+                                                        Rectangle {
+                                                            horizontal-stretch: 1;
+                                                            height: 24px;
+                                                            background: transparent;
                                                         }
 
                                                         Rectangle {
@@ -4894,6 +4925,7 @@ slint::slint! {
                                                                 icon_source: AppIcons.header-up;
                                                                 button_width: 24px;
                                                                 button_height: 22px;
+                                                                content_y_offset: -1px;
                                                                 outlined_hover: false;
                                                                 tooltip_text: "Up one level";
                                                                 enabled: root.compare_view_can_go_up;
@@ -7425,6 +7457,18 @@ fn copy_text_with_feedback(toast_controller: &ToastController, text: &str, feedb
     );
 }
 
+fn dispatch_compare_quick_locate_no_match_toast(toast_controller: &ToastController) {
+    toast_controller.dispatch(
+        ToastRequest::new(
+            "No quick-locate matches in the current Compare Tree.",
+            ToastTone::Warn,
+            ToastPlacement::Toast,
+        )
+        .with_duration(Duration::from_millis(1600))
+        .with_strategy(ToastStrategy::Replace),
+    );
+}
+
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
     window_chrome::install_platform_windowing()?;
@@ -8281,12 +8325,23 @@ pub fn run() -> anyhow::Result<()> {
     let compare_quick_locate_prev_cache = Arc::clone(&sync_cache);
     let compare_quick_locate_prev_context_menu_controller = context_menu_controller.clone();
     let compare_quick_locate_prev_loading_mask_controller = loading_mask_controller.clone();
+    let compare_quick_locate_prev_toast_controller = toast_controller.clone();
     app.on_compare_view_quick_locate_prev_requested(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         compare_quick_locate_prev_context_menu_controller.close();
+        let snapshot = compare_quick_locate_prev_bridge.snapshot();
+        if snapshot.compare_view_quick_locate_query().trim().is_empty() {
+            return;
+        }
+        if !snapshot.compare_view_quick_locate_has_match() {
+            dispatch_compare_quick_locate_no_match_toast(
+                &compare_quick_locate_prev_toast_controller,
+            );
+            return;
+        }
         compare_quick_locate_prev_bridge.dispatch(UiCommand::RetreatCompareViewQuickLocate);
         sync_window_state_if_changed(
             &window,
@@ -8303,12 +8358,23 @@ pub fn run() -> anyhow::Result<()> {
     let compare_quick_locate_next_cache = Arc::clone(&sync_cache);
     let compare_quick_locate_next_context_menu_controller = context_menu_controller.clone();
     let compare_quick_locate_next_loading_mask_controller = loading_mask_controller.clone();
+    let compare_quick_locate_next_toast_controller = toast_controller.clone();
     app.on_compare_view_quick_locate_next_requested(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         compare_quick_locate_next_context_menu_controller.close();
+        let snapshot = compare_quick_locate_next_bridge.snapshot();
+        if snapshot.compare_view_quick_locate_query().trim().is_empty() {
+            return;
+        }
+        if !snapshot.compare_view_quick_locate_has_match() {
+            dispatch_compare_quick_locate_no_match_toast(
+                &compare_quick_locate_next_toast_controller,
+            );
+            return;
+        }
         compare_quick_locate_next_bridge.dispatch(UiCommand::AdvanceCompareViewQuickLocate);
         sync_window_state_if_changed(
             &window,
