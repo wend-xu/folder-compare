@@ -205,6 +205,21 @@ impl Presenter {
                     preferred_row_focus.as_deref(),
                 );
             }
+            UiCommand::UpdateCompareViewQuickLocate(query) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.set_compare_view_quick_locate_query(query.as_str());
+                if !query.trim().is_empty() {
+                    state.locate_next_in_compare_view(false);
+                }
+            }
+            UiCommand::RetreatCompareViewQuickLocate => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.locate_previous_in_compare_view();
+            }
+            UiCommand::AdvanceCompareViewQuickLocate => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.locate_next_in_compare_view(true);
+            }
             UiCommand::ToggleCompareTreeNode(relative_path) => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 let toggled = state.toggle_compare_view_node(relative_path.as_str());
@@ -1844,6 +1859,175 @@ mod tests {
         assert_eq!(
             snapshot.navigator_tree_scroll_target_source_index,
             snapshot.row_index_for_relative_path("src/bin/main.rs")
+        );
+    }
+
+    #[test]
+    fn navigate_compare_view_reanchors_directory_without_resetting_compare_session() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::create_dir_all(left.path().join("src/bin"))
+            .expect("left nested directory should be created");
+        fs::create_dir_all(right.path().join("src/bin"))
+            .expect("right nested directory should be created");
+        fs::write(left.path().join("src/bin/main.rs"), "fn old() {}\n")
+            .expect("left file should be written");
+        fs::write(right.path().join("src/bin/main.rs"), "fn new() {}\n")
+            .expect("right file should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+
+        presenter.handle_command(UiCommand::OpenCompareView("src".to_string()));
+        presenter.handle_command(UiCommand::OpenFileViewFromCompare(
+            "src/bin/main.rs".to_string(),
+        ));
+        wait_until(&presenter, |state| {
+            !state.diff_loading && state.selected_compare_file.is_some()
+        });
+
+        presenter.handle_command(UiCommand::NavigateCompareView("src/bin".to_string()));
+        let snapshot = wait_until(&presenter, |state| {
+            state.active_session_id.as_deref() == Some("compare-tree")
+                && state.compare_focus_path_raw_text() == "src/bin"
+        });
+
+        assert!(snapshot.compare_tree_session.is_some());
+        assert_eq!(snapshot.file_sessions.len(), 1);
+        assert_eq!(snapshot.compare_focus_path_raw_text(), "src/bin");
+        assert_eq!(
+            snapshot.compare_row_focus_path.as_deref(),
+            Some("src/bin/main.rs")
+        );
+        assert_eq!(
+            snapshot.compare_view_scroll_target_relative_path.as_deref(),
+            Some("src/bin/main.rs")
+        );
+        assert_eq!(snapshot.workspace_mode_text(), "compare-view");
+        assert_eq!(
+            snapshot.compare_view_breadcrumb_paths(),
+            vec!["".to_string(), "src".to_string(), "src/bin".to_string()]
+        );
+
+        presenter.handle_command(UiCommand::NavigateCompareView(String::new()));
+        let root_snapshot = wait_until(&presenter, |state| {
+            state.active_session_id.as_deref() == Some("compare-tree")
+                && state.compare_focus_path_raw_text().is_empty()
+        });
+
+        assert_eq!(root_snapshot.file_sessions.len(), 1);
+        assert_eq!(root_snapshot.compare_focus_path_raw_text(), "");
+        assert_eq!(
+            root_snapshot.compare_view_breadcrumb_paths(),
+            vec!["".to_string()]
+        );
+    }
+
+    #[test]
+    fn compare_view_quick_locate_reveals_matches_without_filtering_results() {
+        let left = tempfile::tempdir().expect("left tempdir should be created");
+        let right = tempfile::tempdir().expect("right tempdir should be created");
+        fs::create_dir_all(left.path().join("alpha/deep"))
+            .expect("left alpha/deep directory should be created");
+        fs::create_dir_all(right.path().join("alpha/deep"))
+            .expect("right alpha/deep directory should be created");
+        fs::create_dir_all(left.path().join("beta/deep"))
+            .expect("left beta/deep directory should be created");
+        fs::create_dir_all(right.path().join("beta/deep"))
+            .expect("right beta/deep directory should be created");
+        fs::write(left.path().join("alpha/deep/first-main.txt"), "old alpha\n")
+            .expect("left alpha file should be written");
+        fs::write(
+            right.path().join("alpha/deep/first-main.txt"),
+            "new alpha\n",
+        )
+        .expect("right alpha file should be written");
+        fs::write(left.path().join("beta/deep/second-main.txt"), "old beta\n")
+            .expect("left beta file should be written");
+        fs::write(right.path().join("beta/deep/second-main.txt"), "new beta\n")
+            .expect("right beta file should be written");
+        fs::write(left.path().join("notes.txt"), "same\n").expect("left notes should be written");
+        fs::write(right.path().join("notes.txt"), "same\n").expect("right notes should be written");
+
+        let presenter = Presenter::new(Arc::new(Mutex::new(AppState::default())));
+        presenter.handle_command(UiCommand::UpdateLeftRoot(left.path().display().to_string()));
+        presenter.handle_command(UiCommand::UpdateRightRoot(
+            right.path().display().to_string(),
+        ));
+        presenter.handle_command(UiCommand::RunCompare);
+        wait_until(&presenter, |state| !state.running);
+
+        presenter.handle_command(UiCommand::NavigateCompareView(String::new()));
+        wait_until(&presenter, |state| {
+            state.active_session_id.as_deref() == Some("compare-tree")
+        });
+
+        presenter.handle_command(UiCommand::UpdateCompareViewQuickLocate("main".to_string()));
+        let snapshot = wait_until(&presenter, |state| {
+            state.compare_row_focus_path.as_deref() == Some("alpha/deep/first-main.txt")
+        });
+
+        assert_eq!(snapshot.entry_filter, "");
+        assert_eq!(snapshot.compare_focus_path_raw_text(), "");
+        assert_eq!(snapshot.compare_view_quick_locate_query(), "main");
+        assert_eq!(
+            snapshot.compare_view_scroll_target_relative_path.as_deref(),
+            Some("alpha/deep/first-main.txt")
+        );
+        assert!(
+            snapshot
+                .compare_view_row_projections()
+                .iter()
+                .any(|row| row.relative_path == "notes.txt")
+        );
+        assert_eq!(
+            snapshot.compare_view_expansion_overrides.get("alpha/deep"),
+            Some(&true)
+        );
+
+        presenter.handle_command(UiCommand::AdvanceCompareViewQuickLocate);
+        let advanced_snapshot = wait_until(&presenter, |state| {
+            state.compare_row_focus_path.as_deref() == Some("beta/deep/second-main.txt")
+        });
+
+        assert_eq!(advanced_snapshot.entry_filter, "");
+        assert_eq!(advanced_snapshot.compare_focus_path_raw_text(), "");
+        assert!(
+            advanced_snapshot
+                .compare_view_row_projections()
+                .iter()
+                .any(|row| row.relative_path == "notes.txt")
+        );
+        assert_eq!(
+            advanced_snapshot
+                .compare_view_scroll_target_relative_path
+                .as_deref(),
+            Some("beta/deep/second-main.txt")
+        );
+        assert_eq!(
+            advanced_snapshot
+                .compare_view_expansion_overrides
+                .get("beta/deep"),
+            Some(&true)
+        );
+
+        presenter.handle_command(UiCommand::RetreatCompareViewQuickLocate);
+        let retreat_snapshot = wait_until(&presenter, |state| {
+            state.compare_row_focus_path.as_deref() == Some("alpha/deep/first-main.txt")
+        });
+
+        assert_eq!(retreat_snapshot.entry_filter, "");
+        assert_eq!(retreat_snapshot.compare_focus_path_raw_text(), "");
+        assert_eq!(
+            retreat_snapshot
+                .compare_view_scroll_target_relative_path
+                .as_deref(),
+            Some("alpha/deep/first-main.txt")
         );
     }
 

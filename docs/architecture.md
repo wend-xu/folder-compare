@@ -190,8 +190,8 @@
     - no compare search
 - `Phase 19G` compare-tree navigation + scrolling workbench closeout is now landed on top of `19D/19F`:
   - compare root itself is now a first-class Compare View target:
-    - explicit `Open root` entry from `Compare Status` can create/activate the unique `Compare Tree` tab directly at compare root
-    - compare-session reset semantics stay unchanged; explicit root entry still resets the current compare session when one already exists
+    - explicit root entry can create/activate the unique `Compare Tree` tab directly at compare root
+    - compare-session reset semantics remain separate from later compare-tree-local reanchor/navigation affordances
   - Compare Tree header navigation is now breadcrumb-first rather than `path text + detached Up one level`:
     - breadcrumb segments carry real ancestor navigation semantics
     - a lightweight `Up` action remains, but it is now an alias of the same anchored compare-tree navigation model
@@ -753,19 +753,19 @@
   - compare search
   - `fc-core` widening
 - Candidate follow-on split after `19G`:
-  - `19H+`: compare-file interaction extensions, cross-surface coordination, or search-oriented compare workbench layers
+  - `19I+`: compare-file interaction extensions, cross-surface coordination, or richer compare-search/workbench layers
 
 ## Next-Stage Activation
 
-- Default baseline is now landed `Phase 19G`.
+- Default baseline is now landed `Phase 19H` on top of inherited `Phase 19G`.
 - `Phase 19A` through `19C fix-1` remain inherited inside that `19G` baseline:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`
   - independent `compare_row_focus_path`
   - structured `compare_foundation`
   - top-level manual sidebar hide / restore through a glyph-only shell affordance
-- Current inherited `19D` session-shell contract inside `19G` is:
-  - explicit entry from `Results / Navigator`
+- Current inherited `19D` session-shell contract inside `19H` is:
+  - explicit compare-session entry from directory actions in `Results / Navigator`
   - one unique fixed-left `Compare Tree` session tab per compare session
   - compare-originated file tabs that keep dedicated `Compare File View` content rather than reusing the standard inner `Diff / Analysis` shell
   - Sidebar/Navigator remains the standard file-browsing surface even while a compare session is active
@@ -774,32 +774,39 @@
   - Compare Tree close meaning "end current compare session", with confirmation when related file tabs exist
   - compare-visible rows following `Hidden files`
 - Do not reopen `19B fix-*` or treat `19C fix-1` / `19D` as draft unless a concrete regression requires it.
-- Only move default planning to `19H` or later when a later thread explicitly scopes that stage.
+- Only move default planning to `19I` or later when a later thread explicitly scopes that stage.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
-## Phase 19H Draft Boundary (Not Landed)
+## Phase 19H Compare Tree Entry + Current Level + Quick Locate (Landed)
 
-- `Phase 19H` is not implemented yet; the real stable baseline remains landed `19G`.
-- Current draft definition:
-  - tighten Compare Tree into a clearer compare-browsing workbench by clarifying entry semantics, directory reanchor affordances, and lightweight in-tree navigation aids without widening compare/file/session architecture
-- Why `19H` is the right next planning step:
-  - `19G` already closed the mechanical baseline for compare-root entry, breadcrumb reanchor, horizontal scroll, and recovery actions
-  - the remaining open questions are now product-model and affordance questions, not evidence that `19G` is still an unaccepted implementation baseline
-  - defaulting back into broad `19G fix-*` work would blur the accepted boundary between regression repair and the next compare-tree product pass
-- Candidate `19H` in-scope direction:
-  - a clearer primary Compare Tree entry near `Results / Navigator`, positioned as entering Compare Tree at compare root rather than as a whole-window/full-screen takeover affordance
-  - a directory-level reanchor action inside Compare Tree, such as `Set as Current Level`, built on the existing anchored `compare_focus_path` model rather than on compare-session reset semantics
-  - compare-tree quick locate / jump-to-match inside the current compare target, using path/name matching plus reveal/focus/ensure-visible, while explicitly not changing the visible tree set
-  - Compare Tree header / toolbar language cleanup and moderate density reduction where current semantics are already stable
-- Explicitly not `19H`:
-  - filtering-style compare search that hides or rewrites the visible tree
-  - Compare File View expansion, cross-surface reset/recenter, sync scroll, or richer compare-file workbench actions
+- `Phase 19H` is now landed on top of inherited `19G`.
+- Landed scope:
+  - `Results / Navigator` now carries the primary compare-browsing root entry through one icon-only affordance with tooltip `Open Compare Tree`
+  - `Compare Status` no longer owns the primary root-entry affordance; the compare summary stays summary-first
+  - Compare Tree directory rows now expose `Set as Current Level` through the row context menu
+  - `Set as Current Level` is compare reanchor, not compare-session reset:
+    - it updates `compare_focus_path`
+    - breadcrumb follows the new anchor
+    - row focus / reveal / ensure-visible stay on the compare-tree-local navigation path
+    - compare-originated file tabs are preserved
+  - Compare Tree now exposes quick locate inside the current compare target:
+    - scope is `path / name only`
+    - locate is non-filtering and does not rewrite the compare-tree visible-set model into sidebar-style filtering
+    - matching jumps reveal ancestors, focus the target row, and issue ensure-visible
+    - the header keeps this lightweight through a fixed-width query field plus `Prev / Next / Clear`, without introducing a separate search-results mode
+    - when the query is non-empty but the current compare anchor has no match, `Prev` / `Next` emit one restrained toast instead of silently failing
+  - Compare Tree header/toolbar language is now clarified:
+    - the compare header now uses three lanes: root/status context, quick-locate + workbench actions, then breadcrumb-only navigation
+    - scroll lock, reset, and center are compact/icon-first with tooltip-backed semantics
+    - `Reset` is renamed to `Reset Scroll`
+    - `Recenter` is renamed to `Center Row`
+- Explicitly not part of landed `19H`:
+  - filtering-style compare search or compare search-results mode
+  - Compare File View expansion or tree/file high-coupling interaction work
+  - cross-surface sync scroll / reset
   - directory detail panes, multi-compare-session work, merge/apply flows, or `fc-core` widening
-- Current draft decisions to preserve in later threads:
-  - `Compare Status -> Open root` is serviceable as a secondary shortcut, but the primary compare-browsing entry should move closer to `Results / Navigator`, because Compare Tree is a browsing surface over compare results rather than a summary action inside `Compare Status`
-  - that primary entry should read as entering/opening Compare Tree at compare root, not as a "full-screen compare tree" affordance, because the landed shell remains `Top Bar -> Main Split -> Sidebar + Workspace`
-  - if row-level reanchor is added, it should be a compare-tree-local directory action and should not reuse the stronger "reset compare session" language that currently belongs to sidebar-originated `Open in Compare View`
-  - if compare-tree search is added in `19H`, it should stay non-filtering quick locate only; richer result lists, persistent multi-match traversal, content search, or highlight semantics can wait for `19I+`
+- Default follow-on split after `19H`:
+  - `19I+`: richer multi-match compare search behavior, compare-file interaction extensions, directory detail work, or other higher-coupling compare surfaces
 
 ## Related Documents
 

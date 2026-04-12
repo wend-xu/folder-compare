@@ -168,6 +168,21 @@ fn compare_tree_horizontal_scroll_lock_defaults_to_locked_and_toggles() {
 }
 
 #[test]
+fn compare_view_quick_locate_match_detection_respects_current_anchor() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        file_entry("assets/logo.png", EntryStatus::Equal),
+    ]);
+
+    state.ensure_compare_tree_session();
+    assert!(state.set_compare_view_quick_locate_query("main"));
+    assert!(state.compare_view_quick_locate_has_match());
+
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("assets")));
+    assert!(!state.compare_view_quick_locate_has_match());
+}
+
+#[test]
 fn sidebar_visibility_is_top_level_shell_state() {
     let mut state = state_from_entries(vec![text_diff_entry(
         "src/bin/main.rs",

@@ -28,6 +28,7 @@ use unicode_width::UnicodeWidthStr;
 
 const RESULTS_LOCATE_AND_OPEN_ACTION_ID: &str = "results-locate-and-open";
 const RESULTS_OPEN_IN_COMPARE_VIEW_ACTION_ID: &str = "results-open-in-compare-view";
+const COMPARE_VIEW_SET_CURRENT_LEVEL_ACTION_ID: &str = "compare-view-set-current-level";
 
 slint::slint! {
     import { LineEdit, ListView, ScrollView, Spinner } from "std-widgets.slint";
@@ -235,12 +236,16 @@ slint::slint! {
         property <bool> hovered: button_touch_area.has_hover && root.enabled;
         property <bool> icon_only: root.label == "";
         property <length> horizontal_padding: root.icon_only ? 0px : 7px;
-        property <length> icon_width: root.icon_kind == "reset" ? 10px : 9px;
+        property <length> icon_width: root.icon_kind == "folder-git"
+            ? 12px
+            : (root.icon_kind == "reset" ? 10px : 9px);
         property <length> icon_height: root.icon_kind == "lock" || root.icon_kind == "unlock"
             ? 10px
-            : (root.icon_kind == "recenter" ? 11px : 9px);
+            : (root.icon_kind == "recenter"
+                ? 11px
+                : (root.icon_kind == "folder-git" ? 12px : 9px));
         property <length> icon_gap: root.icon_kind == "none" || root.icon_only ? 0px : 5px;
-        property <length> content_y_offset: 1px;
+        in property <length> content_y_offset: 1px;
         property <length> icon_x: root.icon_only
             ? (root.width - root.icon_width) / 2
             : root.horizontal_padding;
@@ -2026,6 +2031,7 @@ slint::slint! {
         in property <bool> compare_view_has_targets: false;
         in property <bool> compare_view_can_go_up;
         in property <bool> compare_view_horizontal_scroll_locked: true;
+        in-out property <string> compare_view_quick_locate_query;
         in property <int> compare_view_left_content_width_px: 0;
         in property <int> compare_view_right_content_width_px: 0;
         in property <bool> can_return_to_compare_view;
@@ -2176,7 +2182,7 @@ slint::slint! {
         property <length> workbench_header_height: 66px;
         property <length> workbench_compare_context_header_height: 78px;
         property <length> compare_file_header_height: 82px;
-        property <length> compare_workspace_header_height: 82px;
+        property <length> compare_workspace_header_height: 96px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
         property <length> compare_navigation_lane_width: 124px;
@@ -2187,8 +2193,8 @@ slint::slint! {
         property <length> workspace_session_strip_height: root.workspace_sessions_visible ? 34px : 0px;
         property <string> sidebar_toggle_label: root.sidebar_visible ? "Hide Sidebar" : "Show Sidebar";
         property <string> compare_view_empty_note_text: root.sidebar_visible
-            ? "Use Compare Status -> Open root or Results / Navigator -> Open in Compare View to change targets."
-            : "Show Sidebar, then use Compare Status or Results / Navigator to change targets.";
+            ? "Use Open Compare Tree or directory actions in Results / Navigator to change targets."
+            : "Show Sidebar, then use Open Compare Tree or Results / Navigator directory actions.";
         property <string> diff_helper_strip_text: root.diff_shell_ready && root.diff_has_rows
             ? ("Select text or double-click a line number to copy the full row."
                 + (root.diff_content_char_capacity > 112
@@ -2261,6 +2267,9 @@ slint::slint! {
         callback compare_view_up_requested();
         callback compare_view_breadcrumb_requested(string);
         callback compare_view_scroll_lock_toggled();
+        callback compare_view_quick_locate_changed(string);
+        callback compare_view_quick_locate_prev_requested();
+        callback compare_view_quick_locate_next_requested();
         callback compare_view_row_focused(string);
         callback compare_view_row_toggle_requested(string);
         callback compare_view_row_activated(string);
@@ -2569,14 +2578,6 @@ slint::slint! {
                                                                 );
                                                             }
                                                         }
-                                                    }
-                                                }
-
-                                                TextAction {
-                                                    visible: root.compare_view_has_targets;
-                                                    label: "Open root";
-                                                    tapped => {
-                                                        root.compare_root_view_requested();
                                                     }
                                                 }
 
@@ -2932,6 +2933,29 @@ slint::slint! {
                                     }
                                     Rectangle {
                                         horizontal-stretch: 1;
+                                    }
+                                    if root.compare_view_has_targets : CompareHeaderGhostButton {
+                                        label: "";
+                                        icon_kind: "folder-git";
+                                        icon_source: AppIcons.folder-git;
+                                        button_width: 24px;
+                                        button_height: 22px;
+                                        outlined_hover: false;
+                                        tooltip_text: "Open Compare Tree";
+                                        tapped => {
+                                            root.compare_root_view_requested();
+                                        }
+                                        tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                            root.show_tooltip(
+                                                text,
+                                                anchor_x - root.absolute-position.x,
+                                                anchor_top - root.absolute-position.y,
+                                                anchor_bottom - root.absolute-position.y,
+                                            );
+                                        }
+                                        tooltip_closed => {
+                                            root.hide_tooltip();
+                                        }
                                     }
                                     SegmentedRail {
                                         width: 118px;
@@ -4633,25 +4657,47 @@ slint::slint! {
                                                     HorizontalLayout {
                                                         spacing: 8px;
 
-                                                        breadcrumb_lane := Rectangle {
-                                                            horizontal-stretch: 1;
-                                                            clip: true;
+                                                        Rectangle {
+                                                            width: 360px;
+                                                            height: 24px;
                                                             background: transparent;
 
                                                             HorizontalLayout {
                                                                 spacing: 6px;
 
+                                                                TooltipLineEdit {
+                                                                    text <=> root.compare_view_quick_locate_query;
+                                                                    width: 216px;
+                                                                    height: 24px;
+                                                                    enabled: root.compare_view_has_targets && !root.running && !root.diff_loading;
+                                                                    placeholder_text: "Quick locate";
+                                                                    edited(value) => {
+                                                                        root.compare_view_quick_locate_changed(value);
+                                                                    }
+                                                                    tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            value,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_y - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+
                                                                 CompareHeaderGhostButton {
-                                                                    label: "";
-                                                                    icon_kind: "up";
-                                                                    icon_source: AppIcons.header-up;
-                                                                    button_width: 24px;
+                                                                    label: "Prev";
+                                                                    icon_kind: "none";
+                                                                    button_width: 40px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
-                                                                    tooltip_text: "Up one level";
-                                                                    enabled: root.compare_view_can_go_up;
+                                                                    enabled: root.compare_view_has_targets
+                                                                        && root.compare_view_quick_locate_query != "";
+                                                                    tooltip_text: "Jump to the previous path or name match inside the current compare tree.";
                                                                     tapped => {
-                                                                        root.compare_view_up_requested();
+                                                                        root.compare_view_quick_locate_prev_requested();
                                                                     }
                                                                     tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
                                                                         root.show_tooltip(
@@ -4666,16 +4712,63 @@ slint::slint! {
                                                                     }
                                                                 }
 
-                                                                CompareBreadcrumbViewport {
-                                                                    horizontal-stretch: 1;
-                                                                    height: 22px;
-                                                                    labels: root.compare_view_breadcrumb_labels;
-                                                                    paths: root.compare_view_breadcrumb_paths;
-                                                                    segment_requested(segment_path) => {
-                                                                        root.compare_view_breadcrumb_requested(segment_path);
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Next";
+                                                                    icon_kind: "none";
+                                                                    button_width: 40px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_view_has_targets
+                                                                        && root.compare_view_quick_locate_query != "";
+                                                                    tooltip_text: "Jump to the next path or name match inside the current compare tree.";
+                                                                    tapped => {
+                                                                        root.compare_view_quick_locate_next_requested();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Clear";
+                                                                    icon_kind: "none";
+                                                                    button_width: 46px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_view_has_targets
+                                                                        && root.compare_view_quick_locate_query != "";
+                                                                    tooltip_text: "Clear the quick-locate query.";
+                                                                    tapped => {
+                                                                        root.compare_view_quick_locate_query = "";
+                                                                        root.compare_view_quick_locate_changed("");
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
                                                                     }
                                                                 }
                                                             }
+                                                        }
+
+                                                        Rectangle {
+                                                            horizontal-stretch: 1;
+                                                            height: 24px;
+                                                            background: transparent;
                                                         }
 
                                                         Rectangle {
@@ -4693,7 +4786,7 @@ slint::slint! {
                                                         }
 
                                                         Rectangle {
-                                                            width: 278px;
+                                                            width: 106px;
                                                             height: 24px;
                                                             border-width: 1px;
                                                             border-radius: 7px;
@@ -4709,18 +4802,32 @@ slint::slint! {
                                                                 spacing: 0px;
 
                                                                 CompareHeaderGhostButton {
-                                                                    label: root.compare_view_horizontal_scroll_locked ? "Locked" : "Unlocked";
+                                                                    label: "";
                                                                     icon_kind: root.compare_view_horizontal_scroll_locked ? "lock" : "unlock";
                                                                     icon_source: root.compare_view_horizontal_scroll_locked
                                                                         ? AppIcons.header-lock
                                                                         : AppIcons.header-unlock;
-                                                                    button_width: 92px;
+                                                                    button_width: 34px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
+                                                                    tooltip_text: root.compare_view_horizontal_scroll_locked
+                                                                        ? "Unlock horizontal scrolling between Base and Target."
+                                                                        : "Lock horizontal scrolling between Base and Target.";
                                                                     enabled: root.compare_view_has_targets;
                                                                     tapped => {
                                                                         root.compare_view_scroll_lock_toggled();
                                                                     }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
                                                                 }
 
                                                                 Rectangle {
@@ -4738,16 +4845,28 @@ slint::slint! {
                                                                 }
 
                                                                 CompareHeaderGhostButton {
-                                                                    label: "Reset";
+                                                                    label: "";
                                                                     icon_kind: "reset";
                                                                     icon_source: AppIcons.header-reset;
-                                                                    button_width: 92px;
+                                                                    button_width: 34px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
+                                                                    tooltip_text: "Reset Scroll. Return both horizontal scroll positions to the default origin.";
                                                                     enabled: root.compare_view_has_targets;
                                                                     tapped => {
                                                                         compare_workspace_view.reset_horizontal_scroll();
                                                                     }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
                                                                 }
 
                                                                 Rectangle {
@@ -4765,16 +4884,74 @@ slint::slint! {
                                                                 }
 
                                                                 CompareHeaderGhostButton {
-                                                                    label: "Recenter";
+                                                                    label: "";
                                                                     icon_kind: "recenter";
                                                                     icon_source: AppIcons.header-recenter;
-                                                                    button_width: 92px;
+                                                                    button_width: 34px;
                                                                     button_height: 22px;
                                                                     outlined_hover: false;
+                                                                    tooltip_text: "Center Row. Center the focused row and reset both horizontal scroll positions.";
                                                                     enabled: root.compare_view_has_targets;
                                                                     tapped => {
                                                                         compare_workspace_view.recenter_focused_row();
                                                                     }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    breadcrumb_lane := Rectangle {
+                                                        height: 24px;
+                                                        clip: true;
+                                                        background: transparent;
+
+                                                        HorizontalLayout {
+                                                            spacing: 6px;
+
+                                                            CompareHeaderGhostButton {
+                                                                label: "";
+                                                                icon_kind: "up";
+                                                                icon_source: AppIcons.header-up;
+                                                                button_width: 24px;
+                                                                button_height: 22px;
+                                                                content_y_offset: -1px;
+                                                                outlined_hover: false;
+                                                                tooltip_text: "Up one level";
+                                                                enabled: root.compare_view_can_go_up;
+                                                                tapped => {
+                                                                    root.compare_view_up_requested();
+                                                                }
+                                                                tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                    root.show_tooltip(
+                                                                        text,
+                                                                        anchor_x - root.absolute-position.x,
+                                                                        anchor_top - root.absolute-position.y,
+                                                                        anchor_bottom - root.absolute-position.y,
+                                                                    );
+                                                                }
+                                                                tooltip_closed => {
+                                                                    root.hide_tooltip();
+                                                                }
+                                                            }
+
+                                                            CompareBreadcrumbViewport {
+                                                                horizontal-stretch: 1;
+                                                                height: 22px;
+                                                                labels: root.compare_view_breadcrumb_labels;
+                                                                paths: root.compare_view_breadcrumb_paths;
+                                                                segment_requested(segment_path) => {
+                                                                    root.compare_view_breadcrumb_requested(segment_path);
                                                                 }
                                                             }
                                                         }
@@ -6345,6 +6522,11 @@ fn sync_window_state(
     window.set_compare_view_empty_body_text(state.compare_view_empty_body_text().into());
     window.set_compare_view_can_go_up(state.compare_view_can_go_up());
     window.set_compare_view_horizontal_scroll_locked(state.compare_view_horizontal_scroll_locked());
+    if window.get_compare_view_quick_locate_query().as_str()
+        != state.compare_view_quick_locate_query().as_str()
+    {
+        window.set_compare_view_quick_locate_query(state.compare_view_quick_locate_query().into());
+    }
     window.set_workspace_session_confirm_open(state.workspace_session_confirmation_open());
     window.set_workspace_session_confirm_title(
         state.workspace_session_confirmation_title_text().into(),
@@ -7275,6 +7457,18 @@ fn copy_text_with_feedback(toast_controller: &ToastController, text: &str, feedb
     );
 }
 
+fn dispatch_compare_quick_locate_no_match_toast(toast_controller: &ToastController) {
+    toast_controller.dispatch(
+        ToastRequest::new(
+            "No quick-locate matches in the current Compare Tree.",
+            ToastTone::Warn,
+            ToastPlacement::Toast,
+        )
+        .with_duration(Duration::from_millis(1600))
+        .with_strategy(ToastStrategy::Replace),
+    );
+}
+
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
     window_chrome::install_platform_windowing()?;
@@ -8038,7 +8232,7 @@ pub fn run() -> anyhow::Result<()> {
         };
 
         compare_root_context_menu_controller.close();
-        compare_root_bridge.dispatch(UiCommand::OpenCompareView(String::new()));
+        compare_root_bridge.dispatch(UiCommand::NavigateCompareView(String::new()));
         sync_window_state_if_changed(
             &window,
             &compare_root_bridge,
@@ -8101,6 +8295,95 @@ pub fn run() -> anyhow::Result<()> {
         if window.get_workspace_mode() == "compare-view" {
             window.invoke_focus_compare_rows();
         }
+    });
+
+    let app_weak = app.as_weak();
+    let compare_quick_locate_bridge = bridge.clone();
+    let compare_quick_locate_cache = Arc::clone(&sync_cache);
+    let compare_quick_locate_context_menu_controller = context_menu_controller.clone();
+    let compare_quick_locate_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_view_quick_locate_changed(move |value| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_quick_locate_context_menu_controller.close();
+        compare_quick_locate_bridge
+            .dispatch(UiCommand::UpdateCompareViewQuickLocate(value.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &compare_quick_locate_bridge,
+            &compare_quick_locate_cache,
+            Some(&compare_quick_locate_context_menu_controller),
+            &compare_quick_locate_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let compare_quick_locate_prev_bridge = bridge.clone();
+    let compare_quick_locate_prev_cache = Arc::clone(&sync_cache);
+    let compare_quick_locate_prev_context_menu_controller = context_menu_controller.clone();
+    let compare_quick_locate_prev_loading_mask_controller = loading_mask_controller.clone();
+    let compare_quick_locate_prev_toast_controller = toast_controller.clone();
+    app.on_compare_view_quick_locate_prev_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_quick_locate_prev_context_menu_controller.close();
+        let snapshot = compare_quick_locate_prev_bridge.snapshot();
+        if snapshot.compare_view_quick_locate_query().trim().is_empty() {
+            return;
+        }
+        if !snapshot.compare_view_quick_locate_has_match() {
+            dispatch_compare_quick_locate_no_match_toast(
+                &compare_quick_locate_prev_toast_controller,
+            );
+            return;
+        }
+        compare_quick_locate_prev_bridge.dispatch(UiCommand::RetreatCompareViewQuickLocate);
+        sync_window_state_if_changed(
+            &window,
+            &compare_quick_locate_prev_bridge,
+            &compare_quick_locate_prev_cache,
+            Some(&compare_quick_locate_prev_context_menu_controller),
+            &compare_quick_locate_prev_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let compare_quick_locate_next_bridge = bridge.clone();
+    let compare_quick_locate_next_cache = Arc::clone(&sync_cache);
+    let compare_quick_locate_next_context_menu_controller = context_menu_controller.clone();
+    let compare_quick_locate_next_loading_mask_controller = loading_mask_controller.clone();
+    let compare_quick_locate_next_toast_controller = toast_controller.clone();
+    app.on_compare_view_quick_locate_next_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_quick_locate_next_context_menu_controller.close();
+        let snapshot = compare_quick_locate_next_bridge.snapshot();
+        if snapshot.compare_view_quick_locate_query().trim().is_empty() {
+            return;
+        }
+        if !snapshot.compare_view_quick_locate_has_match() {
+            dispatch_compare_quick_locate_no_match_toast(
+                &compare_quick_locate_next_toast_controller,
+            );
+            return;
+        }
+        compare_quick_locate_next_bridge.dispatch(UiCommand::AdvanceCompareViewQuickLocate);
+        sync_window_state_if_changed(
+            &window,
+            &compare_quick_locate_next_bridge,
+            &compare_quick_locate_next_cache,
+            Some(&compare_quick_locate_next_context_menu_controller),
+            &compare_quick_locate_next_loading_mask_controller,
+            SyncMode::Passive,
+        );
     });
 
     let app_weak = app.as_weak();
@@ -8259,11 +8542,73 @@ pub fn run() -> anyhow::Result<()> {
 
     let app_weak = app.as_weak();
     let compare_row_context_menu_controller = context_menu_controller.clone();
-    app.on_compare_view_row_context_menu_requested(move |_relative_path| {
+    let compare_row_context_menu_bridge = bridge.clone();
+    let compare_row_context_menu_cache = Arc::clone(&sync_cache);
+    let compare_row_context_menu_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_view_row_context_menu_requested(move |relative_path| {
         if app_weak.upgrade().is_none() {
             return;
         }
-        compare_row_context_menu_controller.close();
+        let snapshot = compare_row_context_menu_bridge.snapshot();
+        let Some(row) = snapshot
+            .compare_view_row_projections()
+            .into_iter()
+            .find(|row| relative_path.as_str() == row.relative_path)
+        else {
+            compare_row_context_menu_controller.close();
+            return;
+        };
+
+        if !row.is_directory {
+            compare_row_context_menu_controller.close();
+            return;
+        }
+
+        let payload = build_results_row_payload(
+            relative_path.as_str(),
+            row.status_label.as_str(),
+            "Compare Tree directory target",
+            false,
+        );
+        let target_token = format!("compare-view:{}", relative_path.as_str().trim());
+        let action_app_weak = app_weak.clone();
+        let action_bridge = compare_row_context_menu_bridge.clone();
+        let action_cache = Arc::clone(&compare_row_context_menu_cache);
+        let action_context_menu_controller = compare_row_context_menu_controller.clone();
+        let action_loading_mask_controller =
+            compare_row_context_menu_loading_mask_controller.clone();
+        let reanchor_relative_path = relative_path.to_string();
+        compare_row_context_menu_controller.open(ContextMenuOpenRequest {
+            target_token,
+            text_payload: payload,
+            custom_actions: vec![ContextMenuCustomAction {
+                descriptor: ContextMenuCustomActionDescriptor {
+                    label: "Set as Current Level".to_string(),
+                    action_id: COMPARE_VIEW_SET_CURRENT_LEVEL_ACTION_ID.to_string(),
+                    enabled: true,
+                },
+                handler: Rc::new(move |_invocation| {
+                    let Some(window) = action_app_weak.upgrade() else {
+                        return;
+                    };
+
+                    action_bridge.dispatch(UiCommand::NavigateCompareView(
+                        reanchor_relative_path.clone(),
+                    ));
+                    sync_window_state_if_changed(
+                        &window,
+                        &action_bridge,
+                        &action_cache,
+                        Some(&action_context_menu_controller),
+                        &action_loading_mask_controller,
+                        SyncMode::Passive,
+                    );
+                    if window.get_workspace_mode() == "compare-view" {
+                        window.invoke_focus_compare_rows();
+                    }
+                }),
+            }],
+        });
     });
 
     let app_weak = app.as_weak();
