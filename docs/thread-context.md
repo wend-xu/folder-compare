@@ -1,4 +1,4 @@
-# Folder Compare Thread Context (Phase 19F landed baseline)
+# Folder Compare Thread Context (Phase 19G landed baseline)
 
 ## 目的
 
@@ -6,7 +6,7 @@
 - 只记录当前真实事实、当前边界、下一线程入口。
 - 当前主参考是 `docs/architecture.md`；本文件只做压缩版 handoff，不替代架构文档。
 
-## 本轮更新说明（2026-04-10）
+## 本轮更新说明（2026-04-12）
 
 - 当前真实代码基线已明确包含：
   - `Phase 18` closeout（含 `18C fix-1`）
@@ -17,8 +17,13 @@
   - `Phase 19D fix-1` session reset semantics 已落地
   - `Phase 19E` true file compare view MVP 已落地
   - `Phase 19F` compare file view 可用性收口已落地
-- 当前默认事实不再是“是否进入 `19C`”，而是“`19F` 已成为当前稳定 compare workspace/file-session baseline”。
-- 后续线程默认不要重开 `19B fix-*` 或把 `19C` / `19D` / `19E` / `19F` 重新当成 proposal；除非目标明确要求做 regression 或进入 `19G` 或更后阶段。
+  - `Phase 19G` compare tree navigation / scrolling workbench 已落地
+- 当前默认事实不再是“是否进入 `19C`”，而是“`19G` 已成为当前稳定 compare workspace/tree-navigation baseline，`19F` 仍是其下层 compare-file baseline”。
+- 后续线程默认不要重开 `19B fix-*` 或把 `19C` / `19D` / `19E` / `19F` / `19G` 重新当成 proposal；除非目标明确要求做 regression 或进入更后阶段。
+- 当前线程已进入 `19H` 草案收口，但仍不是实现优先阶段：
+  - `19H` 当前建议定义为：在不改变 `19G` compare/session/file 边界的前提下，收口 Compare Tree 的入口语义、目录重锚定 affordance、以及轻量 in-tree quick-locate 模型
+  - 当前默认不是继续滚动 `19G fix-*`，而是先回答 compare-tree 入口、`Set as Current Level`、non-filter quick-locate、以及 header 语言/密度这些产品问题
+  - 不要把上述 `19H` 候选写成已实现事实
 - 当前必须继承的 navigator 事实已固定：
   - `Results / Navigator` 已是 `tree + flat` 双视图基线
   - 非搜索默认 view 来自 `Settings -> Behavior -> Default view`
@@ -66,7 +71,18 @@
     - 使用单一纵向滚动 + Rust-owned side-by-side row projection
     - 当前已具备左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
     - 继续不做 sync scroll / merge actions / compare search
-  - Compare Tree header 只保留 compare context + `Up one level`
+  - Compare Tree 现已支持 compare root 直接进入
+  - Compare Tree header 已升级为 breadcrumb-first compare navigation：
+    - breadcrumb segment 承担祖先目录导航语义
+    - `Up` 只保留为轻量父级动作，不再与 breadcrumb 割裂
+    - breadcrumb 超长时默认右对齐到当前尾部，优先展示最近目录
+  - Compare Tree 现已具备左右内容 pane horizontal scroll，relation lane 继续固定
+  - Compare Tree 现已具备 `Reset` / `Recenter`
+  - Compare Tree horizontal scroll 当前已支持 `Locked / Unlocked`
+  - compare/file header 当前已切到集中式 SVG 图标资源：
+    - `crates/fc-ui-slint/src/icons.slint`
+    - `crates/fc-ui-slint/src/assets/icons/`
+    - 后续 header icon 调整优先改 SVG 资源，不再继续扩展内联 `Path` 方案
   - 关闭 Compare Tree tab 等于结束当前 compare session；存在派生 File tabs 时需确认，确认后一起清理
   - 关闭 File tab 默认直接关闭，不弹确认
 - tree 内搜索、内容搜索、目录详情、compare-core widening 仍是 deferred。
@@ -75,7 +91,7 @@
 
 ## 快照（Snapshot）
 
-- 日期：`2026-04-10`（Asia/Shanghai）
+- 日期：`2026-04-12`（Asia/Shanghai）
 - 分支：`dev`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
@@ -86,15 +102,22 @@
   - `Phase 19D fix-1` 已成为当前稳定 compare workspace session-shell baseline：外层 session tabs、唯一 Compare Tree tab、compare-originated File tabs、明确 compare-session close / reset 语义、Sidebar/Navigator 与 compare session 的边界收口
   - `Phase 19E` 已成为 inherited compare file renderer MVP baseline：compare-originated File tab 使用 dedicated Compare File View、单一纵向 side-by-side row projection、Back to Compare Tree 与 compare-context 保留、标准 File View 不变
   - `Phase 19F` 的单一纵向 compare file-content baseline 继续成立，其上 Compare File View 现已支持左右独立 horizontal scroll，gutter / relation lane 固定，compare 文本可选择并支持系统复制，行号可复制对应侧整行
+  - `Phase 19G` 已成为当前稳定 compare tree navigation/workbench baseline：compare root 可直接进入 Compare View、顶部 path 已升级为 breadcrumb、breadcrumb overflow 默认优先展示当前最近目录、tree surface 已支持 horizontal scroll、`Reset` / `Recenter` 已具备明确语义、左右 horizontal scroll 当前支持 `Locked / Unlocked`
+  - compare/file header 当前已完成一轮图标资源收口：header action 与 breadcrumb nav 图标已迁到集中式单色 SVG 资源层，后续应优先维护 `icons.slint + assets/icons`
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 当前线程已完成完整代码验证：
   - `cargo fmt --all`
   - `cargo check --workspace`
   - `cargo test --workspace`
-- 当前代码验证已通过，但 `19F` 仍应重新做人工 smoke：
+- 当前代码验证已通过，但 `19G` 仍应重新做人工 smoke：
   - Compare Tree tab 创建 / 激活 / 固定左侧
+  - compare root 直接进入 Compare View
   - Compare Tree -> File tab 打开与重复文件复用
   - Compare Tree / File tab 切换
+  - Compare Tree breadcrumb 导航与 `Up` 的融合是否自然
+  - Compare Tree horizontal scroll 是否能覆盖长目录名 / 深层路径 / 单侧超宽树
+  - `Reset` / `Recenter` 是否符合预期
+  - `Locked / Unlocked` 两种 horizontal scroll 状态是否符合预期
   - compare-originated File tab 的 side-by-side Compare File View 是否成立
   - 长行 horizontal scroll 是否可完整查看左右内容
   - gutter / relation lane 在 horizontal scroll 下是否保持固定
@@ -220,7 +243,7 @@
   - `Compare View` 当前实现目标已校正为 anchored compare tree surface
   - Sidebar/Navigator 仍是标准 file-browsing 入口，而不是 compare session 子入口
   - tree 目录仍只 toggle，不接入 file-view selection
-  - Compare Tree header 只保留 `Up one level` 与 compare context；session 切换不再由 header back button 承担
+  - Compare Tree header 现已升级为 breadcrumb-first compare navigation；session 切换仍不由 header back button 承担
   - Compare View 已使用稳定 `Base / Relation / Target` 三列几何、轻量类型 glyph、Target 侧 disclosure 对称位、semantic lane background，以及相邻同 relation row 的动态连片
   - Compare View visible rows 已跟随 `Hidden files`
 - 共享按钮基线现已固定：
@@ -233,12 +256,13 @@
 - 当前不再是“启动 `18B`”或“准备 `18C`”。
 - 当前真实焦点是：
   - 把 `Phase 18` 视为已收口完成的 navigator 基线
-  - 把 `Phase 19A`、`19B fix-2`、`19C fix-1`、`19D`、`19E`、`19F` 视为已实现事实
-  - 后续如有新线程，默认应从 `19F` 已成立 compare file/session-shell contract 出发，而不是重复 `19B` / `19C` / `19D` / `19E` 收口，或把 `19F` 写回 proposal
+  - 把 `Phase 19A`、`19B fix-2`、`19C fix-1`、`19D`、`19E`、`19F`、`19G` 视为已实现事实
+  - 后续如有新线程，默认应从 `19G` 已成立 compare tree/file/session contract 出发，而不是重复 `19B` / `19C` / `19D` / `19E` / `19F` / `19G` 收口，或把这些阶段写回 proposal
   - 除非遇到新回归，否则不要继续把 `18C fix-*` 当作默认主线
+  - 若没有 concrete regression，下一入口优先是 `19H` 草案收口，而不是继续默认滚动 `19G fix-*`
   - 不要回退到 “可视区域/locate 仍 deferred” 的旧叙事
   - 不要把 compare workspace 的长期数据基础重新拉回到 `entry_rows` 字符串链路
-  - 不要把 landed `19F` 顺手扩张成隐藏版 `19G` / 多 compare session / compare-core widening
+  - 不要把 landed `19G` 顺手扩张成隐藏版 `19H+` / 多 compare session / compare-core widening
 - 字体方向上的当前焦点不是继续扩展应用层字体策略，而是：
   - 维持现有集中式 macOS bootstrap shim
   - 等待可验证的上游版本升级窗口
@@ -248,11 +272,11 @@
 ## 当前不要做什么
 
 - 不要把继续滚动 `18C fix-*` 当成默认主线；只有明确 regression 才回去做补丁。
-- 不要把 landed `19F` 顺手扩写成隐藏版 `19G` 或更后阶段。
+- 不要把 landed `19G` 顺手扩写成隐藏版 `19H+` 或更后阶段。
 - 不要把 `NavigatorTreeRowProjection` 直接再升级成 Compare View foundation。
 - 不要继续强化 `CompareEntryRowViewModel` 为长期 compare source of truth。
 - 不要顺手重开字体策略讨论；当前边界是维持 `macos_font_bootstrap.rs` 这一临时 shim，并等待上游升级窗口。
-- 不要把 `19G` 或更后阶段的 richer compare surface、目录详情、dual-tree、sync scroll 或 compare-core 变更写成已实现事实。
+- 不要把 `19H+` 或更后阶段的 richer compare surface、目录详情、dual-tree、cross-surface sync scroll 或 compare-core 变更写成已实现事实。
 - 不要在没有明确目标的情况下，顺手重开 directory selection、directory detail pane、tree search、content search 或 compare-core widening。
 
 ## 仍然明确未做（Out of Scope / Deferred）
@@ -264,7 +288,7 @@
 - 目录 secondary text / descendant counts / summary
 - narrow-width minimum-usable behavior beyond the current compare-file baseline
 - deeper Compare View / File View redesign beyond the current session-shell baseline
-- sync scroll / reset / recenter / advanced compare interaction
+- cross-surface sync scroll / compare-file reset-recenter / deeper advanced compare interaction
 - 多 compare session 并发
 - `fc-core` compare contract widening
 - 依赖层字体栈的本地私有 fork / 长期 patch 维护
@@ -332,7 +356,7 @@
   - status filter / hidden-files 在多层目录上的显示
   - macOS 15.x 下 `中`、`Ａ`、`（`、`中Ａ（`、左树文件行、左树目录行、diff 正文是否仍正确显示
 
-## Phase 19F 后入口
+## Phase 19G 后入口
 
 建议新线程首条消息直接使用：
 
@@ -343,7 +367,8 @@
 > 文本链路的当前事实是：`UiTypography` 已删除，Slint 文本面回到默认 generic-family 路径；macOS 兼容逻辑集中在 `macos_font_bootstrap.rs`，它是临时 shim，不是长期应用字体策略。  
 > 把 `Phase 19C fix-1` 视为已成立 shell 基线，把 `Phase 19D fix-1` 视为已成立的 outer session-shell 基线：workspace 现在有一个固定左侧且唯一的 `Compare Tree` tab，以及若干 compare-originated `File` tabs；Sidebar/Navigator 仍是全局结果浏览器，compare session 活跃时从这里打开文件必须先确认并回到标准 File View；`Open in Compare View` 会创建或激活该 Compare Tree tab，并在 compare session 已存在时把它视为 reset 当前 compare session；Compare Tree 中文件 leaf 会打开或复用 File tab；session 切换依赖外层 tab strip 而不是 header back button。不要把当前事实写回成 “`19D` 仍是 proposal”。  
 > 把 `Phase 19E` / `19F` 也视为已成立事实：compare-originated `File` tab 已是 dedicated Compare File View；它继续使用单一纵向 side-by-side row projection，但现在已经具备左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行。标准 `Sidebar -> File View` 仍保持原有 `Diff / Analysis`。  
-> 当前默认下一入口不再是“是否进入 `19C` / `19D`”，而是明确判断是否真的需要进入 `19F` 或更后阶段；否则继续在 `19D` / `19E` / `19F` 稳定基线上做回归修复。  
+> 把 `Phase 19G` 也视为已成立事实：compare root 现在可以直接进入 Compare View；Compare Tree 顶部 path 已升级为 breadcrumb-first 导航；`Up` 已退化为轻量父级动作；Compare Tree 现已支持 horizontal scroll、`Reset` / `Recenter`、以及 `Locked / Unlocked` tree horizontal scroll 模式。不要把这些能力再写回 proposal。  
+> 当前默认下一入口不再是“是否进入 `19C` / `19D`”，而是明确判断是否真的需要进入 `19H` 或更后阶段；否则继续在 `19D` / `19E` / `19F` / `19G` 稳定基线上做回归修复。  
 > 当前不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `19G` 或更后阶段的 richer Compare View surface 写成已实现。
 
 ## 更新契约（Mandatory）

@@ -32,6 +32,7 @@ const NAVIGATOR_SECONDARY_MAX_CHARS: usize = 96;
 const ROOT_PAIR_MAX_CHARS: usize = 54;
 const ROOT_PAIR_HEAD_CHARS: usize = 30;
 const ROOT_PAIR_TAIL_CHARS: usize = 16;
+const COMPARE_ROOT_BREADCRUMB_LABEL: &str = "Compare Root";
 
 /// Diff tab shell state for unified status rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,6 +251,8 @@ pub struct CompareTreeSession {
     pub compare_row_focus_path: Option<String>,
     /// Expansion overrides for compare-tree directory nodes.
     pub expansion_overrides: BTreeMap<String, bool>,
+    /// Whether Compare Tree horizontal scrolling is locked between left/right panes.
+    pub horizontal_scroll_locked: bool,
 }
 
 impl CompareTreeSession {
@@ -261,6 +264,7 @@ impl CompareTreeSession {
             compare_focus_path: CompareFocusPath::root(),
             compare_row_focus_path: None,
             expansion_overrides: BTreeMap::new(),
+            horizontal_scroll_locked: true,
         }
     }
 }
@@ -428,6 +432,8 @@ pub struct AppState {
     pub compare_focus_path: CompareFocusPath,
     /// Focused visible compare-tree row inside Compare View, independent from file selection.
     pub compare_row_focus_path: Option<String>,
+    /// Whether Compare Tree horizontal scrolling is locked between left/right panes.
+    pub compare_view_horizontal_scroll_locked: bool,
     /// Revision for Compare View visible-tree projection refreshes.
     pub compare_view_projection_revision: u64,
     /// Revision for Compare View one-shot ensure-visible requests.
@@ -520,6 +526,7 @@ impl Default for AppState {
             file_sessions: Vec::new(),
             compare_focus_path: CompareFocusPath::root(),
             compare_row_focus_path: None,
+            compare_view_horizontal_scroll_locked: true,
             compare_view_projection_revision: 0,
             compare_view_scroll_request_revision: 0,
             compare_view_scroll_target_relative_path: None,
@@ -645,6 +652,7 @@ impl AppState {
             session.compare_focus_path = self.compare_focus_path.clone();
             session.compare_row_focus_path = self.compare_row_focus_path.clone();
             session.expansion_overrides = self.compare_view_expansion_overrides.clone();
+            session.horizontal_scroll_locked = self.compare_view_horizontal_scroll_locked;
         }
     }
 
@@ -655,6 +663,7 @@ impl AppState {
         self.compare_focus_path = session.compare_focus_path.clone();
         self.compare_row_focus_path = session.compare_row_focus_path.clone();
         self.compare_view_expansion_overrides = session.expansion_overrides.clone();
+        self.compare_view_horizontal_scroll_locked = session.horizontal_scroll_locked;
     }
 
     pub fn sync_active_file_session_from_top_level(&mut self) {
@@ -968,6 +977,7 @@ impl AppState {
         self.compare_focus_path = CompareFocusPath::root();
         self.compare_row_focus_path = None;
         self.compare_view_expansion_overrides.clear();
+        self.compare_view_horizontal_scroll_locked = true;
     }
 
     fn apply_close_compare_session(&mut self) {
@@ -1037,10 +1047,6 @@ impl AppState {
         preferred_row_focus: Option<&str>,
     ) -> bool {
         let normalized = relative_path.trim();
-        if normalized.is_empty() {
-            return false;
-        }
-
         if self.compare_tree_session.is_none() {
             self.compare_tree_session = Some(CompareTreeSession::new(
                 self.left_root.as_str(),
@@ -1110,9 +1116,6 @@ impl AppState {
         preferred_row_focus: Option<&str>,
     ) -> bool {
         let normalized = relative_path.trim();
-        if normalized.is_empty() {
-            return false;
-        }
         let related_file_tab_count = self.compare_tree_file_tab_count();
         if related_file_tab_count > 0 {
             self.pending_workspace_session_confirmation = Some(WorkspaceSessionConfirmation {
@@ -2017,6 +2020,47 @@ impl AppState {
     /// Returns true when the current Compare View target can move to a parent directory.
     pub fn compare_view_can_go_up(&self) -> bool {
         !self.compare_focus_path.is_root()
+    }
+
+    /// Returns true when Compare View can be entered for the current compare result set.
+    pub fn compare_view_has_targets(&self) -> bool {
+        self.compare_foundation.source_entry_count() > 0
+    }
+
+    /// Returns breadcrumb labels for the current Compare View target path.
+    pub fn compare_view_breadcrumb_labels(&self) -> Vec<String> {
+        self.compare_view_breadcrumb_segments()
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect()
+    }
+
+    /// Returns breadcrumb target paths for the current Compare View target path.
+    pub fn compare_view_breadcrumb_paths(&self) -> Vec<String> {
+        self.compare_view_breadcrumb_segments()
+            .into_iter()
+            .map(|(_, path)| path)
+            .collect()
+    }
+
+    /// Returns whether Compare Tree horizontal scrolling is currently locked.
+    pub fn compare_view_horizontal_scroll_locked(&self) -> bool {
+        self.compare_view_horizontal_scroll_locked
+    }
+
+    /// Updates Compare Tree horizontal scroll lock state.
+    pub fn set_compare_view_horizontal_scroll_locked(&mut self, locked: bool) -> bool {
+        if self.compare_view_horizontal_scroll_locked == locked {
+            return false;
+        }
+        self.compare_view_horizontal_scroll_locked = locked;
+        self.sync_compare_tree_session_from_top_level();
+        true
+    }
+
+    /// Toggles Compare Tree horizontal scroll lock state.
+    pub fn toggle_compare_view_horizontal_scroll_locked(&mut self) -> bool {
+        self.set_compare_view_horizontal_scroll_locked(!self.compare_view_horizontal_scroll_locked)
     }
 
     /// Returns one formatted root-pair context string for Compare/File view headers.
@@ -3589,6 +3633,34 @@ impl AppState {
     fn selected_entry_compare_status(&self) -> Option<(&'static str, &'static str)> {
         let node = self.selected_entry_compare_node()?;
         Some(compare_file_view_status(&node))
+    }
+
+    fn compare_view_breadcrumb_segments(&self) -> Vec<(String, String)> {
+        let foundation = self.compare_foundation_for_projections();
+        let mut segments = vec![(COMPARE_ROOT_BREADCRUMB_LABEL.to_string(), String::new())];
+        let raw = self.compare_focus_path.raw_text();
+        if raw.is_empty() {
+            return segments;
+        }
+
+        let mut current = String::new();
+        for component in raw
+            .split('/')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+        {
+            if !current.is_empty() {
+                current.push('/');
+            }
+            current.push_str(component);
+            let label = foundation
+                .as_ref()
+                .node(current.as_str())
+                .map(|node| node.display_name.clone())
+                .unwrap_or_else(|| component.to_string());
+            segments.push((label, current.clone()));
+        }
+        segments
     }
 
     fn resolve_compare_row_focus_path(&self, preferred: Option<&str>) -> Option<String> {

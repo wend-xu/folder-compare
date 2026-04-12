@@ -118,6 +118,56 @@ fn workspace_mode_and_compare_focus_are_independent_from_file_selection() {
 }
 
 #[test]
+fn compare_session_reset_accepts_compare_root_target() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+        file_entry("src/lib.rs", EntryStatus::Equal),
+    ]);
+
+    state.ensure_compare_tree_session();
+    assert!(state.request_compare_session_reset("", None));
+    assert_eq!(state.workspace_mode_text(), "compare-view");
+    assert_eq!(state.compare_focus_path_raw_text(), "");
+    assert_eq!(state.compare_view_breadcrumb_labels(), vec!["Compare Root"]);
+    assert_eq!(state.compare_view_breadcrumb_paths(), vec![""]);
+}
+
+#[test]
+fn compare_view_breadcrumbs_follow_compare_focus_path() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/bin/main.rs", EntryStatus::Different),
+        file_entry("src/lib.rs", EntryStatus::Equal),
+    ]);
+
+    state.ensure_compare_tree_session();
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src/bin")));
+
+    assert_eq!(
+        state.compare_view_breadcrumb_labels(),
+        vec!["Compare Root", "src", "bin"]
+    );
+    assert_eq!(
+        state.compare_view_breadcrumb_paths(),
+        vec!["", "src", "src/bin"]
+    );
+}
+
+#[test]
+fn compare_tree_horizontal_scroll_lock_defaults_to_locked_and_toggles() {
+    let mut state = state_from_entries(vec![text_diff_entry(
+        "src/bin/main.rs",
+        EntryStatus::Different,
+    )]);
+
+    state.ensure_compare_tree_session();
+    assert!(state.compare_view_horizontal_scroll_locked());
+    assert!(state.toggle_compare_view_horizontal_scroll_locked());
+    assert!(!state.compare_view_horizontal_scroll_locked());
+    assert!(state.set_compare_view_horizontal_scroll_locked(true));
+    assert!(state.compare_view_horizontal_scroll_locked());
+}
+
+#[test]
 fn sidebar_visibility_is_top_level_shell_state() {
     let mut state = state_from_entries(vec![text_diff_entry(
         "src/bin/main.rs",

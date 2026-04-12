@@ -38,6 +38,7 @@ pub enum UiCommand {
     /// Reveals one flat result in tree mode, clearing search when needed, and opens its file view.
     LocateAndOpen(String),
     /// Opens one directory compare target in workspace Compare View.
+    /// Empty string means the compare root itself.
     OpenCompareView(String),
     /// Activates one outer workspace session tab.
     SelectWorkspaceSession(String),
@@ -49,10 +50,15 @@ pub enum UiCommand {
     CancelWorkspaceSessionAction,
     /// Moves current Compare View target to its parent directory.
     CompareViewUpOneLevel,
+    /// Reanchors current Compare View to one ancestor/root breadcrumb target without resetting the session.
+    /// Empty string means the compare root itself.
+    NavigateCompareView(String),
     /// Toggles one expandable directory row inside Compare View.
     ToggleCompareTreeNode(String),
     /// Focuses one visible row inside Compare View.
     FocusCompareRow(String),
+    /// Toggles Compare Tree horizontal scroll lock between locked/unlocked modes.
+    ToggleCompareViewScrollLock,
     /// Opens one file/special-entry row in File View while preserving Compare View return context.
     OpenFileViewFromCompare(String),
     /// Switches current file shell back to Diff.
