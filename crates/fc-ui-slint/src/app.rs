@@ -222,25 +222,32 @@ slint::slint! {
         in property <string> label;
         in property <bool> enabled: true;
         in property <length> button_width: 152px;
+        in property <length> button_height: 20px;
         in property <string> tooltip_text: "";
         in property <string> icon_kind: "back";
+        in property <bool> outlined_hover: true;
         callback tapped();
         callback tooltip_requested(string, length, length, length);
         callback tooltip_closed();
 
         property <bool> hovered: button_touch_area.has_hover && root.enabled;
-        property <length> horizontal_padding: 8px;
+        property <bool> icon_only: root.label == "";
+        property <length> horizontal_padding: root.icon_only ? 0px : 7px;
         property <length> icon_width: root.icon_kind == "reset" ? 10px : 9px;
         property <length> icon_height: root.icon_kind == "lock" || root.icon_kind == "unlock"
             ? 10px
             : (root.icon_kind == "recenter" ? 11px : 9px);
-        property <length> icon_gap: root.icon_kind == "none" ? 0px : 6px;
+        property <length> icon_gap: root.icon_kind == "none" || root.icon_only ? 0px : 5px;
+        property <length> content_y_offset: 1px;
+        property <length> icon_x: root.icon_only
+            ? (root.width - root.icon_width) / 2
+            : root.horizontal_padding;
         property <length> text_x: root.icon_kind == "none"
             ? root.horizontal_padding
             : root.horizontal_padding + root.icon_width + root.icon_gap;
 
         width: root.button_width;
-        height: 20px;
+        height: root.button_height;
         border-width: 0px;
         border-radius: 6px;
         background: transparent;
@@ -251,7 +258,7 @@ slint::slint! {
             width: parent.width;
             height: parent.height;
             border-radius: 6px;
-            border-width: root.hovered ? 1px : 0px;
+            border-width: root.hovered && root.outlined_hover ? 1px : 0px;
             border-color: #d7e4f0;
             background: rgba(237, 244, 252, 0.72);
             opacity: root.hovered ? 1 : 0;
@@ -262,8 +269,8 @@ slint::slint! {
         }
 
         if root.icon_kind == "back" : Path {
-            x: root.horizontal_padding;
-            y: (parent.height - root.icon_height) / 2;
+            x: root.icon_x;
+            y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
             width: root.icon_width;
             height: root.icon_height;
             viewbox-width: 9;
@@ -280,8 +287,8 @@ slint::slint! {
         }
 
         if root.icon_kind == "up" : Path {
-            x: root.horizontal_padding;
-            y: (parent.height - root.icon_height) / 2;
+            x: root.icon_x;
+            y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
             width: root.icon_width;
             height: root.icon_height;
             viewbox-width: 9;
@@ -301,8 +308,8 @@ slint::slint! {
         }
 
         if root.icon_kind == "lock" || root.icon_kind == "unlock" : Rectangle {
-            x: root.horizontal_padding + 1px;
-            y: (parent.height - root.icon_height) / 2 + 3px;
+            x: root.icon_x + 1px;
+            y: (parent.height - root.icon_height) / 2 + 3px + root.content_y_offset;
             width: root.icon_width - 1px;
             height: root.icon_height - 4px;
             border-width: 1px;
@@ -349,8 +356,8 @@ slint::slint! {
         }
 
         if root.icon_kind == "reset" : Path {
-            x: root.horizontal_padding;
-            y: (parent.height - root.icon_height) / 2;
+            x: root.icon_x;
+            y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
             width: root.icon_width;
             height: root.icon_height;
             viewbox-width: 10;
@@ -370,8 +377,8 @@ slint::slint! {
         }
 
         if root.icon_kind == "recenter" : Rectangle {
-            x: root.horizontal_padding;
-            y: (parent.height - root.icon_height) / 2;
+            x: root.icon_x;
+            y: (parent.height - root.icon_height) / 2 + root.content_y_offset;
             width: root.icon_width;
             height: root.icon_height;
             background: transparent;
@@ -394,7 +401,8 @@ slint::slint! {
         Text {
             x: root.text_x;
             width: max(0px, parent.width - root.text_x - root.horizontal_padding);
-            height: parent.height;
+            y: root.content_y_offset;
+            height: max(0px, parent.height - root.content_y_offset);
             text: root.label;
             color: root.hovered ? #4f6b84 : #607489;
             font-size: 11px;
@@ -436,7 +444,7 @@ slint::slint! {
     }
 
     component CompareBreadcrumbChevron inherits Rectangle {
-        width: 10px;
+        width: 6px;
         height: 20px;
         background: transparent;
 
@@ -445,7 +453,7 @@ slint::slint! {
             height: parent.height;
             text: ">";
             color: #97a8b8;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 500;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -461,8 +469,8 @@ slint::slint! {
         property <bool> interactive: root.enabled && !root.active;
         property <bool> hovered: segment_touch_area.has_hover && root.interactive;
         property <length> segment_width: min(
-            max(24px, measure_text.preferred-width + 8px),
-            180px,
+            max(18px, measure_text.preferred-width + 6px),
+            220px,
         );
 
         width: root.segment_width;
@@ -495,8 +503,8 @@ slint::slint! {
         }
 
         Text {
-            x: 4px;
-            width: max(0px, parent.width - 8px);
+            x: 3px;
+            width: max(0px, parent.width - 6px);
             height: parent.height;
             text: root.label;
             color: root.active
@@ -525,9 +533,9 @@ slint::slint! {
         property <bool> hovered: nav_touch_area.has_hover && root.enabled;
 
         width: 22px;
-        height: 22px;
+        height: 18px;
         border-width: root.hovered ? 1px : 0px;
-        border-radius: 11px;
+        border-radius: 6px;
         border-color: rgba(180, 194, 208, 0.76);
         background: root.hovered ? rgba(248, 251, 255, 0.96) : rgba(243, 248, 252, 0.72);
         opacity: root.enabled ? 1 : 0.36;
@@ -602,11 +610,14 @@ slint::slint! {
         property <length> scroll_offset: 0px;
         property <bool> follow_active_tail: true;
         property <length> content_width: breadcrumb_row.preferred-width;
-        property <length> max_scroll: max(0px, root.content_width - root.width);
+        property <bool> has_overflow: root.content_width > root.width + 1px;
+        property <length> nav_reserve: root.has_overflow ? 24px : 0px;
+        property <length> lane_x: root.nav_reserve;
+        property <length> lane_width: max(0px, root.width - root.nav_reserve * 2);
+        property <length> max_scroll: max(0px, root.content_width - root.lane_width);
         property <length> effective_scroll_offset: root.follow_active_tail
             ? root.max_scroll
             : min(root.scroll_offset, root.max_scroll);
-        property <bool> has_overflow: root.max_scroll > 1px;
         property <bool> can_scroll_left: root.effective_scroll_offset > 1px;
         property <bool> can_scroll_right: root.max_scroll > root.effective_scroll_offset + 1px;
 
@@ -669,9 +680,9 @@ slint::slint! {
         }
 
         Rectangle {
-            x: 0px;
+            x: root.lane_x;
             y: 0px;
-            width: parent.width;
+            width: root.lane_width;
             height: parent.height;
             background: transparent;
             clip: true;
@@ -679,7 +690,7 @@ slint::slint! {
             breadcrumb_track := Rectangle {
                 x: -root.effective_scroll_offset;
                 y: 0px;
-                width: max(parent.width, root.content_width);
+                width: max(root.lane_width, root.content_width);
                 height: parent.height;
                 background: transparent;
 
@@ -689,12 +700,12 @@ slint::slint! {
                 }
 
                 breadcrumb_row := HorizontalLayout {
-                    padding-left: 2px;
-                    padding-right: 2px;
-                    spacing: 6px;
+                    padding-left: 0px;
+                    padding-right: 0px;
+                    spacing: 4px;
 
                     for segment_path[index] in root.paths : HorizontalLayout {
-                        spacing: 6px;
+                        spacing: 4px;
 
                         if index > 0 : CompareBreadcrumbChevron {}
 
@@ -717,7 +728,7 @@ slint::slint! {
             background: transparent;
 
             CompareBreadcrumbNavButton {
-                x: 2px;
+                x: 0px;
                 y: (parent.height - self.height) / 2;
                 direction: "left";
                 enabled: root.can_scroll_left;
@@ -730,7 +741,7 @@ slint::slint! {
             }
 
             CompareBreadcrumbNavButton {
-                x: parent.width - self.width - 2px;
+                x: parent.width - self.width;
                 y: (parent.height - self.height) / 2;
                 direction: "right";
                 enabled: root.can_scroll_right;
@@ -4738,7 +4749,7 @@ slint::slint! {
                                                     }
 
                                                     HorizontalLayout {
-                                                        spacing: 10px;
+                                                        spacing: 8px;
 
                                                         breadcrumb_lane := Rectangle {
                                                             horizontal-stretch: 1;
@@ -4746,15 +4757,29 @@ slint::slint! {
                                                             background: transparent;
 
                                                             HorizontalLayout {
-                                                                spacing: 8px;
+                                                                spacing: 6px;
 
                                                                 CompareHeaderGhostButton {
-                                                                    label: "Up";
+                                                                    label: "";
                                                                     icon_kind: "up";
-                                                                    button_width: 48px;
+                                                                    button_width: 24px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    tooltip_text: "Up one level";
                                                                     enabled: root.compare_view_can_go_up;
                                                                     tapped => {
                                                                         root.compare_view_up_requested();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
                                                                     }
                                                                 }
 
@@ -4771,41 +4796,93 @@ slint::slint! {
                                                         }
 
                                                         Rectangle {
-                                                            width: 250px;
+                                                            width: 1px;
+                                                            height: 24px;
                                                             background: transparent;
 
-                                                            HorizontalLayout {
-                                                                spacing: 6px;
+                                                            Rectangle {
+                                                                x: 0px;
+                                                                y: 3px;
+                                                                width: 1px;
+                                                                height: 18px;
+                                                                background: #e3e9f0;
+                                                            }
+                                                        }
 
-                                                                Rectangle {
-                                                                    horizontal-stretch: 1;
-                                                                    background: transparent;
-                                                                }
+                                                        Rectangle {
+                                                            width: 278px;
+                                                            height: 24px;
+                                                            border-width: 1px;
+                                                            border-radius: 7px;
+                                                            border-color: #e1e8ef;
+                                                            background: #f8fbfe;
+                                                            clip: true;
+
+                                                            HorizontalLayout {
+                                                                padding-left: 1px;
+                                                                padding-right: 1px;
+                                                                padding-top: 1px;
+                                                                padding-bottom: 1px;
+                                                                spacing: 0px;
 
                                                                 CompareHeaderGhostButton {
                                                                     label: root.compare_view_horizontal_scroll_locked ? "Locked" : "Unlocked";
                                                                     icon_kind: root.compare_view_horizontal_scroll_locked ? "lock" : "unlock";
-                                                                    button_width: 88px;
+                                                                    button_width: 92px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
                                                                     enabled: root.compare_view_has_targets;
                                                                     tapped => {
                                                                         root.compare_view_scroll_lock_toggled();
                                                                     }
                                                                 }
 
+                                                                Rectangle {
+                                                                    width: 1px;
+                                                                    height: 22px;
+                                                                    background: transparent;
+
+                                                                    Rectangle {
+                                                                        x: 0px;
+                                                                        y: 4px;
+                                                                        width: 1px;
+                                                                        height: 14px;
+                                                                        background: #e2e9f1;
+                                                                    }
+                                                                }
+
                                                                 CompareHeaderGhostButton {
                                                                     label: "Reset";
                                                                     icon_kind: "reset";
-                                                                    button_width: 64px;
+                                                                    button_width: 92px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
                                                                     enabled: root.compare_view_has_targets;
                                                                     tapped => {
                                                                         compare_workspace_view.reset_horizontal_scroll();
                                                                     }
                                                                 }
 
+                                                                Rectangle {
+                                                                    width: 1px;
+                                                                    height: 22px;
+                                                                    background: transparent;
+
+                                                                    Rectangle {
+                                                                        x: 0px;
+                                                                        y: 4px;
+                                                                        width: 1px;
+                                                                        height: 14px;
+                                                                        background: #e2e9f1;
+                                                                    }
+                                                                }
+
                                                                 CompareHeaderGhostButton {
                                                                     label: "Recenter";
                                                                     icon_kind: "recenter";
-                                                                    button_width: 84px;
+                                                                    button_width: 92px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
                                                                     enabled: root.compare_view_has_targets;
                                                                     tapped => {
                                                                         compare_workspace_view.recenter_focused_row();
