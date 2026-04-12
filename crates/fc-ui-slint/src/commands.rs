@@ -55,6 +55,8 @@ pub enum UiCommand {
     NavigateCompareView(String),
     /// Updates Compare Tree quick-locate query and jumps to the current/first match in the current anchor.
     UpdateCompareViewQuickLocate(String),
+    /// Jumps to the previous quick-locate match inside the current Compare Tree anchor.
+    RetreatCompareViewQuickLocate,
     /// Jumps to the next quick-locate match inside the current Compare Tree anchor.
     AdvanceCompareViewQuickLocate,
     /// Toggles one expandable directory row inside Compare View.

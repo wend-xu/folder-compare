@@ -2641,6 +2641,66 @@ impl AppState {
         changed
     }
 
+    /// Jumps to the previous quick-locate match inside the current Compare Tree anchor.
+    pub fn locate_previous_in_compare_view(&mut self) -> bool {
+        let query = self.compare_view_quick_locate_query.trim().to_string();
+        let needle = normalize_filter_needle(query.as_str());
+        if needle.is_empty() {
+            return false;
+        }
+
+        let target_path = {
+            let foundation = self.compare_foundation_for_projections();
+            let candidates = compare_tree_search_paths(
+                foundation.as_ref(),
+                &self.compare_focus_path,
+                self.show_hidden_files,
+            );
+            if candidates.is_empty() {
+                return false;
+            }
+
+            let current_index = self
+                .compare_row_focus_path
+                .as_deref()
+                .and_then(|current| candidates.iter().position(|path| path == current));
+            let target_index = candidates
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(index, path)| {
+                    current_index.is_none_or(|current| *index < current)
+                        && compare_tree_locate_matches(
+                            foundation.as_ref(),
+                            path.as_str(),
+                            needle.as_str(),
+                        )
+                })
+                .or_else(|| {
+                    candidates.iter().enumerate().rev().find(|(_, path)| {
+                        compare_tree_locate_matches(
+                            foundation.as_ref(),
+                            path.as_str(),
+                            needle.as_str(),
+                        )
+                    })
+                })
+                .map(|(index, _)| index);
+
+            target_index.and_then(|index| candidates.get(index).cloned())
+        };
+
+        let Some(target_path) = target_path else {
+            return false;
+        };
+
+        let mut changed = false;
+        changed |= self.reveal_compare_view_path(target_path.as_str());
+        changed |= self.set_compare_row_focus_path(Some(target_path.as_str()));
+        changed |= self.request_compare_view_scroll_to_path(target_path.as_str());
+        changed
+    }
+
     /// Removes compare-tree expansion overrides that no longer map to expandable directories.
     pub fn prune_compare_view_expansion_overrides(&mut self) -> bool {
         let foundation = self.compare_foundation_for_projections().into_owned();

@@ -212,6 +212,10 @@ impl Presenter {
                     state.locate_next_in_compare_view(false);
                 }
             }
+            UiCommand::RetreatCompareViewQuickLocate => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.locate_previous_in_compare_view();
+            }
             UiCommand::AdvanceCompareViewQuickLocate => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.locate_next_in_compare_view(true);
@@ -2010,6 +2014,20 @@ mod tests {
                 .compare_view_expansion_overrides
                 .get("beta/deep"),
             Some(&true)
+        );
+
+        presenter.handle_command(UiCommand::RetreatCompareViewQuickLocate);
+        let retreat_snapshot = wait_until(&presenter, |state| {
+            state.compare_row_focus_path.as_deref() == Some("alpha/deep/first-main.txt")
+        });
+
+        assert_eq!(retreat_snapshot.entry_filter, "");
+        assert_eq!(retreat_snapshot.compare_focus_path_raw_text(), "");
+        assert_eq!(
+            retreat_snapshot
+                .compare_view_scroll_target_relative_path
+                .as_deref(),
+            Some("alpha/deep/first-main.txt")
         );
     }
 

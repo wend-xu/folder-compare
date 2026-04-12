@@ -793,9 +793,9 @@
     - scope is `path / name only`
     - locate is non-filtering and does not rewrite the compare-tree visible-set model into sidebar-style filtering
     - matching jumps reveal ancestors, focus the target row, and issue ensure-visible
-    - the header keeps this lightweight through a compact query field plus `Next`, without introducing a separate search-results mode
+    - the header keeps this lightweight through a compact query field plus `Prev / Next`, without introducing a separate search-results mode
   - Compare Tree header/toolbar language is now clarified:
-    - scroll lock is compact/icon-first with tooltip-backed semantics
+    - scroll lock, reset, and center are compact/icon-first with tooltip-backed semantics
     - `Reset` is renamed to `Reset Scroll`
     - `Recenter` is renamed to `Center Row`
 - Explicitly not part of landed `19H`:

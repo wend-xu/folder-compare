@@ -28,6 +28,7 @@
     - scope 继续限制在 `path / name only`
     - 行为是 reveal / focus / ensure-visible
     - 不改 compare tree visible set，不进入 search-results mode
+    - header 现已提供 `Prev / Next`
   - Compare Tree header / toolbar 已收口为更明确的 viewport 语义：
     - scroll lock 变为 icon-first
     - `Reset Scroll`
@@ -89,7 +90,7 @@
     - breadcrumb 超长时默认右对齐到当前尾部，优先展示最近目录
   - Compare Tree 现已具备左右内容 pane horizontal scroll，relation lane 继续固定
   - Compare Tree 现已具备 `Set as Current Level` 目录重锚定动作
-  - Compare Tree 现已具备 header quick locate：`path / name only`、non-filter、`Next`
+  - Compare Tree 现已具备 header quick locate：`path / name only`、non-filter、`Prev / Next`
   - Compare Tree 现已具备 `Reset Scroll` / `Center Row`
   - Compare Tree horizontal scroll 当前已支持 icon-first scroll lock + tooltip 语义
   - compare/file header 当前已切到集中式 SVG 图标资源：

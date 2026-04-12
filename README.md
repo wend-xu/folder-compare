@@ -60,7 +60,7 @@
 - `Phase 19H` 已落地并成为当前稳定 compare-tree affordance baseline：
   - `Results / Navigator` 现已提供主入口 `Open Compare Tree`
   - Compare Tree 目录行右键菜单现已提供 `Set as Current Level`
-  - Compare Tree 现已提供 non-filter quick locate 与 `Next`
+  - Compare Tree 现已提供 non-filter quick locate 与 `Prev / Next`
   - toolbar 现已收口为 icon-first scroll lock、`Reset Scroll`、`Center Row`
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
@@ -161,7 +161,7 @@
   - 轻量类型标识复用 navigator 风格，不再使用 compare tree 内的 pill 风格类型 badge
   - Compare tree 行背景按 `Diff / Equal / Left / Right` 复用 flat view 语义色，并补齐 Target 侧 disclosure 对称性
   - Compare Tree 现在支持左右内容 pane horizontal scroll，relation lane 保持固定
-  - Compare Tree 现已提供 non-filter quick locate：`path / name only`、reveal / focus / ensure-visible、`Next`
+  - Compare Tree 现已提供 non-filter quick locate：`path / name only`、reveal / focus / ensure-visible、`Prev / Next`
   - Compare Tree 现在具备 icon-first scroll lock、`Reset Scroll`、`Center Row`
   - `Hidden files` on/off 会同步影响 Compare View visible rows
   - `Type mismatch` row 不可进入，只弹 restrained toast
@@ -343,7 +343,7 @@ cargo test --workspace
   - Compare Tree 现已提供 non-filter quick locate：
     - `path / name only`
     - reveal / focus / ensure-visible
-    - `Next`
+    - `Prev / Next`
   - Compare Tree toolbar 现已收口为 icon-first scroll lock、`Reset Scroll`、`Center Row`
 - 当前仍未实现：
   - compare tree filtering search / search-results mode / 内容搜索
