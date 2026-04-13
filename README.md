@@ -65,7 +65,7 @@
 - `Phase 19I` 已落地并成为当前稳定 compare-tree/file coordination baseline：
   - 从 compare-originated `File View` 返回 `Compare Tree` 时，现可按设置 auto locate 当前文件
   - `Compare File View` compare-context header 现已提供 `Reveal in Compare Tree`
-  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为 shared `Lock / Unlock` 语义
+  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为同语义 `Lock / Unlock`，但 lock 状态按 tab 独立
   - `Settings -> Behavior` 现已新增 return locate 与 compare scroll lock default 两个持久化偏好
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
@@ -356,7 +356,7 @@ cargo test --workspace
 - `Phase 19I` 当前额外事实：
   - compare-originated `File View` 返回 `Compare Tree` 时可按设置 auto locate 当前文件
   - `Compare File View` header 现已提供 `Reveal in Compare Tree`
-  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为 shared `Lock / Unlock`
+  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为同语义 `Lock / Unlock`，但 lock 状态按 tab 独立
   - `Settings -> Behavior` 现已新增 return locate 与 compare scroll lock default 两个持久化偏好
 - 当前仍未实现：
   - compare tree filtering search / search-results mode / 内容搜索

@@ -780,7 +780,7 @@
 - Current inherited `19I` coordination contract is:
   - returning from compare-originated file tabs to Compare Tree can auto-locate the current file without reanchoring the compare session
   - Compare File View now exposes explicit `Reveal in Compare Tree`
-  - Compare File View horizontal scrolling now reuses the same shared lock/unlock state as Compare Tree
+  - Compare File View horizontal scrolling now matches Compare Tree lock/unlock semantics, but each compare tab owns its own lock state
   - `Settings -> Behavior` now also persists return-locate and compare-scroll-lock defaults
 - Do not reopen `19B fix-*` or treat `19C fix-1` / `19D` as draft unless a concrete regression requires it.
 - Only move default planning to `19J` or later when a later thread explicitly scopes that stage.
@@ -844,7 +844,7 @@
   - compare-file reset/recenter
   - compare-file content search / compare search-results mode
   - automatic dual focus coupling between Compare Tree and Compare File View
-  - cross-surface sync scroll beyond shared lock/unlock semantics
+  - cross-surface sync scroll beyond the current per-tab lock/unlock semantics
   - merge/apply flows, multi-compare-session work, or `fc-core` widening
 
 ## Related Documents

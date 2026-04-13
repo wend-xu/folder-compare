@@ -342,9 +342,6 @@ impl Presenter {
                     state.set_lock_compare_horizontal_scrolling_by_default(
                         lock_compare_horizontal_scrolling_by_default,
                     );
-                    state.set_compare_view_horizontal_scroll_locked(
-                        lock_compare_horizontal_scrolling_by_default,
-                    );
                     state.set_default_navigator_view_mode(default_results_view);
                     Self::apply_runtime_navigator_view_mode(&mut state, default_results_view);
                     state.reconcile_file_sessions_with_active_results();

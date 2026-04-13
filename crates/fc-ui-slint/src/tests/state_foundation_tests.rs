@@ -187,6 +187,85 @@ fn compare_horizontal_scroll_default_applies_to_new_compare_sessions() {
 }
 
 #[test]
+fn compare_scroll_lock_is_independent_per_session_tab() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("src/lib.rs", EntryStatus::Different),
+    ]);
+    assert!(state.set_lock_compare_horizontal_scrolling_by_default(false));
+
+    state.ensure_compare_tree_session();
+    assert!(!state.compare_view_horizontal_scroll_locked());
+    assert!(state.toggle_compare_view_horizontal_scroll_locked());
+    assert_eq!(
+        state
+            .compare_tree_session
+            .as_ref()
+            .map(|session| session.horizontal_scroll_locked),
+        Some(true)
+    );
+
+    assert!(state.open_or_activate_file_session("src/main.rs").is_some());
+    let first_file_session_id = state
+        .file_sessions
+        .iter()
+        .find(|session| session.relative_path == "src/main.rs")
+        .map(|session| session.session_id.clone())
+        .expect("first file session should exist");
+    assert!(!state.compare_view_horizontal_scroll_locked());
+    assert_eq!(
+        state
+            .file_sessions
+            .iter()
+            .find(|session| session.relative_path == "src/main.rs")
+            .map(|session| session.horizontal_scroll_locked),
+        Some(false)
+    );
+    assert_eq!(
+        state
+            .compare_tree_session
+            .as_ref()
+            .map(|session| session.horizontal_scroll_locked),
+        Some(true)
+    );
+
+    assert!(state.toggle_compare_view_horizontal_scroll_locked());
+    assert_eq!(
+        state
+            .file_sessions
+            .iter()
+            .find(|session| session.relative_path == "src/main.rs")
+            .map(|session| session.horizontal_scroll_locked),
+        Some(true)
+    );
+
+    assert!(state.activate_workspace_session("compare-tree"));
+    assert!(state.compare_view_horizontal_scroll_locked());
+
+    assert!(state.open_or_activate_file_session("src/lib.rs").is_some());
+    let second_file_session_id = state
+        .file_sessions
+        .iter()
+        .find(|session| session.relative_path == "src/lib.rs")
+        .map(|session| session.session_id.clone())
+        .expect("second file session should exist");
+    assert!(!state.compare_view_horizontal_scroll_locked());
+    assert_eq!(
+        state
+            .file_sessions
+            .iter()
+            .find(|session| session.relative_path == "src/lib.rs")
+            .map(|session| session.horizontal_scroll_locked),
+        Some(false)
+    );
+
+    assert!(state.activate_workspace_session(first_file_session_id.as_str()));
+    assert!(state.compare_view_horizontal_scroll_locked());
+    assert!(state.activate_workspace_session(second_file_session_id.as_str()));
+    assert!(!state.compare_view_horizontal_scroll_locked());
+}
+
+#[test]
 fn returning_to_compare_tree_auto_locates_current_file_when_enabled() {
     let mut state = state_from_entries(vec![
         text_diff_entry("src/main.rs", EntryStatus::Different),

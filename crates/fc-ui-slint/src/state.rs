@@ -280,6 +280,8 @@ pub struct FileSession {
     pub relative_path: String,
     /// Short display title used in the tab strip.
     pub display_title: String,
+    /// Whether this compare-originated file tab starts/keeps horizontal sync lock.
+    pub horizontal_scroll_locked: bool,
     /// Inner `Diff / Analysis` mode for this file session.
     pub mode: FileSessionMode,
     /// Active results membership source index when still valid.
@@ -309,7 +311,11 @@ pub struct FileSession {
 }
 
 impl FileSession {
-    pub fn new(relative_path: &str, source_compare_session_id: &str) -> Self {
+    pub fn new(
+        relative_path: &str,
+        source_compare_session_id: &str,
+        horizontal_scroll_locked: bool,
+    ) -> Self {
         let (_, leaf_name) = split_relative_path_leaf(relative_path.trim());
         Self {
             session_id: file_session_id(relative_path),
@@ -320,6 +326,7 @@ impl FileSession {
             } else {
                 leaf_name
             },
+            horizontal_scroll_locked,
             mode: FileSessionMode::Diff,
             source_index: None,
             diff_loading: false,
@@ -432,7 +439,7 @@ pub struct AppState {
     pub compare_focus_path: CompareFocusPath,
     /// Focused visible compare-tree row inside Compare View, independent from file selection.
     pub compare_row_focus_path: Option<String>,
-    /// Whether Compare Tree / Compare File View horizontal scrolling is locked between sides.
+    /// Current active compare-session tab horizontal lock projected to the UI.
     pub compare_view_horizontal_scroll_locked: bool,
     /// Whether current compare file should auto-locate when returning to Compare Tree.
     pub auto_locate_current_file_on_compare_return: bool,
@@ -655,13 +662,17 @@ impl AppState {
     }
 
     fn sync_compare_tree_session_from_top_level(&mut self) {
+        let sync_horizontal_lock =
+            self.active_workspace_session_kind() == Some(WorkspaceSessionKind::CompareTree);
         if let Some(session) = self.compare_tree_session.as_mut() {
             session.left_root = self.left_root.clone();
             session.right_root = self.right_root.clone();
             session.compare_focus_path = self.compare_focus_path.clone();
             session.compare_row_focus_path = self.compare_row_focus_path.clone();
             session.expansion_overrides = self.compare_view_expansion_overrides.clone();
-            session.horizontal_scroll_locked = self.compare_view_horizontal_scroll_locked;
+            if sync_horizontal_lock {
+                session.horizontal_scroll_locked = self.compare_view_horizontal_scroll_locked;
+            }
         }
     }
 
@@ -678,6 +689,7 @@ impl AppState {
     pub fn sync_active_file_session_from_top_level(&mut self) {
         let selected_relative_path = self.selected_relative_path.clone();
         let selected_row = self.selected_row;
+        let horizontal_scroll_locked = self.compare_view_horizontal_scroll_locked;
         let file_view_mode = self.file_view_mode;
         let diff_loading = self.diff_loading;
         let diff_error_message = self.diff_error_message.clone();
@@ -705,6 +717,7 @@ impl AppState {
                 session.relative_path = relative_path.to_string();
             }
             session.display_title = computed_title.unwrap_or_else(|| session.display_title.clone());
+            session.horizontal_scroll_locked = horizontal_scroll_locked;
             session.source_index = selected_row;
             session.mode = file_view_mode;
             session.diff_loading = diff_loading;
@@ -728,6 +741,7 @@ impl AppState {
         };
         self.selected_row = session.source_index;
         self.selected_relative_path = Some(session.relative_path.clone());
+        self.compare_view_horizontal_scroll_locked = session.horizontal_scroll_locked;
         self.file_view_mode = session.mode;
         self.diff_loading = session.diff_loading;
         self.diff_error_message = session.diff_error_message;
@@ -936,7 +950,11 @@ impl AppState {
             });
         }
 
-        let mut session = FileSession::new(normalized, compare_session_id.as_str());
+        let mut session = FileSession::new(
+            normalized,
+            compare_session_id.as_str(),
+            self.lock_compare_horizontal_scrolling_by_default,
+        );
         session.source_index = self
             .row_index_for_relative_path(normalized)
             .filter(|index| self.is_row_member_in_active_results(*index));
@@ -2098,7 +2116,7 @@ impl AppState {
             .collect()
     }
 
-    /// Returns whether compare horizontal scrolling is currently locked across Compare Tree/File.
+    /// Returns the horizontal scroll lock state for the active compare-session tab.
     pub fn compare_view_horizontal_scroll_locked(&self) -> bool {
         self.compare_view_horizontal_scroll_locked
     }
@@ -2118,17 +2136,29 @@ impl AppState {
         self.compare_view_quick_locate_query.clone()
     }
 
-    /// Updates compare horizontal scroll lock state shared by Compare Tree / Compare File View.
+    /// Updates compare horizontal scroll lock state for the active compare-session tab.
     pub fn set_compare_view_horizontal_scroll_locked(&mut self, locked: bool) -> bool {
         if self.compare_view_horizontal_scroll_locked == locked {
             return false;
         }
         self.compare_view_horizontal_scroll_locked = locked;
-        self.sync_compare_tree_session_from_top_level();
+        match self.active_workspace_session_kind() {
+            Some(WorkspaceSessionKind::CompareTree) => {
+                if let Some(session) = self.compare_tree_session.as_mut() {
+                    session.horizontal_scroll_locked = locked;
+                }
+            }
+            Some(WorkspaceSessionKind::File) => {
+                if let Some(session) = self.active_file_session_mut() {
+                    session.horizontal_scroll_locked = locked;
+                }
+            }
+            None => {}
+        }
         true
     }
 
-    /// Toggles compare horizontal scroll lock state shared by Compare Tree / Compare File View.
+    /// Toggles compare horizontal scroll lock state for the active compare-session tab.
     pub fn toggle_compare_view_horizontal_scroll_locked(&mut self) -> bool {
         self.set_compare_view_horizontal_scroll_locked(!self.compare_view_horizontal_scroll_locked)
     }

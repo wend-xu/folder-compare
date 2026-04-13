@@ -134,6 +134,40 @@ fn save_settings_hiding_selected_row_marks_it_stale() {
 }
 
 #[test]
+fn save_settings_compare_scroll_lock_default_does_not_modify_current_tab_lock() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    assert!(state.set_lock_compare_horizontal_scrolling_by_default(false));
+    state.ensure_compare_tree_session();
+    assert!(state.toggle_compare_view_horizontal_scroll_locked());
+    assert!(state.compare_view_horizontal_scroll_locked());
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::SaveAppSettings {
+        provider_kind: fc_ai::AiProviderKind::Mock,
+        endpoint: String::new(),
+        api_key: String::new(),
+        model: "gpt-4o-mini".to_string(),
+        timeout_secs_text: "30".to_string(),
+        show_hidden_files: true,
+        default_results_view: NavigatorViewMode::Tree,
+        auto_locate_current_file_on_compare_return: true,
+        lock_compare_horizontal_scrolling_by_default: false,
+    });
+
+    let snapshot = presenter.state_snapshot();
+    assert!(!snapshot.lock_compare_horizontal_scrolling_by_default());
+    assert!(snapshot.compare_view_horizontal_scroll_locked());
+    assert_eq!(
+        snapshot
+            .compare_tree_session
+            .as_ref()
+            .map(|session| session.horizontal_scroll_locked),
+        Some(true)
+    );
+}
+
+#[test]
 fn selecting_sidebar_file_row_with_compare_session_requests_standard_file_view_confirmation() {
     let mut state = state_from_entries(vec![text_diff_entry(
         "src/bin/main.rs",

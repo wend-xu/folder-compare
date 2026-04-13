@@ -44,7 +44,9 @@
     - focus 当前 row
     - locate 失败时不改 compare anchor / quick locate / Hidden files，只给 restrained toast
   - `Compare File View` compare-context header 现已提供显式 `Reveal in Compare Tree`
-  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为 shared `Lock / Unlock`
+  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为同语义 `Lock / Unlock`
+    - 每个 Compare Tree / compare-originated File tab 独立持有 lock 状态
+    - 新开 tab 时默认值来自 `Lock compare horizontal scrolling by default`
     - gutter / relation lane 继续固定
     - 本轮仍不做 compare-file `Reset Scroll` / `Center Row`
   - `Settings -> Behavior` 现已新增两个持久化偏好：
@@ -99,7 +101,8 @@
     - 明确区分于标准 `Sidebar -> File View`
     - 保留 `Back to Compare Tree`、`Reveal in Compare Tree`、roots / compare path / compare status context
     - 使用单一纵向滚动 + Rust-owned side-by-side row projection
-    - 当前已具备与 Compare Tree 对齐的 shared `Lock / Unlock` horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
+    - 当前已具备与 Compare Tree 对齐的 `Lock / Unlock` horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
+    - compare file tab 的 lock 状态按 tab 独立，不与 Compare Tree 或其他 compare file tab 共享
     - 继续不做 sync scroll / merge actions / compare search
   - Compare Tree 现已支持 compare root 直接进入
   - Compare Tree header 已升级为 breadcrumb-first compare navigation：
@@ -137,7 +140,7 @@
   - `Phase 19F` 的单一纵向 compare file-content baseline 继续成立，其上 Compare File View 现已支持 horizontal scroll，gutter / relation lane 固定，compare 文本可选择并支持系统复制，行号可复制对应侧整行
   - `Phase 19G` 已成为当前稳定 compare tree navigation/workbench baseline：compare root 可直接进入 Compare View、顶部 path 已升级为 breadcrumb、breadcrumb overflow 默认优先展示当前最近目录、tree surface 已支持 horizontal scroll、viewport recovery/lock 已具备稳定语义
   - `Phase 19H` 已成为当前稳定 compare-tree affordance baseline：`Results / Navigator -> Open Compare Tree` 成为主入口，Compare Tree 目录行提供 `Set as Current Level`，header 提供 non-filter quick locate，toolbar 已改为 `Reset Scroll` / `Center Row`
-  - `Phase 19I` 已成为当前稳定 compare tree/file coordination baseline：compare-file return auto-locate、`Reveal in Compare Tree`、Compare File View shared scroll lock/unlock、以及对应 Behavior settings 已落地
+  - `Phase 19I` 已成为当前稳定 compare tree/file coordination baseline：compare-file return auto-locate、`Reveal in Compare Tree`、Compare File View per-tab scroll lock/unlock、以及对应 Behavior settings 已落地
   - compare/file header 当前已完成一轮图标资源收口：header action 与 breadcrumb nav 图标已迁到集中式单色 SVG 资源层，后续应优先维护 `icons.slint + assets/icons`
   - macOS 字体兼容当前由集中式 bootstrap shim 承担
 - 当前线程已完成完整代码验证：
@@ -416,7 +419,7 @@
 > 把 `Phase 19E` / `19F` 也视为已成立事实：compare-originated `File` tab 已是 dedicated Compare File View；它继续使用单一纵向 side-by-side row projection，但现在已经具备 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行。标准 `Sidebar -> File View` 仍保持原有 `Diff / Analysis`。  
 > 把 `Phase 19G` 也视为已成立事实：compare root 现在可以直接进入 Compare View；Compare Tree 顶部 path 已升级为 breadcrumb-first 导航；`Up` 已退化为轻量父级动作；Compare Tree 现已支持 horizontal scroll 与稳定的 viewport recovery / scroll-lock 基线。不要把这些能力再写回 proposal。  
 > 把 `Phase 19H` 也视为已成立事实：`Results / Navigator` 现已提供 `Open Compare Tree` 主入口；Compare Tree 目录行右键菜单现已提供 `Set as Current Level`；Compare Tree 现已提供 non-filter quick locate；toolbar 现已收口为 icon-first scroll lock、`Reset Scroll`、`Center Row`。不要把这些能力再写回 proposal。  
-> 把 `Phase 19I` 也视为已成立事实：compare-originated `File View` 返回 `Compare Tree` 时现在可按设置 auto locate 当前文件；header 现已提供 `Reveal in Compare Tree`；Compare File View horizontal scroll 已与 Compare Tree 对齐为 shared `Lock / Unlock`；`Settings -> Behavior` 已新增 return locate 与 compare scroll lock default。不要把这些能力再写回 proposal。  
+> 把 `Phase 19I` 也视为已成立事实：compare-originated `File View` 返回 `Compare Tree` 时现在可按设置 auto locate 当前文件；header 现已提供 `Reveal in Compare Tree`；Compare File View horizontal scroll 已与 Compare Tree 对齐为同语义 `Lock / Unlock` 且 lock 状态按 tab 独立；`Settings -> Behavior` 已新增 return locate 与 compare scroll lock default。不要把这些能力再写回 proposal。  
 > 当前默认下一入口不再是“是否进入 `19C` / `19D`”，而是明确判断是否真的需要进入 `19J` 或更后阶段；否则继续在 `19D` / `19E` / `19F` / `19G` / `19H` / `19I` 稳定基线上做回归修复。  
 > 当前不要顺手重开 `fc-core` contract、window system、directory selection、tree search，或继续扩散应用层字体策略，除非当前线程目标明确要求。也不要把 `19G` 或更后阶段的 richer Compare View surface 写成已实现。
 

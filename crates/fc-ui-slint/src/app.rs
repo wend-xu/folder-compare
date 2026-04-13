@@ -5527,312 +5527,356 @@ slint::slint! {
                             horizontal-stretch: 1;
                             vertical-stretch: 1;
                             background: transparent;
+                            clip: true;
 
-                            if root.settings_section == 0 : VerticalLayout {
-                                spacing: 10px;
+                            settings_section_scroll := ScrollView {
+                                width: parent.width;
+                                height: parent.height;
+                                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                                vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+                                viewport-width: self.width;
+                                viewport-height: max(
+                                    self.height,
+                                    settings_content_panel.height
+                                );
 
-                                Text {
-                                    text: "Provider";
-                                    color: #3b4a5b;
-                                    font-size: 15px;
-                                }
-                                Text {
-                                    text: "Configure the AI analysis provider used by the Analysis tab.";
-                                    color: #6a7888;
-                                    wrap: word-wrap;
-                                }
+                                settings_section_viewport := Rectangle {
+                                    width: settings_section_scroll.viewport-width;
+                                    height: settings_section_scroll.viewport-height;
 
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Mode";
-                                        width: 110px;
-                                        color: #4f6074;
-                                        vertical-alignment: center;
-                                    }
-                                    SegmentedRail {
-                                        height: 30px;
-                                        HorizontalLayout {
-                                            spacing: 0px;
-                                            SegmentItem {
-                                                label: "Mock";
-                                                selected: root.settings_provider_mode == 0;
-                                                show_divider: false;
-                                                tapped => {
-                                                    root.settings_provider_mode = 0;
+                                    settings_content_panel := Rectangle {
+                                        x: 0px;
+                                        y: 0px;
+                                        width: max(0px, parent.width - 16px);
+                                        height: root.settings_section == 0
+                                            ? settings_provider_panel.height
+                                            : settings_behavior_panel.height;
+                                        background: transparent;
+
+                                        settings_provider_panel := Rectangle {
+                                            visible: root.settings_section == 0;
+                                            x: 0px;
+                                            y: 0px;
+                                            width: parent.width;
+                                            height: settings_provider_content.preferred-height;
+                                            background: transparent;
+
+                                            settings_provider_content := VerticalLayout {
+                                                x: 0px;
+                                                y: 0px;
+                                                width: parent.width;
+                                                spacing: 10px;
+
+                                                Text {
+                                                    text: "Provider";
+                                                    color: #3b4a5b;
+                                                    font-size: 15px;
                                                 }
-                                            }
-                                            SegmentItem {
-                                                label: "OpenAI-compatible";
-                                                selected: root.settings_provider_mode == 1;
-                                                show_divider: true;
-                                                tapped => {
-                                                    root.settings_provider_mode = 1;
+                                                Text {
+                                                    text: "Configure the AI analysis provider used by the Analysis tab.";
+                                                    color: #6a7888;
+                                                    wrap: word-wrap;
                                                 }
-                                            }
-                                        }
-                                    }
-                                }
 
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Timeout";
-                                        width: 110px;
-                                        color: #4f6074;
-                                        vertical-alignment: center;
-                                    }
-                                    AppLineEdit {
-                                        text <=> root.settings_provider_timeout;
-                                        width: 140px;
-                                        height: 28px;
-                                    }
-                                    Text {
-                                        text: "seconds";
-                                        color: #778595;
-                                        vertical-alignment: center;
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-
-                                if root.settings_provider_mode == 1 : VerticalLayout {
-                                    spacing: 6px;
-                                    HorizontalLayout {
-                                        spacing: 6px;
-                                        Text {
-                                            text: "Endpoint";
-                                            width: 110px;
-                                            color: #4f6074;
-                                            vertical-alignment: center;
-                                        }
-                                        AppLineEdit {
-                                            text <=> root.settings_provider_endpoint;
-                                            horizontal-stretch: 1;
-                                            height: 28px;
-                                        }
-                                    }
-                                    HorizontalLayout {
-                                        spacing: 6px;
-                                        Text {
-                                            text: "API Key";
-                                            width: 110px;
-                                            color: #4f6074;
-                                            vertical-alignment: center;
-                                        }
-                                        ApiKeyLineEdit {
-                                            text <=> root.settings_provider_api_key;
-                                            horizontal-stretch: 1;
-                                            height: 28px;
-                                            revealed <=> root.settings_provider_show_api_key;
-                                        }
-                                    }
-                                    HorizontalLayout {
-                                        spacing: 6px;
-                                        Text {
-                                            text: "Model";
-                                            width: 110px;
-                                            color: #4f6074;
-                                            vertical-alignment: center;
-                                        }
-                                        AppLineEdit {
-                                            text <=> root.settings_provider_model;
-                                            horizontal-stretch: 1;
-                                            height: 28px;
-                                        }
-                                    }
-                                }
-
-                                Rectangle {
-                                    vertical-stretch: 1;
-                                }
-                            }
-
-                            if root.settings_section == 1 : VerticalLayout {
-                                spacing: 10px;
-
-                                Text {
-                                    text: "Behavior";
-                                    color: #3b4a5b;
-                                    font-size: 15px;
-                                }
-                                Text {
-                                    text: "Control the default noise level and presentation of Results / Navigator.";
-                                    color: #6a7888;
-                                    wrap: word-wrap;
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Default view";
-                                        width: 110px;
-                                        color: #4f6074;
-                                        vertical-alignment: center;
-                                    }
-                                    SegmentedRail {
-                                        width: 220px;
-                                        height: 30px;
-                                        HorizontalLayout {
-                                            spacing: 0px;
-                                            SegmentItem {
-                                                label: "Tree";
-                                                selected: root.settings_default_result_view == 0;
-                                                show_divider: false;
-                                                tapped => {
-                                                    root.settings_default_result_view = 0;
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: "Mode";
+                                                        width: 110px;
+                                                        color: #4f6074;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    SegmentedRail {
+                                                        height: 30px;
+                                                        HorizontalLayout {
+                                                            spacing: 0px;
+                                                            SegmentItem {
+                                                                label: "Mock";
+                                                                selected: root.settings_provider_mode == 0;
+                                                                show_divider: false;
+                                                                tapped => {
+                                                                    root.settings_provider_mode = 0;
+                                                                }
+                                                            }
+                                                            SegmentItem {
+                                                                label: "OpenAI-compatible";
+                                                                selected: root.settings_provider_mode == 1;
+                                                                show_divider: true;
+                                                                tapped => {
+                                                                    root.settings_provider_mode = 1;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
-                                            }
-                                            SegmentItem {
-                                                label: "Flat";
-                                                selected: root.settings_default_result_view == 1;
-                                                show_divider: true;
-                                                tapped => {
-                                                    root.settings_default_result_view = 1;
+
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: "Timeout";
+                                                        width: 110px;
+                                                        color: #4f6074;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    AppLineEdit {
+                                                        text <=> root.settings_provider_timeout;
+                                                        width: 140px;
+                                                        height: 28px;
+                                                    }
+                                                    Text {
+                                                        text: "seconds";
+                                                        color: #778595;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                }
+
+                                                if root.settings_provider_mode == 1 : VerticalLayout {
+                                                    spacing: 6px;
+                                                    HorizontalLayout {
+                                                        spacing: 6px;
+                                                        Text {
+                                                            text: "Endpoint";
+                                                            width: 110px;
+                                                            color: #4f6074;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        AppLineEdit {
+                                                            text <=> root.settings_provider_endpoint;
+                                                            horizontal-stretch: 1;
+                                                            height: 28px;
+                                                        }
+                                                    }
+                                                    HorizontalLayout {
+                                                        spacing: 6px;
+                                                        Text {
+                                                            text: "API Key";
+                                                            width: 110px;
+                                                            color: #4f6074;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        ApiKeyLineEdit {
+                                                            text <=> root.settings_provider_api_key;
+                                                            horizontal-stretch: 1;
+                                                            height: 28px;
+                                                            revealed <=> root.settings_provider_show_api_key;
+                                                        }
+                                                    }
+                                                    HorizontalLayout {
+                                                        spacing: 6px;
+                                                        Text {
+                                                            text: "Model";
+                                                            width: 110px;
+                                                            color: #4f6074;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        AppLineEdit {
+                                                            text <=> root.settings_provider_model;
+                                                            horizontal-stretch: 1;
+                                                            height: 28px;
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                }
 
-                                Text {
-                                    text: "Applies when Search is empty. Search results still force Flat mode.";
-                                    color: #6a7888;
-                                    wrap: word-wrap;
-                                }
+                                        settings_behavior_panel := Rectangle {
+                                            visible: root.settings_section == 1;
+                                            x: 0px;
+                                            y: 0px;
+                                            width: parent.width;
+                                            height: settings_behavior_content.preferred-height;
+                                            background: transparent;
 
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Hidden files";
-                                        width: 110px;
-                                        color: #4f6074;
-                                        vertical-alignment: center;
-                                    }
-                                    SegmentedRail {
-                                        width: 220px;
-                                        height: 30px;
-                                        HorizontalLayout {
-                                            spacing: 0px;
-                                            SegmentItem {
-                                                label: "Show";
-                                                selected: root.settings_show_hidden_files;
-                                                show_divider: false;
-                                                tapped => {
-                                                    root.settings_show_hidden_files = true;
+                                            settings_behavior_content := VerticalLayout {
+                                                x: 0px;
+                                                y: 0px;
+                                                width: parent.width;
+                                                spacing: 10px;
+
+                                                Text {
+                                                    text: "Behavior";
+                                                    color: #3b4a5b;
+                                                    font-size: 15px;
                                                 }
-                                            }
-                                            SegmentItem {
-                                                label: "Hide";
-                                                selected: !root.settings_show_hidden_files;
-                                                show_divider: true;
-                                                tapped => {
-                                                    root.settings_show_hidden_files = false;
+                                                Text {
+                                                    text: "Control the default noise level and presentation of Results / Navigator.";
+                                                    color: #6a7888;
+                                                    wrap: word-wrap;
+                                                }
+
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: "Default view";
+                                                        width: 110px;
+                                                        color: #4f6074;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    SegmentedRail {
+                                                        width: 220px;
+                                                        height: 30px;
+                                                        HorizontalLayout {
+                                                            spacing: 0px;
+                                                            SegmentItem {
+                                                                label: "Tree";
+                                                                selected: root.settings_default_result_view == 0;
+                                                                show_divider: false;
+                                                                tapped => {
+                                                                    root.settings_default_result_view = 0;
+                                                                }
+                                                            }
+                                                            SegmentItem {
+                                                                label: "Flat";
+                                                                selected: root.settings_default_result_view == 1;
+                                                                show_divider: true;
+                                                                tapped => {
+                                                                    root.settings_default_result_view = 1;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: "Applies when Search is empty. Search results still force Flat mode.";
+                                                    color: #6a7888;
+                                                    wrap: word-wrap;
+                                                }
+
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: "Hidden files";
+                                                        width: 110px;
+                                                        color: #4f6074;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    SegmentedRail {
+                                                        width: 220px;
+                                                        height: 30px;
+                                                        HorizontalLayout {
+                                                            spacing: 0px;
+                                                            SegmentItem {
+                                                                label: "Show";
+                                                                selected: root.settings_show_hidden_files;
+                                                                show_divider: false;
+                                                                tapped => {
+                                                                    root.settings_show_hidden_files = true;
+                                                                }
+                                                            }
+                                                            SegmentItem {
+                                                                label: "Hide";
+                                                                selected: !root.settings_show_hidden_files;
+                                                                show_divider: true;
+                                                                tapped => {
+                                                                    root.settings_show_hidden_files = false;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: "Applies to dot-prefixed files and folders in Results / Navigator. Save updates the current result list immediately and also affects future compares.";
+                                                    color: #6a7888;
+                                                    wrap: word-wrap;
+                                                }
+
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: "Auto locate";
+                                                        width: 110px;
+                                                        color: #4f6074;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    SegmentedRail {
+                                                        width: 220px;
+                                                        height: 30px;
+                                                        HorizontalLayout {
+                                                            spacing: 0px;
+                                                            SegmentItem {
+                                                                label: "On";
+                                                                selected: root.settings_auto_locate_current_file_on_compare_return;
+                                                                show_divider: false;
+                                                                tapped => {
+                                                                    root.settings_auto_locate_current_file_on_compare_return = true;
+                                                                }
+                                                            }
+                                                            SegmentItem {
+                                                                label: "Off";
+                                                                selected: !root.settings_auto_locate_current_file_on_compare_return;
+                                                                show_divider: true;
+                                                                tapped => {
+                                                                    root.settings_auto_locate_current_file_on_compare_return = false;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: "Auto locate current file when returning to Compare Tree. Applies to Back, Compare Tree tab return, and closing the active compare file tab.";
+                                                    color: #6a7888;
+                                                    wrap: word-wrap;
+                                                }
+
+                                                HorizontalLayout {
+                                                    spacing: 6px;
+                                                    Text {
+                                                        text: "Scroll lock";
+                                                        width: 110px;
+                                                        color: #4f6074;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    SegmentedRail {
+                                                        width: 220px;
+                                                        height: 30px;
+                                                        HorizontalLayout {
+                                                            spacing: 0px;
+                                                            SegmentItem {
+                                                                label: "Locked";
+                                                                selected: root.settings_lock_compare_horizontal_scrolling_by_default;
+                                                                show_divider: false;
+                                                                tapped => {
+                                                                    root.settings_lock_compare_horizontal_scrolling_by_default = true;
+                                                                }
+                                                            }
+                                                            SegmentItem {
+                                                                label: "Unlocked";
+                                                                selected: !root.settings_lock_compare_horizontal_scrolling_by_default;
+                                                                show_divider: true;
+                                                                tapped => {
+                                                                    root.settings_lock_compare_horizontal_scrolling_by_default = false;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Rectangle {
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: "Lock compare horizontal scrolling by default when opening Compare Tree or compare-originated File View tabs.";
+                                                    color: #6a7888;
+                                                    wrap: word-wrap;
                                                 }
                                             }
                                         }
                                     }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-
-                                Text {
-                                    text: "Applies to dot-prefixed files and folders in Results / Navigator. Save updates the current result list immediately and also affects future compares.";
-                                    color: #6a7888;
-                                    wrap: word-wrap;
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Auto locate";
-                                        width: 110px;
-                                        color: #4f6074;
-                                        vertical-alignment: center;
-                                    }
-                                    SegmentedRail {
-                                        width: 220px;
-                                        height: 30px;
-                                        HorizontalLayout {
-                                            spacing: 0px;
-                                            SegmentItem {
-                                                label: "On";
-                                                selected: root.settings_auto_locate_current_file_on_compare_return;
-                                                show_divider: false;
-                                                tapped => {
-                                                    root.settings_auto_locate_current_file_on_compare_return = true;
-                                                }
-                                            }
-                                            SegmentItem {
-                                                label: "Off";
-                                                selected: !root.settings_auto_locate_current_file_on_compare_return;
-                                                show_divider: true;
-                                                tapped => {
-                                                    root.settings_auto_locate_current_file_on_compare_return = false;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-
-                                Text {
-                                    text: "Auto locate current file when returning to Compare Tree. Applies to Back, Compare Tree tab return, and closing the active compare file tab.";
-                                    color: #6a7888;
-                                    wrap: word-wrap;
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: "Scroll lock";
-                                        width: 110px;
-                                        color: #4f6074;
-                                        vertical-alignment: center;
-                                    }
-                                    SegmentedRail {
-                                        width: 220px;
-                                        height: 30px;
-                                        HorizontalLayout {
-                                            spacing: 0px;
-                                            SegmentItem {
-                                                label: "Locked";
-                                                selected: root.settings_lock_compare_horizontal_scrolling_by_default;
-                                                show_divider: false;
-                                                tapped => {
-                                                    root.settings_lock_compare_horizontal_scrolling_by_default = true;
-                                                }
-                                            }
-                                            SegmentItem {
-                                                label: "Unlocked";
-                                                selected: !root.settings_lock_compare_horizontal_scrolling_by_default;
-                                                show_divider: true;
-                                                tapped => {
-                                                    root.settings_lock_compare_horizontal_scrolling_by_default = false;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-
-                                Text {
-                                    text: "Lock compare horizontal scrolling by default for both Compare Tree and compare-originated File View. Save also updates the current compare workspace lock state.";
-                                    color: #6a7888;
-                                    wrap: word-wrap;
-                                }
-
-                                Rectangle {
-                                    vertical-stretch: 1;
                                 }
                             }
                         }
