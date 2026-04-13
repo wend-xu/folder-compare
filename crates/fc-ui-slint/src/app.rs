@@ -238,12 +238,14 @@ slint::slint! {
         property <length> horizontal_padding: root.icon_only ? 0px : 7px;
         property <length> icon_width: root.icon_kind == "folder-git"
             ? 12px
-            : (root.icon_kind == "reset" ? 10px : 9px);
+            : (root.icon_kind == "reset" || root.icon_kind == "locate-fixed" ? 10px : 9px);
         property <length> icon_height: root.icon_kind == "lock" || root.icon_kind == "unlock"
             ? 10px
             : (root.icon_kind == "recenter"
                 ? 11px
-                : (root.icon_kind == "folder-git" ? 12px : 9px));
+                : (root.icon_kind == "folder-git"
+                    ? 12px
+                    : (root.icon_kind == "locate-fixed" ? 10px : 9px)));
         property <length> icon_gap: root.icon_kind == "none" || root.icon_only ? 0px : 5px;
         in property <length> content_y_offset: 1px;
         property <length> icon_x: root.icon_only
@@ -4404,9 +4406,10 @@ slint::slint! {
 
                                                         CompareHeaderGhostButton {
                                                             label: "Reveal";
-                                                            icon_kind: "none";
+                                                            icon_kind: "locate-fixed";
+                                                            icon_source: AppIcons.header-locate-fixed;
                                                             tooltip_text: "Reveal in Compare Tree";
-                                                            button_width: 54px;
+                                                            button_width: 64px;
                                                             enabled: root.can_return_to_compare_view;
                                                             tapped => {
                                                                 root.compare_file_reveal_requested();

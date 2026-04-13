@@ -817,7 +817,7 @@
 - Default follow-on split after `19H`:
   - `19I+`: richer multi-match compare search behavior, compare-file interaction extensions, directory detail work, or other higher-coupling compare surfaces
 
-## Phase 19I Compare File Return + Reveal + Shared Scroll Lock (Landed)
+## Phase 19I Compare File Return + Reveal + Per-Tab Scroll Lock (Landed)
 
 - `Phase 19I` is now landed on top of inherited `19H`.
 - Landed scope:
@@ -839,7 +839,7 @@
   - `Settings -> Behavior` now additionally persists:
     - `Auto locate current file when returning to Compare Tree`
     - `Lock compare horizontal scrolling by default`
-    - the scroll-lock default applies to both Compare Tree and Compare File View
+    - the scroll-lock default applies when opening new Compare Tree and compare-originated File tabs
 - Explicitly not part of landed `19I`:
   - compare-file reset/recenter
   - compare-file content search / compare search-results mode
