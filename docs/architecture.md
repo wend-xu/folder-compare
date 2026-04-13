@@ -1,15 +1,18 @@
-# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2 + Phase 19C fix-1 Shell Closeout + Phase 19D Workspace Session Tabs + Phase 19D fix-1 Session Reset Semantics + Phase 19E True File Compare View MVP + Phase 19F Compare File Workbench Usability Closeout + Phase 19G Compare Tree Navigation and Scrolling Workbench)
+# Folder Compare Architecture (Stable Baseline + Phase 18 Closeout + Phase 19A Foundation + Phase 19B fix-2 + Phase 19C fix-1 Shell Closeout + Phase 19D Workspace Session Tabs + Phase 19D fix-1 Session Reset Semantics + Phase 19E True File Compare View MVP + Phase 19F Compare File Workbench Usability Closeout + Phase 19G Compare Tree Navigation and Scrolling Workbench + Phase 19H Compare Tree Entry / Quick Locate + Phase 19I Compare Tree / File Coordination + Phase 19J Compare File Locate / Viewport Tools)
 
 ## Purpose
 
 - This document records two layers at once:
   - the current real stable baseline closed through `Phase 17D`
-  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation, the accepted `Phase 19B fix-2` compare-tree MVP, the landed `Phase 19C fix-1` shell closeout, the landed `Phase 19D` outer workspace session-tab layer, the landed `Phase 19D fix-1` session reset semantics, the landed `Phase 19E` dedicated compare-file renderer MVP, the landed `Phase 19F` compare-file usability closeout, and the landed `Phase 19G` compare-tree navigation/scrolling workbench closeout
+  - the currently implemented `Phase 18` closeout baseline plus the landed `Phase 19A` compare foundation, the accepted `Phase 19B fix-2` compare-tree MVP, the landed `Phase 19C fix-1` shell closeout, the landed `Phase 19D` outer workspace session-tab layer, the landed `Phase 19D fix-1` session reset semantics, the landed `Phase 19E` dedicated compare-file renderer MVP, the landed `Phase 19F` compare-file usability closeout, the landed `Phase 19G` compare-tree navigation/scrolling workbench closeout, the landed `Phase 19H` compare-tree entry/current-level/quick-locate layer, the landed `Phase 19I` compare tree/file coordination layer, and the landed `Phase 19J` compare-file locate/viewport/header closeout
 - It is a baseline and boundary document, not a phase diary and not an implementation checklist.
-- `Phase 19G` is now the current stable compare-workspace compare-tree navigation/workbench baseline.
-- `Phase 19F` remains the inherited compare-file workbench baseline underneath `19G`.
-- `Phase 19E` remains the inherited dedicated compare-file renderer MVP underneath `19F/19G`.
-- `Phase 19D fix-1` remains the inherited session-shell/reset-semantics baseline underneath `19E/19F/19G`.
+- `Phase 19J` is now the current stable compare-file workbench baseline.
+- `Phase 19I` remains the inherited compare tree/file coordination baseline underneath `19J`.
+- `Phase 19H` remains the inherited compare-tree entry/current-level/quick-locate baseline underneath `19I/19J`.
+- `Phase 19G` remains the inherited compare-workspace compare-tree navigation/workbench baseline underneath `19H/19I/19J`.
+- `Phase 19F` remains the inherited compare-file renderer/usability baseline underneath `19J`.
+- `Phase 19E` remains the inherited dedicated compare-file renderer MVP underneath `19F/19J`.
+- `Phase 19D fix-1` remains the inherited session-shell/reset-semantics baseline underneath `19E/19F/19G/19H/19I/19J`.
 - `Phase 19C fix-1` remains the inherited shell/language closeout inside that `19D` session shell.
 - `Phase 19B fix-2` remains the inherited compare-tree MVP foundation inside that `19C/19D` shell.
 - Older wording such as "flat list only" or "do not mix tree/group navigation" remains useful as historical description of the pre-`Phase 18` stable baseline, but it is no longer the forward-looking boundary after the `2026-03-22` alignment.
@@ -858,6 +861,9 @@
     - matching is plain-text and row-oriented across the rendered base/target text
     - `Prev / Next / Clear` stay local to the current file tab and do not reuse Compare Tree quick-locate state
     - when the query is non-empty but the current compare file has no match, `Prev` / `Next` emit one restrained toast instead of mutating compare-session state
+    - current-row locate visibility is now anchored in the line-number gutters rather than relying on the relation lane alone
+    - because navigation remains row-oriented, each matching side currently highlights the first matching search-key span in that row as the local visual anchor
+    - search-hit highlight is painted above inline diff emphasis while preserving the selectable text surface underneath
   - Compare File View now exposes per-tab viewport tools aligned with the compare-file contract:
     - `Reset Scroll` returns the current compare file tab to the default top/origin viewport
     - `Reset Scroll` does not change lock state, Settings, or the local locate query

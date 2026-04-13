@@ -2006,9 +2006,13 @@ slint::slint! {
         in property <[string]> compare_file_row_left_prefixes;
         in property <[string]> compare_file_row_left_emphasis;
         in property <[string]> compare_file_row_left_suffixes;
+        in property <[string]> compare_file_row_left_locate_prefixes;
+        in property <[string]> compare_file_row_left_locate_matches;
         in property <[string]> compare_file_row_right_prefixes;
         in property <[string]> compare_file_row_right_emphasis;
         in property <[string]> compare_file_row_right_suffixes;
+        in property <[string]> compare_file_row_right_locate_prefixes;
+        in property <[string]> compare_file_row_right_locate_matches;
         in property <[bool]> compare_file_row_left_padding;
         in property <[bool]> compare_file_row_right_padding;
         in property <int> compare_file_left_content_width_px: 0;
@@ -4910,9 +4914,13 @@ slint::slint! {
                                                     row_left_prefixes: root.compare_file_row_left_prefixes;
                                                     row_left_emphasis: root.compare_file_row_left_emphasis;
                                                     row_left_suffixes: root.compare_file_row_left_suffixes;
+                                                    row_left_locate_prefixes: root.compare_file_row_left_locate_prefixes;
+                                                    row_left_locate_matches: root.compare_file_row_left_locate_matches;
                                                     row_right_prefixes: root.compare_file_row_right_prefixes;
                                                     row_right_emphasis: root.compare_file_row_right_emphasis;
                                                     row_right_suffixes: root.compare_file_row_right_suffixes;
+                                                    row_right_locate_prefixes: root.compare_file_row_right_locate_prefixes;
+                                                    row_right_locate_matches: root.compare_file_row_right_locate_matches;
                                                     row_left_padding: root.compare_file_row_left_padding;
                                                     row_right_padding: root.compare_file_row_right_padding;
                                                     left_content_width_px: root.compare_file_left_content_width_px;
@@ -6718,6 +6726,7 @@ fn should_refresh_compare_file_models(
         None => true,
         Some(last) => {
             last.selected_compare_file != next_state.selected_compare_file
+                || last.compare_file_locate_query() != next_state.compare_file_locate_query()
                 || last.compare_file_view_active() != next_state.compare_file_view_active()
         }
     }
@@ -6809,9 +6818,21 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_compare_file_row_left_prefixes(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_left_emphasis(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_left_suffixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_left_locate_prefixes(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
+    window.set_compare_file_row_left_locate_matches(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
     window.set_compare_file_row_right_prefixes(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_right_emphasis(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_right_suffixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_right_locate_prefixes(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
+    window.set_compare_file_row_right_locate_matches(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
     window.set_compare_file_row_left_padding(Rc::new(VecModel::<bool>::default()).into());
     window.set_compare_file_row_right_padding(Rc::new(VecModel::<bool>::default()).into());
     window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
@@ -6849,6 +6870,63 @@ fn compare_file_segment_slots(
     }
 
     (prefix, emphasis, suffix)
+}
+
+fn normalize_compare_file_locate_query(raw: &str) -> String {
+    raw.trim().to_lowercase()
+}
+
+fn find_case_insensitive_match_char_range(text: &str, needle: &str) -> Option<(usize, usize)> {
+    if text.is_empty() || needle.is_empty() {
+        return None;
+    }
+
+    let needle_chars = needle.chars().collect::<Vec<_>>();
+    if needle_chars.is_empty() {
+        return None;
+    }
+
+    let mut folded_text = Vec::new();
+    let mut folded_to_original_char = Vec::new();
+    for (original_char_index, ch) in text.chars().enumerate() {
+        for lowered in ch.to_lowercase() {
+            folded_text.push(lowered);
+            folded_to_original_char.push(original_char_index);
+        }
+    }
+
+    if needle_chars.len() > folded_text.len() {
+        return None;
+    }
+
+    for start in 0..=folded_text.len() - needle_chars.len() {
+        if folded_text[start..start + needle_chars.len()] == needle_chars[..] {
+            let original_start = folded_to_original_char[start];
+            let original_end = folded_to_original_char[start + needle_chars.len() - 1] + 1;
+            return Some((original_start, original_end));
+        }
+    }
+
+    None
+}
+
+fn compare_file_locate_highlight_slots_for_needle(text: &str, needle: &str) -> (String, String) {
+    let Some((start_char, end_char)) = find_case_insensitive_match_char_range(text, needle) else {
+        return (String::new(), String::new());
+    };
+
+    let mut char_offsets = text
+        .char_indices()
+        .map(|(offset, _)| offset)
+        .collect::<Vec<_>>();
+    char_offsets.push(text.len());
+    let start_byte = *char_offsets.get(start_char).unwrap_or(&text.len());
+    let end_byte = *char_offsets.get(end_char).unwrap_or(&text.len());
+
+    (
+        text[..start_byte].to_string(),
+        text[start_byte..end_byte].to_string(),
+    )
 }
 
 fn estimate_compare_file_text_width_px(text: &str) -> i32 {
@@ -7558,6 +7636,8 @@ fn sync_window_state(
 
     if should_refresh_compare_file_models(last_state, state) {
         let compare_file_rows = state.compare_file_row_projections();
+        let compare_file_locate_needle =
+            normalize_compare_file_locate_query(&state.compare_file_locate_query());
         window.set_compare_file_left_content_width_px(compare_file_left_content_width_px(
             &compare_file_rows,
         ));
@@ -7621,6 +7701,40 @@ fn sync_window_state(
             compare_file_row_right_line_nos,
             "compare_file_row_right_line_nos",
         );
+        let compare_file_row_left_locate_prefixes = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.left_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_locate_prefixes(),
+            compare_file_row_left_locate_prefixes,
+            "compare_file_row_left_locate_prefixes",
+        );
+        let compare_file_row_left_locate_matches = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.left_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .1,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_locate_matches(),
+            compare_file_row_left_locate_matches,
+            "compare_file_row_left_locate_matches",
+        );
         let compare_file_row_left_prefixes = compare_file_rows
             .iter()
             .map(|row| SharedString::from(compare_file_segment_slots(&row.left_segments).0))
@@ -7647,6 +7761,40 @@ fn sync_window_state(
             window.get_compare_file_row_left_suffixes(),
             compare_file_row_left_suffixes,
             "compare_file_row_left_suffixes",
+        );
+        let compare_file_row_right_locate_prefixes = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.right_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_locate_prefixes(),
+            compare_file_row_right_locate_prefixes,
+            "compare_file_row_right_locate_prefixes",
+        );
+        let compare_file_row_right_locate_matches = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.right_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .1,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_locate_matches(),
+            compare_file_row_right_locate_matches,
+            "compare_file_row_right_locate_matches",
         );
         let compare_file_row_right_prefixes = compare_file_rows
             .iter()
@@ -9718,5 +9866,25 @@ mod tests {
             compare_file_right_content_width_px(&rows),
             estimate_compare_file_text_width_px("also short")
         );
+    }
+
+    #[test]
+    fn compare_file_locate_highlight_slots_preserve_cjk_prefix() {
+        let needle = normalize_compare_file_locate_query("日本");
+        let (prefix, hit) = compare_file_locate_highlight_slots_for_needle(
+            "本轮目标: 验证中文、日本語、한국어在列表",
+            needle.as_str(),
+        );
+        assert_eq!(prefix, "本轮目标: 验证中文、");
+        assert_eq!(hit, "日本");
+    }
+
+    #[test]
+    fn compare_file_locate_highlight_slots_match_case_insensitively() {
+        let needle = normalize_compare_file_locate_query("xu");
+        let (prefix, hit) =
+            compare_file_locate_highlight_slots_for_needle("Owner = Xu", needle.as_str());
+        assert_eq!(prefix, "Owner = ");
+        assert_eq!(hit, "Xu");
     }
 }

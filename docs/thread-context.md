@@ -59,6 +59,9 @@
     - 提供 `Prev / Next / Clear`
     - 无匹配时只给 restrained toast
     - 不复用 Compare Tree quick locate 状态
+    - 当前命中 row 的主提示已收口到行号 gutter，而不是继续依赖 `Rel` 列
+    - 当前每个匹配侧会对该 row 的首个 search-key 命中片段做文本高亮
+    - search 命中文本高亮优先级高于行内 diff emphasis，但不破坏原生文本选择
   - `Compare File View` 现已提供 viewport tools：
     - `Reset Scroll` 恢复当前 tab 的默认顶部 / 横向原点视口
     - `Recenter` 围绕当前命中或当前 compare row 做纵向居中
@@ -142,7 +145,7 @@
 
 ## 快照（Snapshot）
 
-- 日期：`2026-04-12`（Asia/Shanghai）
+- 日期：`2026-04-13`（Asia/Shanghai）
 - 分支：`dev`
 - 当前真实代码基线：
   - `Phase 17D` 稳定 shell / window / settings / tooltip / file-view contract
@@ -182,6 +185,8 @@
   - compare-file local locate 是否只作用于当前 compare file tab
   - compare-file `Prev / Next / Clear` 顺序与 wrap 是否符合预期
   - compare-file no-match toast 是否克制且不改 compare session 状态
+  - 当前命中 row 是否优先在左右行号 gutter 得到清晰提示，而不是落在 `Rel` 列
+  - search-key 文本高亮是否只覆盖命中片段，且在 diff emphasis 之上仍清晰可见
   - 长行 horizontal scroll 是否可完整查看左右内容
   - Compare File View `Lock / Unlock` 是否与 Compare Tree 语义一致
   - compare-file `Reset Scroll` 是否只回顶部 / 横向原点且不改 lock 与 query
