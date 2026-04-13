@@ -2034,6 +2034,8 @@ slint::slint! {
         in-out property <string> compare_view_quick_locate_query;
         in property <int> compare_view_left_content_width_px: 0;
         in property <int> compare_view_right_content_width_px: 0;
+        in property <bool> auto_locate_current_file_on_compare_return: true;
+        in property <bool> lock_compare_horizontal_scrolling_by_default: true;
         in property <bool> can_return_to_compare_view;
         in property <bool> diff_loading;
         in property <string> selected_relative_path;
@@ -2108,6 +2110,8 @@ slint::slint! {
         in-out property <string> settings_provider_timeout;
         in-out property <bool> settings_show_hidden_files: true;
         in-out property <int> settings_default_result_view: 0;
+        in-out property <bool> settings_auto_locate_current_file_on_compare_return: true;
+        in-out property <bool> settings_lock_compare_horizontal_scrolling_by_default: true;
         in-out property <bool> settings_provider_show_api_key: false;
         in-out property <int> selected_row: -1;
         in property <string> selected_row_status;
@@ -2245,6 +2249,8 @@ slint::slint! {
             root.settings_provider_timeout = root.analysis_timeout_text;
             root.settings_show_hidden_files = root.show_hidden_files;
             root.settings_default_result_view = root.default_navigator_view_mode == "flat" ? 1 : 0;
+            root.settings_auto_locate_current_file_on_compare_return = root.auto_locate_current_file_on_compare_return;
+            root.settings_lock_compare_horizontal_scrolling_by_default = root.lock_compare_horizontal_scrolling_by_default;
             root.settings_provider_show_api_key = false;
             root.settings_open = true;
             root.settings_clicked();
@@ -2275,6 +2281,7 @@ slint::slint! {
         callback compare_view_row_activated(string);
         callback compare_view_row_context_menu_requested(string);
         callback compare_file_back_requested();
+        callback compare_file_reveal_requested();
         callback file_view_diff_requested();
         callback file_view_analysis_requested();
         callback workspace_session_confirmed();
@@ -4395,6 +4402,28 @@ slint::slint! {
                                                             }
                                                         }
 
+                                                        CompareHeaderGhostButton {
+                                                            label: "Reveal";
+                                                            icon_kind: "none";
+                                                            tooltip_text: "Reveal in Compare Tree";
+                                                            button_width: 54px;
+                                                            enabled: root.can_return_to_compare_view;
+                                                            tapped => {
+                                                                root.compare_file_reveal_requested();
+                                                            }
+                                                            tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                root.show_tooltip(
+                                                                    text,
+                                                                    anchor_x - root.absolute-position.x,
+                                                                    anchor_top - root.absolute-position.y,
+                                                                    anchor_bottom - root.absolute-position.y,
+                                                                );
+                                                            }
+                                                            tooltip_closed => {
+                                                                root.hide_tooltip();
+                                                            }
+                                                        }
+
                                                         StatusPill {
                                                             label: "Compare File";
                                                             tone: "neutral";
@@ -4412,6 +4441,41 @@ slint::slint! {
                                                             vertical-alignment: center;
                                                             horizontal-stretch: 1;
                                                             overflow: elide;
+                                                        }
+
+                                                        Rectangle {
+                                                            width: 1px;
+                                                            height: 18px;
+                                                            background: #e3e9f0;
+                                                        }
+
+                                                        CompareHeaderGhostButton {
+                                                            label: "";
+                                                            icon_kind: root.compare_view_horizontal_scroll_locked ? "lock" : "unlock";
+                                                            icon_source: root.compare_view_horizontal_scroll_locked
+                                                                ? AppIcons.header-lock
+                                                                : AppIcons.header-unlock;
+                                                            button_width: 28px;
+                                                            button_height: 22px;
+                                                            outlined_hover: false;
+                                                            enabled: root.compare_file_has_rows;
+                                                            tooltip_text: root.compare_view_horizontal_scroll_locked
+                                                                ? "Unlock horizontal scrolling between Base and Target."
+                                                                : "Lock horizontal scrolling between Base and Target.";
+                                                            tapped => {
+                                                                root.compare_view_scroll_lock_toggled();
+                                                            }
+                                                            tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                root.show_tooltip(
+                                                                    text,
+                                                                    anchor_x - root.absolute-position.x,
+                                                                    anchor_top - root.absolute-position.y,
+                                                                    anchor_bottom - root.absolute-position.y,
+                                                                );
+                                                            }
+                                                            tooltip_closed => {
+                                                                root.hide_tooltip();
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -4574,6 +4638,7 @@ slint::slint! {
                                                     row_right_padding: root.compare_file_row_right_padding;
                                                     left_content_width_px: root.compare_file_left_content_width_px;
                                                     right_content_width_px: root.compare_file_right_content_width_px;
+                                                    horizontal_scroll_locked: root.compare_view_horizontal_scroll_locked;
                                                     copy_requested(copy_value, feedback_label) => {
                                                         root.copy_requested(copy_value, feedback_label);
                                                     }
@@ -5682,6 +5747,90 @@ slint::slint! {
                                     wrap: word-wrap;
                                 }
 
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Auto locate";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    SegmentedRail {
+                                        width: 220px;
+                                        height: 30px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "On";
+                                                selected: root.settings_auto_locate_current_file_on_compare_return;
+                                                show_divider: false;
+                                                tapped => {
+                                                    root.settings_auto_locate_current_file_on_compare_return = true;
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Off";
+                                                selected: !root.settings_auto_locate_current_file_on_compare_return;
+                                                show_divider: true;
+                                                tapped => {
+                                                    root.settings_auto_locate_current_file_on_compare_return = false;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Text {
+                                    text: "Auto locate current file when returning to Compare Tree. Applies to Back, Compare Tree tab return, and closing the active compare file tab.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: "Scroll lock";
+                                        width: 110px;
+                                        color: #4f6074;
+                                        vertical-alignment: center;
+                                    }
+                                    SegmentedRail {
+                                        width: 220px;
+                                        height: 30px;
+                                        HorizontalLayout {
+                                            spacing: 0px;
+                                            SegmentItem {
+                                                label: "Locked";
+                                                selected: root.settings_lock_compare_horizontal_scrolling_by_default;
+                                                show_divider: false;
+                                                tapped => {
+                                                    root.settings_lock_compare_horizontal_scrolling_by_default = true;
+                                                }
+                                            }
+                                            SegmentItem {
+                                                label: "Unlocked";
+                                                selected: !root.settings_lock_compare_horizontal_scrolling_by_default;
+                                                show_divider: true;
+                                                tapped => {
+                                                    root.settings_lock_compare_horizontal_scrolling_by_default = false;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Text {
+                                    text: "Lock compare horizontal scrolling by default for both Compare Tree and compare-originated File View. Save also updates the current compare workspace lock state.";
+                                    color: #6a7888;
+                                    wrap: word-wrap;
+                                }
+
                                 Rectangle {
                                     vertical-stretch: 1;
                                 }
@@ -6522,6 +6671,12 @@ fn sync_window_state(
     window.set_compare_view_empty_body_text(state.compare_view_empty_body_text().into());
     window.set_compare_view_can_go_up(state.compare_view_can_go_up());
     window.set_compare_view_horizontal_scroll_locked(state.compare_view_horizontal_scroll_locked());
+    window.set_auto_locate_current_file_on_compare_return(
+        state.auto_locate_current_file_on_compare_return(),
+    );
+    window.set_lock_compare_horizontal_scrolling_by_default(
+        state.lock_compare_horizontal_scrolling_by_default(),
+    );
     if window.get_compare_view_quick_locate_query().as_str()
         != state.compare_view_quick_locate_query().as_str()
     {
@@ -7469,6 +7624,34 @@ fn dispatch_compare_quick_locate_no_match_toast(toast_controller: &ToastControll
     );
 }
 
+fn dispatch_compare_tree_locate_failure_toast(toast_controller: &ToastController) {
+    toast_controller.dispatch(
+        ToastRequest::new(
+            "Current file could not be located in Compare Tree",
+            ToastTone::Warn,
+            ToastPlacement::Toast,
+        )
+        .with_duration(Duration::from_millis(1600))
+        .with_strategy(ToastStrategy::Replace),
+    );
+}
+
+fn should_warn_compare_tree_locate_failure(snapshot: &AppState, force_locate: bool) -> bool {
+    if !snapshot.compare_file_view_active() || !snapshot.has_compare_tree_session() {
+        return false;
+    }
+    if !(force_locate || snapshot.auto_locate_current_file_on_compare_return()) {
+        return false;
+    }
+
+    snapshot
+        .selected_relative_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .is_some_and(|path| !snapshot.can_locate_relative_path_in_compare_view(path))
+}
+
 /// Runs the UI application.
 pub fn run() -> anyhow::Result<()> {
     window_chrome::install_platform_windowing()?;
@@ -8085,12 +8268,18 @@ pub fn run() -> anyhow::Result<()> {
     let session_select_cache = Arc::clone(&sync_cache);
     let session_select_context_menu_controller = context_menu_controller.clone();
     let session_select_loading_mask_controller = loading_mask_controller.clone();
+    let session_select_toast_controller = toast_controller.clone();
     app.on_workspace_session_selected(move |session_id| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         session_select_context_menu_controller.close();
+        let warn_locate_failure = if session_id.as_str() == "compare-tree" {
+            should_warn_compare_tree_locate_failure(&session_select_bridge.snapshot(), false)
+        } else {
+            false
+        };
         session_select_bridge.dispatch(UiCommand::SelectWorkspaceSession(session_id.to_string()));
         sync_window_state_if_changed(
             &window,
@@ -8100,6 +8289,9 @@ pub fn run() -> anyhow::Result<()> {
             &session_select_loading_mask_controller,
             SyncMode::Passive,
         );
+        if warn_locate_failure && window.get_workspace_mode() == "compare-view" {
+            dispatch_compare_tree_locate_failure_toast(&session_select_toast_controller);
+        }
         if window.get_workspace_mode() == "compare-view" {
             window.invoke_focus_compare_rows();
         }
@@ -8110,12 +8302,17 @@ pub fn run() -> anyhow::Result<()> {
     let session_close_cache = Arc::clone(&sync_cache);
     let session_close_context_menu_controller = context_menu_controller.clone();
     let session_close_loading_mask_controller = loading_mask_controller.clone();
+    let session_close_toast_controller = toast_controller.clone();
     app.on_workspace_session_close_requested(move |session_id| {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         session_close_context_menu_controller.close();
+        let snapshot = session_close_bridge.snapshot();
+        let warn_locate_failure = snapshot.active_session_id.as_deref()
+            == Some(session_id.as_str())
+            && should_warn_compare_tree_locate_failure(&snapshot, false);
         session_close_bridge.dispatch(UiCommand::CloseWorkspaceSession(session_id.to_string()));
         sync_window_state_if_changed(
             &window,
@@ -8125,6 +8322,9 @@ pub fn run() -> anyhow::Result<()> {
             &session_close_loading_mask_controller,
             SyncMode::Passive,
         );
+        if warn_locate_failure && window.get_workspace_mode() == "compare-view" {
+            dispatch_compare_tree_locate_failure_toast(&session_close_toast_controller);
+        }
         if window.get_workspace_mode() == "compare-view" {
             window.invoke_focus_compare_rows();
         }
@@ -8416,12 +8616,15 @@ pub fn run() -> anyhow::Result<()> {
     let compare_file_back_cache = Arc::clone(&sync_cache);
     let compare_file_back_context_menu_controller = context_menu_controller.clone();
     let compare_file_back_loading_mask_controller = loading_mask_controller.clone();
+    let compare_file_back_toast_controller = toast_controller.clone();
     app.on_compare_file_back_requested(move || {
         let Some(window) = app_weak.upgrade() else {
             return;
         };
 
         compare_file_back_context_menu_controller.close();
+        let warn_locate_failure =
+            should_warn_compare_tree_locate_failure(&compare_file_back_bridge.snapshot(), false);
         compare_file_back_bridge.dispatch(UiCommand::SelectWorkspaceSession(
             "compare-tree".to_string(),
         ));
@@ -8433,6 +8636,40 @@ pub fn run() -> anyhow::Result<()> {
             &compare_file_back_loading_mask_controller,
             SyncMode::Passive,
         );
+        if warn_locate_failure && window.get_workspace_mode() == "compare-view" {
+            dispatch_compare_tree_locate_failure_toast(&compare_file_back_toast_controller);
+        }
+        if window.get_workspace_mode() == "compare-view" {
+            window.invoke_focus_compare_rows();
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let compare_file_reveal_bridge = bridge.clone();
+    let compare_file_reveal_cache = Arc::clone(&sync_cache);
+    let compare_file_reveal_context_menu_controller = context_menu_controller.clone();
+    let compare_file_reveal_loading_mask_controller = loading_mask_controller.clone();
+    let compare_file_reveal_toast_controller = toast_controller.clone();
+    app.on_compare_file_reveal_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_file_reveal_context_menu_controller.close();
+        let warn_locate_failure =
+            should_warn_compare_tree_locate_failure(&compare_file_reveal_bridge.snapshot(), true);
+        compare_file_reveal_bridge.dispatch(UiCommand::RevealCurrentFileInCompareTree);
+        sync_window_state_if_changed(
+            &window,
+            &compare_file_reveal_bridge,
+            &compare_file_reveal_cache,
+            Some(&compare_file_reveal_context_menu_controller),
+            &compare_file_reveal_loading_mask_controller,
+            SyncMode::Passive,
+        );
+        if warn_locate_failure && window.get_workspace_mode() == "compare-view" {
+            dispatch_compare_tree_locate_failure_toast(&compare_file_reveal_toast_controller);
+        }
         if window.get_workspace_mode() == "compare-view" {
             window.invoke_focus_compare_rows();
         }
@@ -8698,6 +8935,10 @@ pub fn run() -> anyhow::Result<()> {
             } else {
                 NavigatorViewMode::Tree
             },
+            auto_locate_current_file_on_compare_return: window
+                .get_settings_auto_locate_current_file_on_compare_return(),
+            lock_compare_horizontal_scrolling_by_default: window
+                .get_settings_lock_compare_horizontal_scrolling_by_default(),
         });
         sync_window_state_if_changed(
             &window,

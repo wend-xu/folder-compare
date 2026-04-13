@@ -49,7 +49,7 @@
   - compare-originated `File` tab 现在使用 dedicated `Compare File View`
   - `Compare File View` 保留 `Back to Compare Tree`、roots / compare path / compare status context
   - compare 文件内容采用单一纵向滚动 + Rust-owned side-by-side row projection
-  - compare 文件内容现在支持左右各自独立 horizontal scroll，且 gutter / relation lane 固定
+  - compare 文件内容现在支持左右 horizontal scroll，且 gutter / relation lane 固定
   - compare 文本现在可选择，并支持系统复制；行号可直接复制对应侧整行
   - 当前仍不做 sync scroll / merge actions / compare search
 - `Phase 19G` 已落地并成为当前稳定 compare tree navigation / scrolling baseline：
@@ -62,6 +62,11 @@
   - Compare Tree 目录行右键菜单现已提供 `Set as Current Level`
   - Compare Tree 现已提供 non-filter quick locate 与 `Prev / Next`
   - toolbar 现已收口为 icon-first scroll lock、`Reset Scroll`、`Center Row`
+- `Phase 19I` 已落地并成为当前稳定 compare-tree/file coordination baseline：
+  - 从 compare-originated `File View` 返回 `Compare Tree` 时，现可按设置 auto locate 当前文件
+  - `Compare File View` compare-context header 现已提供 `Reveal in Compare Tree`
+  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为 shared `Lock / Unlock` 语义
+  - `Settings -> Behavior` 现已新增 return locate 与 compare scroll lock default 两个持久化偏好
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -170,9 +175,10 @@
   - Compare Tree tab 固定在最左侧；不会创建第二个 compare session tab
   - Compare Tree 中文件 leaf 会打开或复用同一路径的 File tab
   - compare-originated File tab 现在使用 dedicated `Compare File View`
-  - Compare File View 保留 `Back to Compare Tree`、compare roots / path / status context
+  - Compare File View 保留 `Back to Compare Tree`、`Reveal in Compare Tree`、compare roots / path / status context
   - Compare File View 使用单一纵向 side-by-side 行投影，而不是双独立列表强同步
-  - Compare File View 现在额外具备左右独立 horizontal scroll、固定 gutter、可选择文本、以及行号复制整行
+  - Compare File View 现在额外具备与 Compare Tree 对齐的 `Lock / Unlock` horizontal scroll、固定 gutter、可选择文本、以及行号复制整行
+  - compare-originated File View 返回 Compare Tree 时，当前文件可按设置自动 reveal / focus / ensure-visible
   - compare session reset 时，全部 related compare-originated `File` tabs 会被一起清空；当前不做复杂保留策略
   - File tab 默认可直接关闭，不弹确认
   - Compare Tree tab 关闭等于结束当前 compare session；如仍有派生 File tabs，会先确认再一起关闭
@@ -197,9 +203,11 @@
 - 当前 Settings 只保留两个 section：
   - `Provider`
   - `Behavior`
-- `Behavior` 当前包含两个持久化偏好：
+- `Behavior` 当前包含四个持久化偏好：
   - `Hidden files`
   - 默认结果视图 `Tree / Flat`
+  - `Auto locate current file when returning to Compare Tree`
+  - `Lock compare horizontal scrolling by default`
 - `Hidden files` 当前只是 UI / presentation preference：
   - 影响 `Results / Navigator` 默认可见集合
   - 影响 `Compare View` visible rows
@@ -308,7 +316,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 landed `Phase 19H`（继承 `19G`），不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
+- 当前默认入口是 landed `Phase 19I`（继承 `19H / 19G`），不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - top-level manual sidebar hide / restore
@@ -335,7 +343,7 @@ cargo test --workspace
   - compare-originated `File` tab 现已升级为 dedicated `Compare File View`
   - 标准 `Sidebar -> File View` 继续保留既有内层 `Diff / Analysis`
   - Compare File View 使用单一纵向 side-by-side 行投影，并保留 `Back to Compare Tree`
-  - Compare File View 现在支持左右独立 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
+  - Compare File View 现在支持 horizontal scroll、固定 gutter / relation lane、文本选择与系统复制、以及行号复制整行
   - Compare Tree 现在支持 compare root 直接进入、breadcrumb 导航、horizontal scroll、以及明确的 viewport recovery / scroll-lock 语义
 - `Phase 19H` 当前额外事实：
   - `Results / Navigator` 现已提供主入口 `Open Compare Tree`
@@ -345,14 +353,19 @@ cargo test --workspace
     - reveal / focus / ensure-visible
     - `Prev / Next`
   - Compare Tree toolbar 现已收口为 icon-first scroll lock、`Reset Scroll`、`Center Row`
+- `Phase 19I` 当前额外事实：
+  - compare-originated `File View` 返回 `Compare Tree` 时可按设置 auto locate 当前文件
+  - `Compare File View` header 现已提供 `Reveal in Compare Tree`
+  - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为 shared `Lock / Unlock`
+  - `Settings -> Behavior` 现已新增 return locate 与 compare scroll lock default 两个持久化偏好
 - 当前仍未实现：
   - compare tree filtering search / search-results mode / 内容搜索
   - 目录 selection / 目录详情
   - narrow-width minimum-usable behavior beyond the current compare-file baseline
   - compare core widening
   - cross-surface sync scroll / compare-file reset-recenter / richer compare interaction
-  - 超出当前 `19H` 的更深层 `Compare View / File View` 重构
-- 后续只有在目标明确时才进入 `19I` 或更后阶段；不要把 landed `19H` 重新写回 proposal。
+  - 超出当前 `19I` 的更深层 `Compare View / File View` 重构
+- 后续只有在目标明确时才进入 `19J` 或更后阶段；不要把 landed `19I` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

@@ -87,6 +87,13 @@ impl Presenter {
                         state.analysis_openai_model = saved.provider.openai_model;
                         state.analysis_request_timeout_secs = saved.provider.timeout_secs.max(1);
                         state.show_hidden_files = saved.behavior.show_hidden_files;
+                        state.auto_locate_current_file_on_compare_return =
+                            saved.behavior.auto_locate_current_file_on_compare_return;
+                        state.lock_compare_horizontal_scrolling_by_default =
+                            saved.behavior.lock_compare_horizontal_scrolling_by_default;
+                        let compare_scroll_locked =
+                            state.lock_compare_horizontal_scrolling_by_default;
+                        state.set_compare_view_horizontal_scroll_locked(compare_scroll_locked);
                         state.set_default_navigator_view_mode(default_navigator_view_mode);
                         state.set_navigator_runtime_view_mode(default_navigator_view_mode);
                         state.settings_error_message = None;
@@ -156,10 +163,17 @@ impl Presenter {
             UiCommand::SelectWorkspaceSession(session_id) => {
                 let should_load_selected_diff = {
                     let mut state = self.state.lock().expect("state mutex poisoned");
-                    if !state.activate_workspace_session(session_id.as_str()) {
-                        return;
+                    if session_id.trim() == "compare-tree" && state.compare_file_view_active() {
+                        if !state.return_to_compare_tree(false) {
+                            return;
+                        }
+                        false
+                    } else {
+                        if !state.activate_workspace_session(session_id.as_str()) {
+                            return;
+                        }
+                        state.active_file_session_needs_diff_reload()
                     }
-                    state.active_file_session_needs_diff_reload()
                 };
                 if should_load_selected_diff {
                     self.execute_load_selected_diff();
@@ -244,6 +258,10 @@ impl Presenter {
             UiCommand::OpenFileViewFromCompare(relative_path) => {
                 self.open_file_view_from_compare(relative_path);
             }
+            UiCommand::RevealCurrentFileInCompareTree => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.return_to_compare_tree(true);
+            }
             UiCommand::SetFileViewModeDiff => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.set_file_view_mode(FileSessionMode::Diff);
@@ -295,6 +313,8 @@ impl Presenter {
                 timeout_secs_text,
                 show_hidden_files,
                 default_results_view,
+                auto_locate_current_file_on_compare_return,
+                lock_compare_horizontal_scrolling_by_default,
             } => {
                 let timeout_secs = match parse_timeout_secs(&timeout_secs_text) {
                     Ok(value) => value,
@@ -316,6 +336,15 @@ impl Presenter {
                     state.analysis_openai_model = model;
                     state.analysis_request_timeout_secs = timeout_secs;
                     state.set_show_hidden_files(show_hidden_files);
+                    state.set_auto_locate_current_file_on_compare_return(
+                        auto_locate_current_file_on_compare_return,
+                    );
+                    state.set_lock_compare_horizontal_scrolling_by_default(
+                        lock_compare_horizontal_scrolling_by_default,
+                    );
+                    state.set_compare_view_horizontal_scroll_locked(
+                        lock_compare_horizontal_scrolling_by_default,
+                    );
                     state.set_default_navigator_view_mode(default_results_view);
                     Self::apply_runtime_navigator_view_mode(&mut state, default_results_view);
                     state.reconcile_file_sessions_with_active_results();
@@ -343,6 +372,10 @@ impl Presenter {
                             default_results_view: settings_default_results_view(
                                 state.default_navigator_view_mode,
                             ),
+                            auto_locate_current_file_on_compare_return: state
+                                .auto_locate_current_file_on_compare_return,
+                            lock_compare_horizontal_scrolling_by_default: state
+                                .lock_compare_horizontal_scrolling_by_default,
                         },
                     }
                 };
@@ -2403,6 +2436,8 @@ mod tests {
             timeout_secs_text: "0".to_string(),
             show_hidden_files: true,
             default_results_view: NavigatorViewMode::Tree,
+            auto_locate_current_file_on_compare_return: true,
+            lock_compare_horizontal_scrolling_by_default: true,
         });
         let snapshot = presenter.state_snapshot();
         assert!(snapshot.settings_error_message.is_some());
@@ -2423,6 +2458,8 @@ mod tests {
             behavior: BehaviorSettings {
                 show_hidden_files: false,
                 default_results_view: DefaultResultsView::Flat,
+                auto_locate_current_file_on_compare_return: false,
+                lock_compare_horizontal_scrolling_by_default: false,
             },
         })
         .expect("settings should be saved");
@@ -2442,6 +2479,8 @@ mod tests {
         assert_eq!(snapshot.analysis_openai_model, "gpt-4o-mini");
         assert_eq!(snapshot.analysis_request_timeout_secs, 55);
         assert!(!snapshot.show_hidden_files);
+        assert!(!snapshot.auto_locate_current_file_on_compare_return);
+        assert!(!snapshot.lock_compare_horizontal_scrolling_by_default);
         assert_eq!(
             snapshot.default_navigator_view_mode,
             NavigatorViewMode::Flat

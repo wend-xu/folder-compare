@@ -320,6 +320,7 @@ export component CompareFileView inherits Rectangle {
     in property <[bool]> row_right_padding;
     in property <int> left_content_width_px: 0;
     in property <int> right_content_width_px: 0;
+    in property <bool> horizontal_scroll_locked: true;
     callback copy_requested(string, string);
 
     public function ensure_row_visible(target_row: int) {
@@ -355,8 +356,37 @@ export component CompareFileView inherits Rectangle {
     property <length> left_horizontal_offset: left_horizontal_scroll.viewport-x;
     property <length> right_horizontal_offset: right_horizontal_scroll.viewport-x;
     property <length> right_content_x: root.width - root.visible_content_width;
+    property <bool> syncing_locked_scroll: false;
 
     clip: true;
+
+    function clamp_horizontal_offset(offset: length, overflow: length) -> length {
+        max(0px - overflow, min(0px, offset))
+    }
+
+    function synchronize_locked_horizontal_scroll(primary_offset: length, target_overflow: length, primary_left: bool) {
+        if !root.horizontal_scroll_locked || root.syncing_locked_scroll {
+            return;
+        }
+
+        root.syncing_locked_scroll = true;
+        if primary_left {
+            right_horizontal_scroll.viewport-x = root.clamp_horizontal_offset(primary_offset, target_overflow);
+        } else {
+            left_horizontal_scroll.viewport-x = root.clamp_horizontal_offset(primary_offset, target_overflow);
+        }
+        root.syncing_locked_scroll = false;
+    }
+
+    changed horizontal_scroll_locked => {
+        if root.horizontal_scroll_locked {
+            root.synchronize_locked_horizontal_scroll(
+                left_horizontal_scroll.viewport-x,
+                root.right_horizontal_overflow,
+                true,
+            );
+        }
+    }
 
     compare_file_list := ListView {
         width: parent.width;
@@ -431,6 +461,13 @@ export component CompareFileView inherits Rectangle {
         viewport-height: 1px;
         horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
         vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+        scrolled => {
+            root.synchronize_locked_horizontal_scroll(
+                self.viewport-x,
+                root.right_horizontal_overflow,
+                true,
+            );
+        }
 
         Rectangle {
             width: root.left_content_width;
@@ -450,6 +487,13 @@ export component CompareFileView inherits Rectangle {
         viewport-height: 1px;
         horizontal-scrollbar-policy: ScrollBarPolicy.as-needed;
         vertical-scrollbar-policy: ScrollBarPolicy.as-needed;
+        scrolled => {
+            root.synchronize_locked_horizontal_scroll(
+                self.viewport-x,
+                root.left_horizontal_overflow,
+                false,
+            );
+        }
 
         Rectangle {
             width: root.right_content_width;

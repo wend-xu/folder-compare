@@ -87,6 +87,8 @@
 - `Settings -> Behavior` now persists:
   - `Hidden files`
   - default non-search result view (`Tree` / `Flat`)
+  - `Auto locate current file when returning to Compare Tree`
+  - `Lock compare horizontal scrolling by default`
 - Selection remains conservative:
   - tree/flat switching preserves the currently open file only when it remains a member of the target visible set
   - switching into tree reveals the selected file by expanding its ancestor chain when that file is still valid
@@ -174,7 +176,7 @@
   - current long-file rendering strategy remains one `ListView`/single-scroll projection rather than dual independent synchronized lists
 - `Phase 19F` compare-file usability closeout is now landed on top of `19E`:
   - the dedicated compare-file surface remains one shared vertical `ListView`; it does not regress into dual independent vertically synchronized lists
-  - compare-file long lines now stay `no-wrap` and can be inspected through independent base/target horizontal scrollbars while keeping one shared vertical projection
+  - compare-file long lines now stay `no-wrap` and can be inspected through horizontal scrolling while keeping one shared vertical projection
   - left/right line-number gutters and the middle relation lane stay physically fixed while horizontal scrolling moves only the text-content lanes
   - compare-file rows now render read-only selectable text surfaces rather than paint-only text runs:
     - native text selection is available inside compare-originated file tabs
@@ -183,7 +185,7 @@
   - missing-line rows now use restrained stripe padding rather than the earlier `No line` pill
   - relation lane markers now use stable semantic labels (`Diff / Left / Right`) rather than symbolic glyphs
   - the current compare-file baseline intentionally still stops at focused usability:
-    - horizontal scroll is split per content pane without changing the shared vertical row model
+    - horizontal scroll keeps the shared vertical row model without changing it into dual synchronized lists
     - no sync scroll
     - no recenter/reset
     - no merge/apply actions
@@ -339,7 +341,7 @@
   - compact compare-status badge
   - compare-path context
   - stable single-vertical-scroll side-by-side compare surface below that header
-  - independent horizontal overflow handling per compare text lane
+  - lockable horizontal overflow handling per compare text lane
   - selectable/copyable compare text without changing standard File View
 
 ## Stable UI / Interaction Contract
@@ -448,9 +450,11 @@
   - `Provider`
   - `Behavior`
 - `Provider` owns AI provider configuration and retains the dedicated `API Key` secret-field contract.
-- `Behavior` currently owns two persisted presentation preferences:
+- `Behavior` currently owns four persisted presentation preferences:
   - `Hidden files`
   - default non-search result view
+  - `Auto locate current file when returning to Compare Tree`
+  - `Lock compare horizontal scrolling by default`
 - Settings is not:
   - a second compare-status surface
   - a row-detail view
@@ -757,14 +761,14 @@
 
 ## Next-Stage Activation
 
-- Default baseline is now landed `Phase 19H` on top of inherited `Phase 19G`.
+- Default baseline is now landed `Phase 19I` on top of inherited `Phase 19H / 19G`.
 - `Phase 19A` through `19C fix-1` remain inherited inside that `19G` baseline:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`
   - independent `compare_row_focus_path`
   - structured `compare_foundation`
   - top-level manual sidebar hide / restore through a glyph-only shell affordance
-- Current inherited `19D` session-shell contract inside `19H` is:
+- Current inherited `19D` session-shell contract inside `19I` is:
   - explicit compare-session entry from directory actions in `Results / Navigator`
   - one unique fixed-left `Compare Tree` session tab per compare session
   - compare-originated file tabs that keep dedicated `Compare File View` content rather than reusing the standard inner `Diff / Analysis` shell
@@ -773,8 +777,13 @@
   - Compare Tree / File session navigation through the outer tab strip rather than header back buttons
   - Compare Tree close meaning "end current compare session", with confirmation when related file tabs exist
   - compare-visible rows following `Hidden files`
+- Current inherited `19I` coordination contract is:
+  - returning from compare-originated file tabs to Compare Tree can auto-locate the current file without reanchoring the compare session
+  - Compare File View now exposes explicit `Reveal in Compare Tree`
+  - Compare File View horizontal scrolling now reuses the same shared lock/unlock state as Compare Tree
+  - `Settings -> Behavior` now also persists return-locate and compare-scroll-lock defaults
 - Do not reopen `19B fix-*` or treat `19C fix-1` / `19D` as draft unless a concrete regression requires it.
-- Only move default planning to `19I` or later when a later thread explicitly scopes that stage.
+- Only move default planning to `19J` or later when a later thread explicitly scopes that stage.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
 ## Phase 19H Compare Tree Entry + Current Level + Quick Locate (Landed)
@@ -807,6 +816,36 @@
   - directory detail panes, multi-compare-session work, merge/apply flows, or `fc-core` widening
 - Default follow-on split after `19H`:
   - `19I+`: richer multi-match compare search behavior, compare-file interaction extensions, directory detail work, or other higher-coupling compare surfaces
+
+## Phase 19I Compare File Return + Reveal + Shared Scroll Lock (Landed)
+
+- `Phase 19I` is now landed on top of inherited `19H`.
+- Landed scope:
+  - returning from one compare-originated file tab to the current Compare Tree can now auto-locate the current file when the new behavior preference is enabled
+  - locate keeps current compare-session semantics intact:
+    - it does not change `compare_focus_path`
+    - it does not rewrite quick-locate text
+    - it does not widen hidden-file / filtering behavior
+    - it only reveals ancestors, focuses the exact row, and issues ensure-visible when the current anchor already contains that path
+  - Compare File View now exposes explicit `Reveal in Compare Tree` in its compare-context header:
+    - it switches back to the current Compare Tree session
+    - it force-attempts exact-path reveal/focus for the current compare file
+    - locate failure leaves the existing Compare Tree focus/anchor intact and only emits one restrained toast
+  - Compare File View horizontal scrolling now aligns with Compare Tree semantics:
+    - `Locked` keeps base/target horizontal offsets synchronized, with natural overflow clamping on the shorter side
+    - `Unlocked` allows the two text panes to move independently
+    - line-number gutters and the relation lane remain physically fixed
+    - compare-file `Reset Scroll` / `Center Row` are still explicitly deferred
+  - `Settings -> Behavior` now additionally persists:
+    - `Auto locate current file when returning to Compare Tree`
+    - `Lock compare horizontal scrolling by default`
+    - the scroll-lock default applies to both Compare Tree and Compare File View
+- Explicitly not part of landed `19I`:
+  - compare-file reset/recenter
+  - compare-file content search / compare search-results mode
+  - automatic dual focus coupling between Compare Tree and Compare File View
+  - cross-surface sync scroll beyond shared lock/unlock semantics
+  - merge/apply flows, multi-compare-session work, or `fc-core` widening
 
 ## Related Documents
 
