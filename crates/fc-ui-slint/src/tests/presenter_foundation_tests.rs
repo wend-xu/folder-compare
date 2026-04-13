@@ -123,12 +123,48 @@ fn save_settings_hiding_selected_row_marks_it_stale() {
         timeout_secs_text: "30".to_string(),
         show_hidden_files: false,
         default_results_view: NavigatorViewMode::Tree,
+        auto_locate_current_file_on_compare_return: true,
+        lock_compare_horizontal_scrolling_by_default: true,
     });
 
     let snapshot = presenter.state_snapshot();
     assert_eq!(snapshot.selected_row, None);
     assert_eq!(snapshot.selected_relative_path.as_deref(), Some(".env"));
     assert!(!snapshot.show_hidden_files);
+}
+
+#[test]
+fn save_settings_compare_scroll_lock_default_does_not_modify_current_tab_lock() {
+    let mut state =
+        state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
+    assert!(state.set_lock_compare_horizontal_scrolling_by_default(false));
+    state.ensure_compare_tree_session();
+    assert!(state.toggle_compare_view_horizontal_scroll_locked());
+    assert!(state.compare_view_horizontal_scroll_locked());
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::SaveAppSettings {
+        provider_kind: fc_ai::AiProviderKind::Mock,
+        endpoint: String::new(),
+        api_key: String::new(),
+        model: "gpt-4o-mini".to_string(),
+        timeout_secs_text: "30".to_string(),
+        show_hidden_files: true,
+        default_results_view: NavigatorViewMode::Tree,
+        auto_locate_current_file_on_compare_return: true,
+        lock_compare_horizontal_scrolling_by_default: false,
+    });
+
+    let snapshot = presenter.state_snapshot();
+    assert!(!snapshot.lock_compare_horizontal_scrolling_by_default());
+    assert!(snapshot.compare_view_horizontal_scroll_locked());
+    assert_eq!(
+        snapshot
+            .compare_tree_session
+            .as_ref()
+            .map(|session| session.horizontal_scroll_locked),
+        Some(true)
+    );
 }
 
 #[test]
@@ -288,6 +324,60 @@ fn selecting_compare_tree_session_restores_compare_mode() {
 }
 
 #[test]
+fn selecting_compare_tree_session_auto_locates_current_compare_file() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("src/lib.rs", EntryStatus::Different),
+    ]);
+    state.ensure_compare_tree_session();
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+    assert!(state.set_compare_row_focus_path(Some("src/main.rs")));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare("src/lib.rs".to_string()));
+    presenter.handle_command(UiCommand::SelectWorkspaceSession(
+        "compare-tree".to_string(),
+    ));
+
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert_eq!(snapshot.active_session_id.as_deref(), Some("compare-tree"));
+    assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+    assert_eq!(
+        snapshot.compare_row_focus_path.as_deref(),
+        Some("src/lib.rs")
+    );
+    assert_eq!(
+        snapshot.compare_view_scroll_target_relative_path.as_deref(),
+        Some("src/lib.rs")
+    );
+}
+
+#[test]
+fn reveal_current_file_in_compare_tree_ignores_disabled_auto_locate_setting() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("src/lib.rs", EntryStatus::Different),
+    ]);
+    state.ensure_compare_tree_session();
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+    assert!(state.set_compare_row_focus_path(Some("src/main.rs")));
+    assert!(state.set_auto_locate_current_file_on_compare_return(false));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare("src/lib.rs".to_string()));
+    presenter.handle_command(UiCommand::RevealCurrentFileInCompareTree);
+
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert_eq!(snapshot.active_session_id.as_deref(), Some("compare-tree"));
+    assert_eq!(
+        snapshot.compare_row_focus_path.as_deref(),
+        Some("src/lib.rs")
+    );
+}
+
+#[test]
 fn toggling_sidebar_visibility_does_not_disturb_compare_return_context() {
     let mut state =
         state_from_entries(vec![text_diff_entry("src/main.rs", EntryStatus::Different)]);
@@ -305,6 +395,31 @@ fn toggling_sidebar_visibility_does_not_disturb_compare_return_context() {
     assert_eq!(snapshot.workspace_mode, WorkspaceMode::FileView);
     assert!(snapshot.can_return_to_compare_view);
     assert_eq!(snapshot.compare_focus_path_raw_text(), "src");
+}
+
+#[test]
+fn closing_active_compare_file_session_auto_locates_on_return() {
+    let mut state = state_from_entries(vec![
+        text_diff_entry("src/main.rs", EntryStatus::Different),
+        text_diff_entry("src/lib.rs", EntryStatus::Different),
+    ]);
+    state.ensure_compare_tree_session();
+    assert!(state.set_compare_focus_path(CompareFocusPath::relative("src")));
+    assert!(state.set_compare_row_focus_path(Some("src/main.rs")));
+
+    let presenter = presenter_from_state(state);
+    presenter.handle_command(UiCommand::OpenFileViewFromCompare("src/lib.rs".to_string()));
+    presenter.handle_command(UiCommand::CloseWorkspaceSession(
+        "file:src/lib.rs".to_string(),
+    ));
+
+    let snapshot = presenter.state_snapshot();
+    assert_eq!(snapshot.workspace_mode, WorkspaceMode::CompareView);
+    assert_eq!(snapshot.active_session_id.as_deref(), Some("compare-tree"));
+    assert_eq!(
+        snapshot.compare_row_focus_path.as_deref(),
+        Some("src/lib.rs")
+    );
 }
 
 #[test]

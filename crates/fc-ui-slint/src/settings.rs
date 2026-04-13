@@ -9,7 +9,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 const SETTINGS_FILE_NAME: &str = "settings.toml";
 const LEGACY_PROVIDER_SETTINGS_FILE_NAME: &str = "provider_settings.toml";
-const SETTINGS_VERSION: u32 = 3;
+const SETTINGS_VERSION: u32 = 4;
 
 #[cfg(test)]
 static TEST_SETTINGS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -50,6 +50,10 @@ pub struct BehaviorSettings {
     pub show_hidden_files: bool,
     /// Default non-search Results / Navigator mode.
     pub default_results_view: DefaultResultsView,
+    /// Whether Compare Tree auto-locates the current compare file when returning from File View.
+    pub auto_locate_current_file_on_compare_return: bool,
+    /// Whether compare horizontal scrolling starts locked by default.
+    pub lock_compare_horizontal_scrolling_by_default: bool,
 }
 
 /// Persisted default Results / Navigator mode.
@@ -71,6 +75,8 @@ impl Default for BehaviorSettings {
         Self {
             show_hidden_files: true,
             default_results_view: DefaultResultsView::Tree,
+            auto_locate_current_file_on_compare_return: true,
+            lock_compare_horizontal_scrolling_by_default: true,
         }
     }
 }
@@ -132,6 +138,10 @@ struct BehaviorSettingsToml {
     show_hidden_files: bool,
     #[serde(default)]
     default_results_view: DefaultResultsView,
+    #[serde(default = "default_true")]
+    auto_locate_current_file_on_compare_return: bool,
+    #[serde(default = "default_true")]
+    lock_compare_horizontal_scrolling_by_default: bool,
 }
 
 impl Default for BehaviorSettingsToml {
@@ -145,6 +155,10 @@ impl From<&BehaviorSettings> for BehaviorSettingsToml {
         Self {
             show_hidden_files: value.show_hidden_files,
             default_results_view: value.default_results_view,
+            auto_locate_current_file_on_compare_return: value
+                .auto_locate_current_file_on_compare_return,
+            lock_compare_horizontal_scrolling_by_default: value
+                .lock_compare_horizontal_scrolling_by_default,
         }
     }
 }
@@ -154,8 +168,16 @@ impl From<BehaviorSettingsToml> for BehaviorSettings {
         Self {
             show_hidden_files: value.show_hidden_files,
             default_results_view: value.default_results_view,
+            auto_locate_current_file_on_compare_return: value
+                .auto_locate_current_file_on_compare_return,
+            lock_compare_horizontal_scrolling_by_default: value
+                .lock_compare_horizontal_scrolling_by_default,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -360,6 +382,8 @@ mod tests {
             behavior: BehaviorSettings {
                 show_hidden_files: false,
                 default_results_view: DefaultResultsView::Flat,
+                auto_locate_current_file_on_compare_return: false,
+                lock_compare_horizontal_scrolling_by_default: false,
             },
         };
         let path = save_app_preferences(&settings).expect("save should succeed");
@@ -413,6 +437,8 @@ mod tests {
             behavior: BehaviorSettings {
                 show_hidden_files: false,
                 default_results_view: DefaultResultsView::Flat,
+                auto_locate_current_file_on_compare_return: false,
+                lock_compare_horizontal_scrolling_by_default: false,
             },
         };
         save_app_preferences(&settings).expect("settings should be saved");
@@ -465,5 +491,7 @@ show_hidden_files = false
             loaded.behavior.default_results_view,
             DefaultResultsView::Tree
         );
+        assert!(loaded.behavior.auto_locate_current_file_on_compare_return);
+        assert!(loaded.behavior.lock_compare_horizontal_scrolling_by_default);
     }
 }

@@ -67,6 +67,8 @@ pub enum UiCommand {
     ToggleCompareViewScrollLock,
     /// Opens one file/special-entry row in File View while preserving Compare View return context.
     OpenFileViewFromCompare(String),
+    /// Switches back to Compare Tree and force-reveals the current compare file row when possible.
+    RevealCurrentFileInCompareTree,
     /// Switches current file shell back to Diff.
     SetFileViewModeDiff,
     /// Switches current file shell to Analysis.
@@ -92,6 +94,8 @@ pub enum UiCommand {
         timeout_secs_text: String,
         show_hidden_files: bool,
         default_results_view: NavigatorViewMode,
+        auto_locate_current_file_on_compare_return: bool,
+        lock_compare_horizontal_scrolling_by_default: bool,
     },
     /// Clears settings validation/persistence error.
     ClearSettingsError,

@@ -251,12 +251,12 @@ pub struct CompareTreeSession {
     pub compare_row_focus_path: Option<String>,
     /// Expansion overrides for compare-tree directory nodes.
     pub expansion_overrides: BTreeMap<String, bool>,
-    /// Whether Compare Tree horizontal scrolling is locked between left/right panes.
+    /// Whether Compare Tree / Compare File View horizontal scrolling is locked between sides.
     pub horizontal_scroll_locked: bool,
 }
 
 impl CompareTreeSession {
-    pub fn new(left_root: &str, right_root: &str) -> Self {
+    pub fn new(left_root: &str, right_root: &str, horizontal_scroll_locked: bool) -> Self {
         Self {
             session_id: COMPARE_TREE_SESSION_ID.to_string(),
             left_root: left_root.to_string(),
@@ -264,7 +264,7 @@ impl CompareTreeSession {
             compare_focus_path: CompareFocusPath::root(),
             compare_row_focus_path: None,
             expansion_overrides: BTreeMap::new(),
-            horizontal_scroll_locked: true,
+            horizontal_scroll_locked,
         }
     }
 }
@@ -280,6 +280,8 @@ pub struct FileSession {
     pub relative_path: String,
     /// Short display title used in the tab strip.
     pub display_title: String,
+    /// Whether this compare-originated file tab starts/keeps horizontal sync lock.
+    pub horizontal_scroll_locked: bool,
     /// Inner `Diff / Analysis` mode for this file session.
     pub mode: FileSessionMode,
     /// Active results membership source index when still valid.
@@ -309,7 +311,11 @@ pub struct FileSession {
 }
 
 impl FileSession {
-    pub fn new(relative_path: &str, source_compare_session_id: &str) -> Self {
+    pub fn new(
+        relative_path: &str,
+        source_compare_session_id: &str,
+        horizontal_scroll_locked: bool,
+    ) -> Self {
         let (_, leaf_name) = split_relative_path_leaf(relative_path.trim());
         Self {
             session_id: file_session_id(relative_path),
@@ -320,6 +326,7 @@ impl FileSession {
             } else {
                 leaf_name
             },
+            horizontal_scroll_locked,
             mode: FileSessionMode::Diff,
             source_index: None,
             diff_loading: false,
@@ -432,8 +439,12 @@ pub struct AppState {
     pub compare_focus_path: CompareFocusPath,
     /// Focused visible compare-tree row inside Compare View, independent from file selection.
     pub compare_row_focus_path: Option<String>,
-    /// Whether Compare Tree horizontal scrolling is locked between left/right panes.
+    /// Current active compare-session tab horizontal lock projected to the UI.
     pub compare_view_horizontal_scroll_locked: bool,
+    /// Whether current compare file should auto-locate when returning to Compare Tree.
+    pub auto_locate_current_file_on_compare_return: bool,
+    /// Whether compare horizontal scrolling starts locked for new/reset compare sessions.
+    pub lock_compare_horizontal_scrolling_by_default: bool,
     /// Current Compare Tree quick-locate query text.
     pub compare_view_quick_locate_query: String,
     /// Revision for Compare View visible-tree projection refreshes.
@@ -529,6 +540,8 @@ impl Default for AppState {
             compare_focus_path: CompareFocusPath::root(),
             compare_row_focus_path: None,
             compare_view_horizontal_scroll_locked: true,
+            auto_locate_current_file_on_compare_return: true,
+            lock_compare_horizontal_scrolling_by_default: true,
             compare_view_quick_locate_query: String::new(),
             compare_view_projection_revision: 0,
             compare_view_scroll_request_revision: 0,
@@ -649,13 +662,17 @@ impl AppState {
     }
 
     fn sync_compare_tree_session_from_top_level(&mut self) {
+        let sync_horizontal_lock =
+            self.active_workspace_session_kind() == Some(WorkspaceSessionKind::CompareTree);
         if let Some(session) = self.compare_tree_session.as_mut() {
             session.left_root = self.left_root.clone();
             session.right_root = self.right_root.clone();
             session.compare_focus_path = self.compare_focus_path.clone();
             session.compare_row_focus_path = self.compare_row_focus_path.clone();
             session.expansion_overrides = self.compare_view_expansion_overrides.clone();
-            session.horizontal_scroll_locked = self.compare_view_horizontal_scroll_locked;
+            if sync_horizontal_lock {
+                session.horizontal_scroll_locked = self.compare_view_horizontal_scroll_locked;
+            }
         }
     }
 
@@ -672,6 +689,7 @@ impl AppState {
     pub fn sync_active_file_session_from_top_level(&mut self) {
         let selected_relative_path = self.selected_relative_path.clone();
         let selected_row = self.selected_row;
+        let horizontal_scroll_locked = self.compare_view_horizontal_scroll_locked;
         let file_view_mode = self.file_view_mode;
         let diff_loading = self.diff_loading;
         let diff_error_message = self.diff_error_message.clone();
@@ -699,6 +717,7 @@ impl AppState {
                 session.relative_path = relative_path.to_string();
             }
             session.display_title = computed_title.unwrap_or_else(|| session.display_title.clone());
+            session.horizontal_scroll_locked = horizontal_scroll_locked;
             session.source_index = selected_row;
             session.mode = file_view_mode;
             session.diff_loading = diff_loading;
@@ -722,6 +741,7 @@ impl AppState {
         };
         self.selected_row = session.source_index;
         self.selected_relative_path = Some(session.relative_path.clone());
+        self.compare_view_horizontal_scroll_locked = session.horizontal_scroll_locked;
         self.file_view_mode = session.mode;
         self.diff_loading = session.diff_loading;
         self.diff_error_message = session.diff_error_message;
@@ -744,6 +764,13 @@ impl AppState {
 
     pub fn active_file_session_uses_compare_file_view(&self) -> bool {
         self.compare_tree_session.is_some() && self.active_file_session_index().is_some()
+    }
+
+    fn active_compare_file_relative_path(&self) -> Option<String> {
+        self.active_file_session_index()
+            .and_then(|index| self.file_sessions.get(index))
+            .map(|session| session.relative_path.clone())
+            .or_else(|| self.selected_relative_path.clone())
     }
 
     pub fn active_workspace_session_index(&self) -> i32 {
@@ -825,10 +852,39 @@ impl AppState {
             self.compare_tree_session = Some(CompareTreeSession::new(
                 self.left_root.as_str(),
                 self.right_root.as_str(),
+                self.lock_compare_horizontal_scrolling_by_default,
             ));
+            self.compare_view_horizontal_scroll_locked =
+                self.lock_compare_horizontal_scrolling_by_default;
         }
         self.sync_compare_tree_session_from_top_level();
         self.refresh_workspace_sessions();
+    }
+
+    fn activate_compare_tree_session(&mut self) {
+        self.active_session_id = Some(COMPARE_TREE_SESSION_ID.to_string());
+        self.restore_compare_tree_session_to_top_level();
+        self.refresh_workspace_sessions();
+    }
+
+    pub fn return_to_compare_tree(&mut self, force_locate_current_file: bool) -> bool {
+        if self.compare_tree_session.is_none() || !self.active_file_session_uses_compare_file_view()
+        {
+            return false;
+        }
+
+        let return_path = self.active_compare_file_relative_path();
+        self.sync_active_file_session_from_top_level();
+        self.activate_compare_tree_session();
+
+        if !(force_locate_current_file || self.auto_locate_current_file_on_compare_return) {
+            return true;
+        }
+
+        if let Some(path) = return_path.as_deref() {
+            self.locate_compare_tree_relative_path(path);
+        }
+        true
     }
 
     pub fn activate_workspace_session(&mut self, session_id: &str) -> bool {
@@ -844,24 +900,18 @@ impl AppState {
         }
 
         self.sync_active_file_session_from_top_level();
-        self.active_session_id = Some(normalized.to_string());
-        match self.active_workspace_session_kind() {
-            Some(WorkspaceSessionKind::CompareTree) => {
-                self.restore_compare_tree_session_to_top_level();
-                self.workspace_mode = WorkspaceMode::CompareView;
-                self.can_return_to_compare_view = false;
-            }
-            Some(WorkspaceSessionKind::File) => {
-                if let Some(index) = self.active_file_session_index() {
-                    self.restore_file_session_to_top_level(index);
-                }
-            }
-            None => {
+        if normalized == COMPARE_TREE_SESSION_ID {
+            self.activate_compare_tree_session();
+        } else {
+            self.active_session_id = Some(normalized.to_string());
+            if let Some(index) = self.active_file_session_index() {
+                self.restore_file_session_to_top_level(index);
+            } else {
                 self.workspace_mode = WorkspaceMode::FileView;
                 self.can_return_to_compare_view = false;
             }
+            self.refresh_workspace_sessions();
         }
-        self.refresh_workspace_sessions();
         true
     }
 
@@ -900,7 +950,11 @@ impl AppState {
             });
         }
 
-        let mut session = FileSession::new(normalized, compare_session_id.as_str());
+        let mut session = FileSession::new(
+            normalized,
+            compare_session_id.as_str(),
+            self.lock_compare_horizontal_scrolling_by_default,
+        );
         session.source_index = self
             .row_index_for_relative_path(normalized)
             .filter(|index| self.is_row_member_in_active_results(*index));
@@ -934,6 +988,13 @@ impl AppState {
 
         self.sync_active_file_session_from_top_level();
         let was_active = self.active_session_id.as_deref() == Some(normalized);
+        let return_locate_path = if was_active && self.auto_locate_current_file_on_compare_return {
+            self.file_sessions
+                .get(index)
+                .map(|session| session.relative_path.clone())
+        } else {
+            None
+        };
         self.file_sessions.remove(index);
         if was_active {
             self.active_session_id =
@@ -947,13 +1008,16 @@ impl AppState {
             if let Some(next_index) = self.active_file_session_index() {
                 self.restore_file_session_to_top_level(next_index);
             } else {
-                self.workspace_mode = if self.compare_tree_session.is_some() {
-                    WorkspaceMode::CompareView
+                if self.compare_tree_session.is_some() {
+                    self.activate_compare_tree_session();
+                    if let Some(path) = return_locate_path.as_deref() {
+                        self.locate_compare_tree_relative_path(path);
+                    }
                 } else {
-                    WorkspaceMode::FileView
-                };
-                self.can_return_to_compare_view = false;
-                self.file_view_mode = FileSessionMode::Diff;
+                    self.workspace_mode = WorkspaceMode::FileView;
+                    self.can_return_to_compare_view = false;
+                    self.file_view_mode = FileSessionMode::Diff;
+                }
             }
         }
         self.refresh_workspace_sessions();
@@ -980,7 +1044,8 @@ impl AppState {
         self.compare_focus_path = CompareFocusPath::root();
         self.compare_row_focus_path = None;
         self.compare_view_expansion_overrides.clear();
-        self.compare_view_horizontal_scroll_locked = true;
+        self.compare_view_horizontal_scroll_locked =
+            self.lock_compare_horizontal_scrolling_by_default;
         self.compare_view_quick_locate_query.clear();
     }
 
@@ -1055,6 +1120,7 @@ impl AppState {
             self.compare_tree_session = Some(CompareTreeSession::new(
                 self.left_root.as_str(),
                 self.right_root.as_str(),
+                self.lock_compare_horizontal_scrolling_by_default,
             ));
         }
         self.pending_workspace_session_confirmation = None;
@@ -1063,6 +1129,8 @@ impl AppState {
         self.workspace_mode = WorkspaceMode::CompareView;
         self.can_return_to_compare_view = false;
         self.compare_view_expansion_overrides.clear();
+        self.compare_view_horizontal_scroll_locked =
+            self.lock_compare_horizontal_scrolling_by_default;
 
         self.set_compare_focus_path(CompareFocusPath::relative(normalized));
         if let Some(preferred) = preferred_row_focus {
@@ -1074,6 +1142,7 @@ impl AppState {
             self.set_compare_row_focus_path(Some(path.as_str()));
             self.request_compare_view_scroll_to_path(path.as_str());
         }
+        self.sync_compare_tree_session_from_top_level();
         self.refresh_workspace_sessions();
         true
     }
@@ -2047,9 +2116,19 @@ impl AppState {
             .collect()
     }
 
-    /// Returns whether Compare Tree horizontal scrolling is currently locked.
+    /// Returns the horizontal scroll lock state for the active compare-session tab.
     pub fn compare_view_horizontal_scroll_locked(&self) -> bool {
         self.compare_view_horizontal_scroll_locked
+    }
+
+    /// Returns whether compare file return-to-tree should auto-locate the current file.
+    pub fn auto_locate_current_file_on_compare_return(&self) -> bool {
+        self.auto_locate_current_file_on_compare_return
+    }
+
+    /// Returns whether compare horizontal scrolling starts locked by default.
+    pub fn lock_compare_horizontal_scrolling_by_default(&self) -> bool {
+        self.lock_compare_horizontal_scrolling_by_default
     }
 
     /// Returns the current Compare Tree quick-locate query text.
@@ -2057,19 +2136,66 @@ impl AppState {
         self.compare_view_quick_locate_query.clone()
     }
 
-    /// Updates Compare Tree horizontal scroll lock state.
+    /// Updates compare horizontal scroll lock state for the active compare-session tab.
     pub fn set_compare_view_horizontal_scroll_locked(&mut self, locked: bool) -> bool {
         if self.compare_view_horizontal_scroll_locked == locked {
             return false;
         }
         self.compare_view_horizontal_scroll_locked = locked;
-        self.sync_compare_tree_session_from_top_level();
+        match self.active_workspace_session_kind() {
+            Some(WorkspaceSessionKind::CompareTree) => {
+                if let Some(session) = self.compare_tree_session.as_mut() {
+                    session.horizontal_scroll_locked = locked;
+                }
+            }
+            Some(WorkspaceSessionKind::File) => {
+                if let Some(session) = self.active_file_session_mut() {
+                    session.horizontal_scroll_locked = locked;
+                }
+            }
+            None => {}
+        }
         true
     }
 
-    /// Toggles Compare Tree horizontal scroll lock state.
+    /// Toggles compare horizontal scroll lock state for the active compare-session tab.
     pub fn toggle_compare_view_horizontal_scroll_locked(&mut self) -> bool {
         self.set_compare_view_horizontal_scroll_locked(!self.compare_view_horizontal_scroll_locked)
+    }
+
+    /// Updates the auto-locate-on-return behavior.
+    pub fn set_auto_locate_current_file_on_compare_return(&mut self, enabled: bool) -> bool {
+        if self.auto_locate_current_file_on_compare_return == enabled {
+            return false;
+        }
+        self.auto_locate_current_file_on_compare_return = enabled;
+        true
+    }
+
+    /// Updates the compare horizontal-scroll default used by new/reset compare sessions.
+    pub fn set_lock_compare_horizontal_scrolling_by_default(&mut self, locked: bool) -> bool {
+        if self.lock_compare_horizontal_scrolling_by_default == locked {
+            return false;
+        }
+        self.lock_compare_horizontal_scrolling_by_default = locked;
+        true
+    }
+
+    /// Returns whether one exact relative path can be located in the current Compare Tree anchor.
+    pub fn can_locate_relative_path_in_compare_view(&self, relative_path: &str) -> bool {
+        let normalized = relative_path.trim();
+        if normalized.is_empty() || self.compare_tree_session.is_none() {
+            return false;
+        }
+
+        let foundation = self.compare_foundation_for_projections();
+        compare_tree_search_paths(
+            foundation.as_ref(),
+            &self.compare_focus_path,
+            self.show_hidden_files,
+        )
+        .into_iter()
+        .any(|path| path == normalized)
     }
 
     /// Updates Compare Tree quick-locate query text.
@@ -2284,7 +2410,7 @@ impl AppState {
                 "Adjust filters or reopen the file from Compare Tree.".to_string()
             }
             CompareFileShellState::Loading => {
-                "Using one shared vertical projection with independent base/target horizontal scroll."
+                "Using one shared vertical projection with lockable base/target horizontal scroll."
                     .to_string()
             }
             CompareFileShellState::Ready => {
@@ -2551,6 +2677,20 @@ impl AppState {
         changed
     }
 
+    /// Reveals, focuses, and scrolls one exact file row inside the current Compare Tree anchor.
+    pub fn locate_compare_tree_relative_path(&mut self, relative_path: &str) -> bool {
+        let normalized = relative_path.trim();
+        if !self.can_locate_relative_path_in_compare_view(normalized) {
+            return false;
+        }
+
+        let mut changed = false;
+        changed |= self.reveal_compare_view_path(normalized);
+        changed |= self.set_compare_row_focus_path(Some(normalized));
+        changed |= self.request_compare_view_scroll_to_path(normalized);
+        changed
+    }
+
     /// Focuses one Compare View row when it is visible in the current compare tree.
     pub fn set_compare_row_focus_path(&mut self, relative_path: Option<&str>) -> bool {
         let next = self.resolve_compare_row_focus_path(relative_path);
@@ -2654,11 +2794,7 @@ impl AppState {
             return false;
         };
 
-        let mut changed = false;
-        changed |= self.reveal_compare_view_path(target_path.as_str());
-        changed |= self.set_compare_row_focus_path(Some(target_path.as_str()));
-        changed |= self.request_compare_view_scroll_to_path(target_path.as_str());
-        changed
+        self.locate_compare_tree_relative_path(target_path.as_str())
     }
 
     /// Jumps to the previous quick-locate match inside the current Compare Tree anchor.
@@ -2714,11 +2850,7 @@ impl AppState {
             return false;
         };
 
-        let mut changed = false;
-        changed |= self.reveal_compare_view_path(target_path.as_str());
-        changed |= self.set_compare_row_focus_path(Some(target_path.as_str()));
-        changed |= self.request_compare_view_scroll_to_path(target_path.as_str());
-        changed
+        self.locate_compare_tree_relative_path(target_path.as_str())
     }
 
     /// Removes compare-tree expansion overrides that no longer map to expandable directories.
