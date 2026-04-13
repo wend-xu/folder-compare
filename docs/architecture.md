@@ -761,14 +761,14 @@
 
 ## Next-Stage Activation
 
-- Default baseline is now landed `Phase 19I` on top of inherited `Phase 19H / 19G`.
+- Default baseline is now landed `Phase 19J` on top of inherited `Phase 19I / 19H / 19G`.
 - `Phase 19A` through `19C fix-1` remain inherited inside that `19G` baseline:
   - Rust-owned `workspace_mode`
   - independent `compare_focus_path`
   - independent `compare_row_focus_path`
   - structured `compare_foundation`
   - top-level manual sidebar hide / restore through a glyph-only shell affordance
-- Current inherited `19D` session-shell contract inside `19I` is:
+- Current inherited `19D` session-shell contract inside `19J` is:
   - explicit compare-session entry from directory actions in `Results / Navigator`
   - one unique fixed-left `Compare Tree` session tab per compare session
   - compare-originated file tabs that keep dedicated `Compare File View` content rather than reusing the standard inner `Diff / Analysis` shell
@@ -777,13 +777,15 @@
   - Compare Tree / File session navigation through the outer tab strip rather than header back buttons
   - Compare Tree close meaning "end current compare session", with confirmation when related file tabs exist
   - compare-visible rows following `Hidden files`
-- Current inherited `19I` coordination contract is:
+- Current inherited `19J` coordination contract is:
   - returning from compare-originated file tabs to Compare Tree can auto-locate the current file without reanchoring the compare session
   - Compare File View now exposes explicit `Reveal in Compare Tree`
   - Compare File View horizontal scrolling now matches Compare Tree lock/unlock semantics, but each compare tab owns its own lock state
+  - Compare File View now also owns one file-local locate flow scoped to the active compare-originated file tab
+  - Compare File View now also exposes `Reset Scroll` and `Recenter` as per-tab viewport tools without widening Settings or compare-session boundaries
   - `Settings -> Behavior` now also persists return-locate and compare-scroll-lock defaults
 - Do not reopen `19B fix-*` or treat `19C fix-1` / `19D` as draft unless a concrete regression requires it.
-- Only move default planning to `19J` or later when a later thread explicitly scopes that stage.
+- Only move default planning to `19K` or later when a later thread explicitly scopes that stage.
 - Only return to `18C fix-*` as the main thread when a concrete regression is identified in the shipped `Phase 18` baseline.
 
 ## Phase 19H Compare Tree Entry + Current Level + Quick Locate (Landed)
@@ -846,6 +848,32 @@
   - automatic dual focus coupling between Compare Tree and Compare File View
   - cross-surface sync scroll beyond the current per-tab lock/unlock semantics
   - merge/apply flows, multi-compare-session work, or `fc-core` widening
+
+## Phase 19J Compare File Locate + Viewport Tools + Header Closeout (Landed)
+
+- `Phase 19J` is now landed on top of inherited `19I`.
+- Landed scope:
+  - Compare File View now exposes one file-local locate flow scoped to the active compare-originated file tab:
+    - scope is the currently rendered compare-file content only
+    - matching is plain-text and row-oriented across the rendered base/target text
+    - `Prev / Next / Clear` stay local to the current file tab and do not reuse Compare Tree quick-locate state
+    - when the query is non-empty but the current compare file has no match, `Prev` / `Next` emit one restrained toast instead of mutating compare-session state
+  - Compare File View now exposes per-tab viewport tools aligned with the compare-file contract:
+    - `Reset Scroll` returns the current compare file tab to the default top/origin viewport
+    - `Reset Scroll` does not change lock state, Settings, or the local locate query
+    - `Recenter` vertically recenters the current locate hit or current compare row
+    - `Recenter` does not force independent horizontal offsets back together in unlocked mode
+  - Compare File View header/workbench language is now closed around the compare-file surface itself:
+    - the right side keeps a fixed-width locate cluster
+    - long file names truncate in the title lane and expose the full file name through tooltip
+    - compare-context actions (`Back`, `Reveal in Compare Tree`, compare badge, compare path) remain intact
+    - standard `Sidebar -> File View` stays unchanged and does not inherit compare-file-local locate or viewport tools
+- Explicitly not part of landed `19J`:
+  - compare search beyond the current file tab
+  - filtering/search-results panels or match lists
+  - regex / case-mode expansion
+  - automatic tree/file dual-focus coupling
+  - cross-surface sync scroll, merge/apply flows, multi-compare-session work, or `fc-core` widening
 
 ## Related Documents
 
