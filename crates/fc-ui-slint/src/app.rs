@@ -4891,13 +4891,17 @@ slint::slint! {
                                                 vertical-stretch: 1;
                                                 background: #ffffff;
                                                 clip: true;
-                                                visible: root.compare_file_has_rows;
+
+                                                // Keep the compare file view and the empty shell in
+                                                // one stretched layout slot. Hidden siblings in a
+                                                // VerticalLayout still consume layout space.
 
                                                 compare_file_workbench_view := CompareFileView {
                                                     x: 0px;
                                                     y: 0px;
                                                     width: parent.width;
                                                     height: parent.height;
+                                                    visible: root.compare_file_has_rows;
                                                     row_kinds: root.compare_file_row_kinds;
                                                     row_relation_labels: root.compare_file_row_relation_labels;
                                                     row_relation_tones: root.compare_file_row_relation_tones;
@@ -4920,17 +4924,20 @@ slint::slint! {
                                                         root.copy_requested(copy_value, feedback_label);
                                                     }
                                                 }
-                                            }
 
-                                            compare_file_empty_shell := DiffStateShell {
-                                                vertical-stretch: 1;
-                                                embedded: true;
-                                                visible: !root.compare_file_has_rows;
-                                                state_label: root.compare_file_shell_state_label;
-                                                tone: root.compare_file_shell_state_tone;
-                                                title: root.compare_file_shell_title_text;
-                                                body: root.compare_file_shell_body_text;
-                                                note: root.compare_file_shell_note_text;
+                                                compare_file_empty_shell := DiffStateShell {
+                                                    x: 0px;
+                                                    y: 0px;
+                                                    width: parent.width;
+                                                    height: parent.height;
+                                                    visible: !root.compare_file_has_rows;
+                                                    embedded: true;
+                                                    state_label: root.compare_file_shell_state_label;
+                                                    tone: root.compare_file_shell_state_tone;
+                                                    title: root.compare_file_shell_title_text;
+                                                    body: root.compare_file_shell_body_text;
+                                                    note: root.compare_file_shell_note_text;
+                                                }
                                             }
                                         }
                                     }
