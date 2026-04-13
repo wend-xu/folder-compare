@@ -1,4 +1,5 @@
 import { ListView, ScrollView } from "std-widgets.slint";
+import { UiPalette } from "ui_palette.slint";
 
 component CompareFilePaddingCell inherits Rectangle {
     background: #f6f8fb;
@@ -9,13 +10,19 @@ component CompareFileLineNumberCell inherits Rectangle {
     in property <string> label;
     in property <string> copy_value;
     in property <string> feedback_label;
+    in property <bool> locate_active: false;
     callback copy_requested(string, string);
 
     property <bool> enabled: root.label != "";
     property <bool> hovered: touch_area.has-hover && root.enabled;
+    property <bool> highlighted: root.locate_active && root.enabled;
 
+    border-width: root.highlighted ? 1px : 0px;
+    border-color: UiPalette.results_row_selected_border;
     border-radius: 4px;
-    background: root.hovered ? #eaf1f9 : transparent;
+    background: root.highlighted
+        ? UiPalette.results_row_selected_background
+        : (root.hovered ? #eaf1f9 : transparent);
     clip: true;
 
     Text {
@@ -25,7 +32,9 @@ component CompareFileLineNumberCell inherits Rectangle {
         text: root.label;
         color: root.label == ""
             ? #a2aebb
-            : (root.hovered ? #2f5a83 : #7f8fa0);
+            : (root.highlighted
+                ? UiPalette.results_row_selected_path_text
+                : (root.hovered ? #2f5a83 : #7f8fa0));
         font-size: 11px;
         horizontal-alignment: right;
         vertical-alignment: center;
@@ -50,6 +59,9 @@ component CompareFileTextCell inherits Rectangle {
     in property <string> prefix_text;
     in property <string> emphasis_text;
     in property <string> suffix_text;
+    in property <string> locate_prefix_text;
+    in property <string> locate_match_text;
+    in property <bool> locate_active: false;
     in property <bool> padded: false;
     in property <length> horizontal_offset: 0px;
     in property <length> content_width: 0px;
@@ -71,6 +83,12 @@ component CompareFileTextCell inherits Rectangle {
         : (root.side == "right"
             ? rgba(89, 173, 112, 0.18)
             : rgba(104, 134, 167, 0.14));
+    property <brush> locate_background: root.locate_active
+        ? UiPalette.results_row_selected_background
+        : rgba(219, 233, 251, 0.82);
+    property <brush> locate_border: root.locate_active
+        ? UiPalette.results_row_selected_border
+        : rgba(96, 132, 175, 0.7);
 
     clip: true;
     background: root.background_brush;
@@ -101,6 +119,21 @@ component CompareFileTextCell inherits Rectangle {
                 height: max(0px, parent.height - 10px);
                 border-radius: 3px;
                 background: root.emphasis_background;
+            }
+
+            Rectangle {
+                visible: root.locate_match_text != "";
+                x: locate_prefix_probe.preferred-width;
+                y: 4px;
+                width: max(
+                    0px,
+                    locate_prefix_match_probe.preferred-width - locate_prefix_probe.preferred-width,
+                );
+                height: max(0px, parent.height - 8px);
+                border-width: 1px;
+                border-radius: 4px;
+                border-color: root.locate_border;
+                background: root.locate_background;
             }
 
             line_input := TextInput {
@@ -136,6 +169,22 @@ component CompareFileTextCell inherits Rectangle {
                 font-size: 13px;
                 font-weight: 500;
             }
+
+            locate_prefix_probe := Text {
+                visible: false;
+                text: root.locate_prefix_text;
+                color: transparent;
+                font-size: 13px;
+                font-weight: 500;
+            }
+
+            locate_prefix_match_probe := Text {
+                visible: false;
+                text: root.locate_prefix_text + root.locate_match_text;
+                color: transparent;
+                font-size: 13px;
+                font-weight: 500;
+            }
         }
     }
 }
@@ -149,9 +198,13 @@ component CompareFileRow inherits Rectangle {
     in property <string> left_prefix_text;
     in property <string> left_emphasis_text;
     in property <string> left_suffix_text;
+    in property <string> left_locate_prefix_text;
+    in property <string> left_locate_match_text;
     in property <string> right_prefix_text;
     in property <string> right_emphasis_text;
     in property <string> right_suffix_text;
+    in property <string> right_locate_prefix_text;
+    in property <string> right_locate_match_text;
     in property <bool> left_padding: false;
     in property <bool> right_padding: false;
     in property <length> gutter_width: 48px;
@@ -160,6 +213,7 @@ component CompareFileRow inherits Rectangle {
     in property <length> right_horizontal_offset: 0px;
     in property <length> left_content_width: 0px;
     in property <length> right_content_width: 0px;
+    in property <bool> locate_active: false;
     callback copy_requested(string, string);
 
     property <string> left_copy_value: root.left_prefix_text + root.left_emphasis_text + root.left_suffix_text;
@@ -192,6 +246,17 @@ component CompareFileRow inherits Rectangle {
     background: transparent;
     clip: true;
 
+    if root.locate_active : Rectangle {
+        x: 0px;
+        y: 1px;
+        width: parent.width;
+        height: max(0px, parent.height - 2px);
+        border-width: 1px;
+        border-radius: 5px;
+        border-color: #8eaac6;
+        background: transparent;
+    }
+
     HorizontalLayout {
         padding: 0px;
         spacing: 0px;
@@ -214,6 +279,7 @@ component CompareFileRow inherits Rectangle {
                 label: root.left_line_no;
                 copy_value: root.left_copy_value;
                 feedback_label: root.left_feedback_label;
+                locate_active: root.locate_active;
                 copy_requested(copy_value, feedback_label) => {
                     root.copy_requested(copy_value, feedback_label);
                 }
@@ -227,6 +293,9 @@ component CompareFileRow inherits Rectangle {
             prefix_text: root.left_prefix_text;
             emphasis_text: root.left_emphasis_text;
             suffix_text: root.left_suffix_text;
+            locate_prefix_text: root.left_locate_prefix_text;
+            locate_match_text: root.left_locate_match_text;
+            locate_active: root.locate_active;
             padded: root.left_padding;
             horizontal_offset: root.left_horizontal_offset;
             content_width: root.left_content_width;
@@ -284,6 +353,7 @@ component CompareFileRow inherits Rectangle {
                 label: root.right_line_no;
                 copy_value: root.right_copy_value;
                 feedback_label: root.right_feedback_label;
+                locate_active: root.locate_active;
                 copy_requested(copy_value, feedback_label) => {
                     root.copy_requested(copy_value, feedback_label);
                 }
@@ -297,6 +367,9 @@ component CompareFileRow inherits Rectangle {
             prefix_text: root.right_prefix_text;
             emphasis_text: root.right_emphasis_text;
             suffix_text: root.right_suffix_text;
+            locate_prefix_text: root.right_locate_prefix_text;
+            locate_match_text: root.right_locate_match_text;
+            locate_active: root.locate_active;
             padded: root.right_padding;
             horizontal_offset: root.right_horizontal_offset;
             content_width: root.right_content_width;
@@ -313,18 +386,50 @@ export component CompareFileView inherits Rectangle {
     in property <[string]> row_left_prefixes;
     in property <[string]> row_left_emphasis;
     in property <[string]> row_left_suffixes;
+    in property <[string]> row_left_locate_prefixes;
+    in property <[string]> row_left_locate_matches;
     in property <[string]> row_right_prefixes;
     in property <[string]> row_right_emphasis;
     in property <[string]> row_right_suffixes;
+    in property <[string]> row_right_locate_prefixes;
+    in property <[string]> row_right_locate_matches;
     in property <[bool]> row_left_padding;
     in property <[bool]> row_right_padding;
     in property <int> left_content_width_px: 0;
     in property <int> right_content_width_px: 0;
+    in property <int> focused_row: -1;
+    in property <int> locate_row: -1;
     in property <bool> horizontal_scroll_locked: true;
     callback copy_requested(string, string);
 
     public function ensure_row_visible(target_row: int) {
         compare_file_list.ensure_row_visible(target_row);
+    }
+
+    public function reset_horizontal_scroll() {
+        root.syncing_locked_scroll = true;
+        left_horizontal_scroll.viewport-x = 0px;
+        right_horizontal_scroll.viewport-x = 0px;
+        root.syncing_locked_scroll = false;
+    }
+
+    public function reset_scroll() {
+        compare_file_list.viewport-y = 0px;
+        root.reset_horizontal_scroll();
+    }
+
+    public function recenter_row(target_row: int) {
+        compare_file_list.recenter_row(target_row);
+    }
+
+    public function recenter_active_row() {
+        let target = root.locate_row >= 0
+            ? root.locate_row
+            : root.focused_row;
+        if target < 0 {
+            return;
+        }
+        compare_file_list.recenter_row(target);
     }
 
     property <length> gutter_width: 48px;
@@ -423,6 +528,17 @@ export component CompareFileView inherits Rectangle {
             }
         }
 
+        function recenter_row(target_row: int) {
+            if target_row < 0 || target_row >= root.row_kinds.length {
+                return;
+            }
+
+            let max_scroll = max(0px, self.viewport-height - self.visible-height);
+            let center_offset = max(0px, (self.visible-height - self.row_height) / 2);
+            let desired_scroll = max(0px, target_row * self.row_height - center_offset);
+            self.viewport-y = 0px - min(max_scroll, desired_scroll);
+        }
+
         for row_kind[index] in root.row_kinds : row_item := CompareFileRow {
             width: compare_file_list.visible-width;
             row_kind: row_kind;
@@ -433,9 +549,13 @@ export component CompareFileView inherits Rectangle {
             left_prefix_text: root.row_left_prefixes[index];
             left_emphasis_text: root.row_left_emphasis[index];
             left_suffix_text: root.row_left_suffixes[index];
+            left_locate_prefix_text: root.row_left_locate_prefixes[index];
+            left_locate_match_text: root.row_left_locate_matches[index];
             right_prefix_text: root.row_right_prefixes[index];
             right_emphasis_text: root.row_right_emphasis[index];
             right_suffix_text: root.row_right_suffixes[index];
+            right_locate_prefix_text: root.row_right_locate_prefixes[index];
+            right_locate_match_text: root.row_right_locate_matches[index];
             left_padding: root.row_left_padding[index];
             right_padding: root.row_right_padding[index];
             gutter_width: root.gutter_width;
@@ -444,6 +564,7 @@ export component CompareFileView inherits Rectangle {
             right_horizontal_offset: root.right_horizontal_offset;
             left_content_width: root.left_content_width;
             right_content_width: root.right_content_width;
+            locate_active: index == root.locate_row;
             copy_requested(copy_value, feedback_label) => {
                 root.copy_requested(copy_value, feedback_label);
             }

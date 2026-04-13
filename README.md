@@ -2,7 +2,7 @@
 
 一个面向本地目录对比的 Rust workspace，包含确定性的目录/文本 diff 引擎、可选 AI 分析层，以及基于 Slint 的桌面 UI。
 
-当前项目状态（2026-04-12）：
+当前项目状态（2026-04-13）：
 
 - workspace `version = "0.2.18"`
 - workspace `edition = "2024"`
@@ -67,6 +67,12 @@
   - `Compare File View` compare-context header 现已提供 `Reveal in Compare Tree`
   - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为同语义 `Lock / Unlock`，但 lock 状态按 tab 独立
   - `Settings -> Behavior` 现已新增 return locate 与 compare scroll lock default 两个持久化偏好
+- `Phase 19J` 已落地并成为当前稳定 compare-file workbench baseline：
+  - `Compare File View` 现已提供 file-local locate：`Prev / Next / Clear`、当前 file tab 内 no-match toast、且不复用 Compare Tree quick locate 状态
+  - `Compare File View` 现已提供 `Reset Scroll` 与 `Recenter`
+  - 当前命中 row 的 locate 提示已收口到行号 gutter，而不是继续依赖 `Rel` 列
+  - search-key 命中文本现在会以独立背景高亮覆盖在行内 diff emphasis 之上，同时保留原生文本选择
+  - compare-file header 现已固定右侧 locate 组件，长文件名会截断并通过 tooltip 展示完整文件名
 - `Phase 15.x` closeout 与独立 workspace `edition = "2024"` 里程碑已完成
 - `15.2E` 已在当前基线上发货
 - 当前 README 只维护“最新稳定事实”，不维护 phase-by-phase roadmap
@@ -178,6 +184,7 @@
   - Compare File View 保留 `Back to Compare Tree`、`Reveal in Compare Tree`、compare roots / path / status context
   - Compare File View 使用单一纵向 side-by-side 行投影，而不是双独立列表强同步
   - Compare File View 现在额外具备与 Compare Tree 对齐的 `Lock / Unlock` horizontal scroll、固定 gutter、可选择文本、以及行号复制整行
+  - compare-file locate 当前会把当前 row 主提示收口到左右行号 gutter，并为命中的 search key 叠加文本级高亮
   - compare-originated File View 返回 Compare Tree 时，当前文件可按设置自动 reveal / focus / ensure-visible
   - compare session reset 时，全部 related compare-originated `File` tabs 会被一起清空；当前不做复杂保留策略
   - File tab 默认可直接关闭，不弹确认
@@ -316,7 +323,7 @@ cargo test --workspace
 
 ## 11. 当前开发入口
 
-- 当前默认入口是 landed `Phase 19I`（继承 `19H / 19G`），不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
+- 当前默认入口是 landed `Phase 19J`（继承 `19I / 19H / 19G`），不是继续滚动 `18C fix-*`，也不是回退到 `19B fix-*` / `19C fix-*`。
 - 新工作应优先复用当前：
   - Sidebar 四块 IA
   - top-level manual sidebar hide / restore
@@ -358,14 +365,19 @@ cargo test --workspace
   - `Compare File View` header 现已提供 `Reveal in Compare Tree`
   - `Compare File View` horizontal scroll 现已与 `Compare Tree` 对齐为同语义 `Lock / Unlock`，但 lock 状态按 tab 独立
   - `Settings -> Behavior` 现已新增 return locate 与 compare scroll lock default 两个持久化偏好
+- `Phase 19J` 当前额外事实：
+  - `Compare File View` 现已提供 file-local locate：scope 仅限当前 compare file，提供 `Prev / Next / Clear`，且无匹配时只给 restrained toast
+  - `Compare File View` 现已提供 `Reset Scroll` 与 `Recenter`，并保持 lock / Settings / local query 边界克制
+  - 当前命中 row 的 locate 提示现在优先落在左右行号 gutter；匹配侧的首个 search key 会做文本级高亮，且优先级高于 inline diff emphasis
+  - compare-file header 现已固定右侧 locate 组件；长文件名会截断，并可通过 tooltip 查看完整名称
 - 当前仍未实现：
   - compare tree filtering search / search-results mode / 内容搜索
   - 目录 selection / 目录详情
   - narrow-width minimum-usable behavior beyond the current compare-file baseline
   - compare core widening
-  - cross-surface sync scroll / compare-file reset-recenter / richer compare interaction
-  - 超出当前 `19I` 的更深层 `Compare View / File View` 重构
-- 后续只有在目标明确时才进入 `19J` 或更后阶段；不要把 landed `19I` 重新写回 proposal。
+  - cross-surface sync scroll / richer compare interaction
+  - 超出当前 `19J` 的更深层 `Compare View / File View` 重构
+- 后续只有在目标明确时才进入 `19K` 或更后阶段；不要把 landed `19J` 重新写回 proposal。
 - README 下方保留长期 roadmap 参考；如需判断当前下一阶段可做什么，直接参考 `docs/architecture.md`。
 
 ## 12. 长期路线（参考）

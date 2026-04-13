@@ -69,6 +69,14 @@ pub enum UiCommand {
     OpenFileViewFromCompare(String),
     /// Switches back to Compare Tree and force-reveals the current compare file row when possible.
     RevealCurrentFileInCompareTree,
+    /// Updates current compare-file local locate query and jumps to the current/first match.
+    UpdateCompareFileLocate(String),
+    /// Jumps to the previous local locate match inside the current Compare File View.
+    RetreatCompareFileLocate,
+    /// Jumps to the next local locate match inside the current Compare File View.
+    AdvanceCompareFileLocate,
+    /// Clears current compare-file local locate query and highlight state.
+    ClearCompareFileLocate,
     /// Switches current file shell back to Diff.
     SetFileViewModeDiff,
     /// Switches current file shell to Analysis.

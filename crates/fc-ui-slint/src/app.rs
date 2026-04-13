@@ -2006,13 +2006,20 @@ slint::slint! {
         in property <[string]> compare_file_row_left_prefixes;
         in property <[string]> compare_file_row_left_emphasis;
         in property <[string]> compare_file_row_left_suffixes;
+        in property <[string]> compare_file_row_left_locate_prefixes;
+        in property <[string]> compare_file_row_left_locate_matches;
         in property <[string]> compare_file_row_right_prefixes;
         in property <[string]> compare_file_row_right_emphasis;
         in property <[string]> compare_file_row_right_suffixes;
+        in property <[string]> compare_file_row_right_locate_prefixes;
+        in property <[string]> compare_file_row_right_locate_matches;
         in property <[bool]> compare_file_row_left_padding;
         in property <[bool]> compare_file_row_right_padding;
         in property <int> compare_file_left_content_width_px: 0;
         in property <int> compare_file_right_content_width_px: 0;
+        in-out property <string> compare_file_locate_query;
+        in property <int> compare_file_focus_row_index: -1;
+        in property <int> compare_file_locate_row_index: -1;
         in property <string> workspace_mode;
         in property <[string]> workspace_session_ids;
         in property <[string]> workspace_session_labels;
@@ -2187,7 +2194,7 @@ slint::slint! {
         property <length> diff_scrollbar_safe_inset: 18px;
         property <length> workbench_header_height: 66px;
         property <length> workbench_compare_context_header_height: 78px;
-        property <length> compare_file_header_height: 82px;
+        property <length> compare_file_header_height: 100px;
         property <length> compare_workspace_header_height: 96px;
         property <length> workbench_helper_strip_height: 32px;
         property <length> workbench_action_strip_height: 30px;
@@ -2240,6 +2247,9 @@ slint::slint! {
         public function ensure_compare_row_visible(target_row: int) {
             compare_workspace_view.ensure_row_visible(target_row);
         }
+        public function ensure_compare_file_row_visible(target_row: int) {
+            compare_file_workbench_view.ensure_row_visible(target_row);
+        }
         public function focus_compare_rows() {
             compare_workspace_view.focus_rows();
         }
@@ -2284,6 +2294,10 @@ slint::slint! {
         callback compare_view_row_context_menu_requested(string);
         callback compare_file_back_requested();
         callback compare_file_reveal_requested();
+        callback compare_file_locate_changed(string);
+        callback compare_file_locate_prev_requested();
+        callback compare_file_locate_next_requested();
+        callback compare_file_locate_clear_requested();
         callback file_view_diff_requested();
         callback file_view_analysis_requested();
         callback workspace_session_confirmed();
@@ -4370,13 +4384,178 @@ slint::slint! {
                                                         overflow: elide;
                                                     }
 
-                                                    Text {
-                                                        text: root.file_view_title_text;
-                                                        color: root.file_view_title_text == "No file selected" ? #607286 : #294b6b;
-                                                        font-size: 16px;
-                                                        font-weight: 600;
-                                                        horizontal-stretch: 1;
-                                                        overflow: elide;
+                                                    HorizontalLayout {
+                                                        spacing: 10px;
+
+                                                        compare_file_title_lane := Rectangle {
+                                                            height: 24px;
+                                                            horizontal-stretch: 1;
+                                                            background: transparent;
+
+                                                            function update_title_tooltip(
+                                                                anchor_x: length,
+                                                                anchor_top: length,
+                                                                anchor_bottom: length,
+                                                            ) {
+                                                                if root.file_view_title_text != ""
+                                                                    && compare_file_title_label.is_truncated {
+                                                                    root.show_tooltip(
+                                                                        root.file_view_title_text,
+                                                                        anchor_x + 6px - root.absolute-position.x,
+                                                                        anchor_top - root.absolute-position.y,
+                                                                        anchor_bottom - root.absolute-position.y,
+                                                                    );
+                                                                } else {
+                                                                    root.hide_tooltip();
+                                                                }
+                                                            }
+
+                                                            compare_file_title_label := HighlightTextLabel {
+                                                                width: parent.width;
+                                                                height: parent.height;
+                                                                text: root.file_view_title_text;
+                                                                text_color: root.file_view_title_text == "No file selected"
+                                                                    ? #607286
+                                                                    : #294b6b;
+                                                                font_size: 16px;
+                                                                font_weight: 600;
+                                                            }
+
+                                                            TouchArea {
+                                                                width: parent.width;
+                                                                height: parent.height;
+                                                                changed has-hover => {
+                                                                    if self.has-hover {
+                                                                        compare_file_title_lane.update_title_tooltip(
+                                                                            self.absolute-position.x,
+                                                                            self.absolute-position.y,
+                                                                            self.absolute-position.y + self.height,
+                                                                        );
+                                                                    } else {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+                                                                pointer-event(event) => {
+                                                                    if event.kind == PointerEventKind.move {
+                                                                        compare_file_title_lane.update_title_tooltip(
+                                                                            self.absolute-position.x,
+                                                                            self.absolute-position.y,
+                                                                            self.absolute-position.y + self.height,
+                                                                        );
+                                                                    } else if event.kind == PointerEventKind.down {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        Rectangle {
+                                                            width: 360px;
+                                                            height: 24px;
+                                                            background: transparent;
+
+                                                            HorizontalLayout {
+                                                                spacing: 6px;
+
+                                                                TooltipLineEdit {
+                                                                    text <=> root.compare_file_locate_query;
+                                                                    width: 216px;
+                                                                    height: 24px;
+                                                                    enabled: root.compare_file_has_rows
+                                                                        && !root.running
+                                                                        && !root.diff_loading;
+                                                                    placeholder_text: "Locate in file";
+                                                                    edited(value) => {
+                                                                        root.compare_file_locate_changed(value);
+                                                                    }
+                                                                    tooltip_requested(value, anchor_x, anchor_y, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            value,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_y - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Prev";
+                                                                    icon_kind: "none";
+                                                                    button_width: 40px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_file_has_rows
+                                                                        && root.compare_file_locate_query != "";
+                                                                    tooltip_text: "Jump to the previous match inside the current Compare File.";
+                                                                    tapped => {
+                                                                        root.compare_file_locate_prev_requested();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Next";
+                                                                    icon_kind: "none";
+                                                                    button_width: 40px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_file_has_rows
+                                                                        && root.compare_file_locate_query != "";
+                                                                    tooltip_text: "Jump to the next match inside the current Compare File.";
+                                                                    tapped => {
+                                                                        root.compare_file_locate_next_requested();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "Clear";
+                                                                    icon_kind: "none";
+                                                                    button_width: 46px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_file_locate_query != "";
+                                                                    tooltip_text: "Clear the current local locate query.";
+                                                                    tapped => {
+                                                                        root.compare_file_locate_clear_requested();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
                                                     }
 
                                                     HorizontalLayout {
@@ -4452,32 +4631,128 @@ slint::slint! {
                                                             background: #e3e9f0;
                                                         }
 
-                                                        CompareHeaderGhostButton {
-                                                            label: "";
-                                                            icon_kind: root.compare_view_horizontal_scroll_locked ? "lock" : "unlock";
-                                                            icon_source: root.compare_view_horizontal_scroll_locked
-                                                                ? AppIcons.header-lock
-                                                                : AppIcons.header-unlock;
-                                                            button_width: 28px;
-                                                            button_height: 22px;
-                                                            outlined_hover: false;
-                                                            enabled: root.compare_file_has_rows;
-                                                            tooltip_text: root.compare_view_horizontal_scroll_locked
-                                                                ? "Unlock horizontal scrolling between Base and Target."
-                                                                : "Lock horizontal scrolling between Base and Target.";
-                                                            tapped => {
-                                                                root.compare_view_scroll_lock_toggled();
-                                                            }
-                                                            tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
-                                                                root.show_tooltip(
-                                                                    text,
-                                                                    anchor_x - root.absolute-position.x,
-                                                                    anchor_top - root.absolute-position.y,
-                                                                    anchor_bottom - root.absolute-position.y,
-                                                                );
-                                                            }
-                                                            tooltip_closed => {
-                                                                root.hide_tooltip();
+                                                        Rectangle {
+                                                            width: 106px;
+                                                            height: 24px;
+                                                            border-width: 1px;
+                                                            border-radius: 7px;
+                                                            border-color: #e1e8ef;
+                                                            background: #f8fbfe;
+                                                            clip: true;
+
+                                                            HorizontalLayout {
+                                                                padding-left: 1px;
+                                                                padding-right: 1px;
+                                                                padding-top: 1px;
+                                                                padding-bottom: 1px;
+                                                                spacing: 0px;
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "";
+                                                                    icon_kind: root.compare_view_horizontal_scroll_locked ? "lock" : "unlock";
+                                                                    icon_source: root.compare_view_horizontal_scroll_locked
+                                                                        ? AppIcons.header-lock
+                                                                        : AppIcons.header-unlock;
+                                                                    button_width: 34px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_file_has_rows;
+                                                                    tooltip_text: root.compare_view_horizontal_scroll_locked
+                                                                        ? "Unlock horizontal scrolling between Base and Target."
+                                                                        : "Lock horizontal scrolling between Base and Target.";
+                                                                    tapped => {
+                                                                        root.compare_view_scroll_lock_toggled();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+
+                                                                Rectangle {
+                                                                    width: 1px;
+                                                                    height: 22px;
+                                                                    background: transparent;
+
+                                                                    Rectangle {
+                                                                        x: 0px;
+                                                                        y: 4px;
+                                                                        width: 1px;
+                                                                        height: 14px;
+                                                                        background: #e2e9f1;
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "";
+                                                                    icon_kind: "reset";
+                                                                    icon_source: AppIcons.header-reset;
+                                                                    button_width: 34px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_file_has_rows;
+                                                                    tooltip_text: "Reset Scroll. Return the current Compare File to the default top/origin viewport.";
+                                                                    tapped => {
+                                                                        compare_file_workbench_view.reset_scroll();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
+
+                                                                Rectangle {
+                                                                    width: 1px;
+                                                                    height: 22px;
+                                                                    background: transparent;
+
+                                                                    Rectangle {
+                                                                        x: 0px;
+                                                                        y: 4px;
+                                                                        width: 1px;
+                                                                        height: 14px;
+                                                                        background: #e2e9f1;
+                                                                    }
+                                                                }
+
+                                                                CompareHeaderGhostButton {
+                                                                    label: "";
+                                                                    icon_kind: "recenter";
+                                                                    icon_source: AppIcons.header-recenter;
+                                                                    button_width: 34px;
+                                                                    button_height: 22px;
+                                                                    outlined_hover: false;
+                                                                    enabled: root.compare_file_has_rows;
+                                                                    tooltip_text: "Recenter. Center the current locate row or compare row vertically.";
+                                                                    tapped => {
+                                                                        compare_file_workbench_view.recenter_active_row();
+                                                                    }
+                                                                    tooltip_requested(text, anchor_x, anchor_top, anchor_bottom) => {
+                                                                        root.show_tooltip(
+                                                                            text,
+                                                                            anchor_x - root.absolute-position.x,
+                                                                            anchor_top - root.absolute-position.y,
+                                                                            anchor_bottom - root.absolute-position.y,
+                                                                        );
+                                                                    }
+                                                                    tooltip_closed => {
+                                                                        root.hide_tooltip();
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -4616,16 +4891,21 @@ slint::slint! {
                                                 }
                                             }
 
-                                            if root.compare_file_has_rows : Rectangle {
+                                            compare_file_workbench_host := Rectangle {
                                                 vertical-stretch: 1;
                                                 background: #ffffff;
                                                 clip: true;
 
-                                                CompareFileView {
+                                                // Keep the compare file view and the empty shell in
+                                                // one stretched layout slot. Hidden siblings in a
+                                                // VerticalLayout still consume layout space.
+
+                                                compare_file_workbench_view := CompareFileView {
                                                     x: 0px;
                                                     y: 0px;
                                                     width: parent.width;
                                                     height: parent.height;
+                                                    visible: root.compare_file_has_rows;
                                                     row_kinds: root.compare_file_row_kinds;
                                                     row_relation_labels: root.compare_file_row_relation_labels;
                                                     row_relation_tones: root.compare_file_row_relation_tones;
@@ -4634,28 +4914,38 @@ slint::slint! {
                                                     row_left_prefixes: root.compare_file_row_left_prefixes;
                                                     row_left_emphasis: root.compare_file_row_left_emphasis;
                                                     row_left_suffixes: root.compare_file_row_left_suffixes;
+                                                    row_left_locate_prefixes: root.compare_file_row_left_locate_prefixes;
+                                                    row_left_locate_matches: root.compare_file_row_left_locate_matches;
                                                     row_right_prefixes: root.compare_file_row_right_prefixes;
                                                     row_right_emphasis: root.compare_file_row_right_emphasis;
                                                     row_right_suffixes: root.compare_file_row_right_suffixes;
+                                                    row_right_locate_prefixes: root.compare_file_row_right_locate_prefixes;
+                                                    row_right_locate_matches: root.compare_file_row_right_locate_matches;
                                                     row_left_padding: root.compare_file_row_left_padding;
                                                     row_right_padding: root.compare_file_row_right_padding;
                                                     left_content_width_px: root.compare_file_left_content_width_px;
                                                     right_content_width_px: root.compare_file_right_content_width_px;
+                                                    focused_row: root.compare_file_focus_row_index;
+                                                    locate_row: root.compare_file_locate_row_index;
                                                     horizontal_scroll_locked: root.compare_view_horizontal_scroll_locked;
                                                     copy_requested(copy_value, feedback_label) => {
                                                         root.copy_requested(copy_value, feedback_label);
                                                     }
                                                 }
-                                            }
 
-                                            if !root.compare_file_has_rows : DiffStateShell {
-                                                vertical-stretch: 1;
-                                                embedded: true;
-                                                state_label: root.compare_file_shell_state_label;
-                                                tone: root.compare_file_shell_state_tone;
-                                                title: root.compare_file_shell_title_text;
-                                                body: root.compare_file_shell_body_text;
-                                                note: root.compare_file_shell_note_text;
+                                                compare_file_empty_shell := DiffStateShell {
+                                                    x: 0px;
+                                                    y: 0px;
+                                                    width: parent.width;
+                                                    height: parent.height;
+                                                    visible: !root.compare_file_has_rows;
+                                                    embedded: true;
+                                                    state_label: root.compare_file_shell_state_label;
+                                                    tone: root.compare_file_shell_state_tone;
+                                                    title: root.compare_file_shell_title_text;
+                                                    body: root.compare_file_shell_body_text;
+                                                    note: root.compare_file_shell_note_text;
+                                                }
                                             }
                                         }
                                     }
@@ -6436,7 +6726,21 @@ fn should_refresh_compare_file_models(
         None => true,
         Some(last) => {
             last.selected_compare_file != next_state.selected_compare_file
+                || last.compare_file_locate_query() != next_state.compare_file_locate_query()
                 || last.compare_file_view_active() != next_state.compare_file_view_active()
+        }
+    }
+}
+
+fn should_apply_compare_file_scroll_request(
+    last_state: Option<&AppState>,
+    next_state: &AppState,
+) -> bool {
+    match last_state {
+        None => next_state.compare_file_scroll_request_revision != 0,
+        Some(last) => {
+            last.compare_file_scroll_request_revision
+                != next_state.compare_file_scroll_request_revision
         }
     }
 }
@@ -6514,9 +6818,21 @@ fn initialize_window_models(window: &MainWindow) {
     window.set_compare_file_row_left_prefixes(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_left_emphasis(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_left_suffixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_left_locate_prefixes(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
+    window.set_compare_file_row_left_locate_matches(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
     window.set_compare_file_row_right_prefixes(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_right_emphasis(Rc::new(VecModel::<SharedString>::default()).into());
     window.set_compare_file_row_right_suffixes(Rc::new(VecModel::<SharedString>::default()).into());
+    window.set_compare_file_row_right_locate_prefixes(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
+    window.set_compare_file_row_right_locate_matches(
+        Rc::new(VecModel::<SharedString>::default()).into(),
+    );
     window.set_compare_file_row_left_padding(Rc::new(VecModel::<bool>::default()).into());
     window.set_compare_file_row_right_padding(Rc::new(VecModel::<bool>::default()).into());
     window.set_diff_row_kinds(Rc::new(VecModel::<SharedString>::default()).into());
@@ -6554,6 +6870,63 @@ fn compare_file_segment_slots(
     }
 
     (prefix, emphasis, suffix)
+}
+
+fn normalize_compare_file_locate_query(raw: &str) -> String {
+    raw.trim().to_lowercase()
+}
+
+fn find_case_insensitive_match_char_range(text: &str, needle: &str) -> Option<(usize, usize)> {
+    if text.is_empty() || needle.is_empty() {
+        return None;
+    }
+
+    let needle_chars = needle.chars().collect::<Vec<_>>();
+    if needle_chars.is_empty() {
+        return None;
+    }
+
+    let mut folded_text = Vec::new();
+    let mut folded_to_original_char = Vec::new();
+    for (original_char_index, ch) in text.chars().enumerate() {
+        for lowered in ch.to_lowercase() {
+            folded_text.push(lowered);
+            folded_to_original_char.push(original_char_index);
+        }
+    }
+
+    if needle_chars.len() > folded_text.len() {
+        return None;
+    }
+
+    for start in 0..=folded_text.len() - needle_chars.len() {
+        if folded_text[start..start + needle_chars.len()] == needle_chars[..] {
+            let original_start = folded_to_original_char[start];
+            let original_end = folded_to_original_char[start + needle_chars.len() - 1] + 1;
+            return Some((original_start, original_end));
+        }
+    }
+
+    None
+}
+
+fn compare_file_locate_highlight_slots_for_needle(text: &str, needle: &str) -> (String, String) {
+    let Some((start_char, end_char)) = find_case_insensitive_match_char_range(text, needle) else {
+        return (String::new(), String::new());
+    };
+
+    let mut char_offsets = text
+        .char_indices()
+        .map(|(offset, _)| offset)
+        .collect::<Vec<_>>();
+    char_offsets.push(text.len());
+    let start_byte = *char_offsets.get(start_char).unwrap_or(&text.len());
+    let end_byte = *char_offsets.get(end_char).unwrap_or(&text.len());
+
+    (
+        text[..start_byte].to_string(),
+        text[start_byte..end_byte].to_string(),
+    )
 }
 
 fn estimate_compare_file_text_width_px(text: &str) -> i32 {
@@ -6669,6 +7042,15 @@ fn sync_navigator_scroll_requests(
             window.invoke_ensure_compare_row_visible(visual_index);
         }
     }
+
+    if should_apply_compare_file_scroll_request(last_state, state) {
+        if let Some(visual_index) = state
+            .compare_file_scroll_target_row
+            .and_then(|index| i32::try_from(index).ok())
+        {
+            window.invoke_ensure_compare_file_row_visible(visual_index);
+        }
+    }
 }
 
 // Contract: state -> window projection.
@@ -6759,6 +7141,22 @@ fn sync_window_state(
     window.set_compare_file_shell_title_text(state.compare_file_shell_title_text().into());
     window.set_compare_file_shell_body_text(state.compare_file_shell_body_text().into());
     window.set_compare_file_shell_note_text(state.compare_file_shell_note_text().into());
+    if window.get_compare_file_locate_query().as_str() != state.compare_file_locate_query().as_str()
+    {
+        window.set_compare_file_locate_query(state.compare_file_locate_query().into());
+    }
+    window.set_compare_file_focus_row_index(
+        state
+            .compare_file_focus_row_index()
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(-1),
+    );
+    window.set_compare_file_locate_row_index(
+        state
+            .compare_file_locate_row_index()
+            .and_then(|index| i32::try_from(index).ok())
+            .unwrap_or(-1),
+    );
     window.set_workspace_tab(state.file_view_mode_tab_index());
     window.set_diff_loading(state.diff_loading);
     window.set_selected_relative_path(state.selected_relative_path_text().into());
@@ -7238,6 +7636,8 @@ fn sync_window_state(
 
     if should_refresh_compare_file_models(last_state, state) {
         let compare_file_rows = state.compare_file_row_projections();
+        let compare_file_locate_needle =
+            normalize_compare_file_locate_query(&state.compare_file_locate_query());
         window.set_compare_file_left_content_width_px(compare_file_left_content_width_px(
             &compare_file_rows,
         ));
@@ -7301,6 +7701,40 @@ fn sync_window_state(
             compare_file_row_right_line_nos,
             "compare_file_row_right_line_nos",
         );
+        let compare_file_row_left_locate_prefixes = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.left_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_locate_prefixes(),
+            compare_file_row_left_locate_prefixes,
+            "compare_file_row_left_locate_prefixes",
+        );
+        let compare_file_row_left_locate_matches = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.left_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .1,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_left_locate_matches(),
+            compare_file_row_left_locate_matches,
+            "compare_file_row_left_locate_matches",
+        );
         let compare_file_row_left_prefixes = compare_file_rows
             .iter()
             .map(|row| SharedString::from(compare_file_segment_slots(&row.left_segments).0))
@@ -7327,6 +7761,40 @@ fn sync_window_state(
             window.get_compare_file_row_left_suffixes(),
             compare_file_row_left_suffixes,
             "compare_file_row_left_suffixes",
+        );
+        let compare_file_row_right_locate_prefixes = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.right_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .0,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_locate_prefixes(),
+            compare_file_row_right_locate_prefixes,
+            "compare_file_row_right_locate_prefixes",
+        );
+        let compare_file_row_right_locate_matches = compare_file_rows
+            .iter()
+            .map(|row| {
+                SharedString::from(
+                    compare_file_locate_highlight_slots_for_needle(
+                        row.right_text.as_str(),
+                        compare_file_locate_needle.as_str(),
+                    )
+                    .1,
+                )
+            })
+            .collect::<Vec<_>>();
+        replace_model_contents(
+            window.get_compare_file_row_right_locate_matches(),
+            compare_file_row_right_locate_matches,
+            "compare_file_row_right_locate_matches",
         );
         let compare_file_row_right_prefixes = compare_file_rows
             .iter()
@@ -7663,6 +8131,18 @@ fn dispatch_compare_quick_locate_no_match_toast(toast_controller: &ToastControll
     toast_controller.dispatch(
         ToastRequest::new(
             "No quick-locate matches in the current Compare Tree.",
+            ToastTone::Warn,
+            ToastPlacement::Toast,
+        )
+        .with_duration(Duration::from_millis(1600))
+        .with_strategy(ToastStrategy::Replace),
+    );
+}
+
+fn dispatch_compare_file_locate_no_match_toast(toast_controller: &ToastController) {
+    toast_controller.dispatch(
+        ToastRequest::new(
+            "No locate matches in the current Compare File.",
             ToastTone::Warn,
             ToastPlacement::Toast,
         )
@@ -8723,6 +9203,112 @@ pub fn run() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let compare_file_locate_bridge = bridge.clone();
+    let compare_file_locate_cache = Arc::clone(&sync_cache);
+    let compare_file_locate_context_menu_controller = context_menu_controller.clone();
+    let compare_file_locate_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_file_locate_changed(move |value| {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_file_locate_context_menu_controller.close();
+        compare_file_locate_bridge.dispatch(UiCommand::UpdateCompareFileLocate(value.to_string()));
+        sync_window_state_if_changed(
+            &window,
+            &compare_file_locate_bridge,
+            &compare_file_locate_cache,
+            Some(&compare_file_locate_context_menu_controller),
+            &compare_file_locate_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let compare_file_locate_prev_bridge = bridge.clone();
+    let compare_file_locate_prev_cache = Arc::clone(&sync_cache);
+    let compare_file_locate_prev_context_menu_controller = context_menu_controller.clone();
+    let compare_file_locate_prev_loading_mask_controller = loading_mask_controller.clone();
+    let compare_file_locate_prev_toast_controller = toast_controller.clone();
+    app.on_compare_file_locate_prev_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_file_locate_prev_context_menu_controller.close();
+        let snapshot = compare_file_locate_prev_bridge.snapshot();
+        if snapshot.compare_file_locate_query().trim().is_empty() {
+            return;
+        }
+        if !snapshot.compare_file_locate_has_match() {
+            dispatch_compare_file_locate_no_match_toast(&compare_file_locate_prev_toast_controller);
+            return;
+        }
+        compare_file_locate_prev_bridge.dispatch(UiCommand::RetreatCompareFileLocate);
+        sync_window_state_if_changed(
+            &window,
+            &compare_file_locate_prev_bridge,
+            &compare_file_locate_prev_cache,
+            Some(&compare_file_locate_prev_context_menu_controller),
+            &compare_file_locate_prev_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let compare_file_locate_next_bridge = bridge.clone();
+    let compare_file_locate_next_cache = Arc::clone(&sync_cache);
+    let compare_file_locate_next_context_menu_controller = context_menu_controller.clone();
+    let compare_file_locate_next_loading_mask_controller = loading_mask_controller.clone();
+    let compare_file_locate_next_toast_controller = toast_controller.clone();
+    app.on_compare_file_locate_next_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_file_locate_next_context_menu_controller.close();
+        let snapshot = compare_file_locate_next_bridge.snapshot();
+        if snapshot.compare_file_locate_query().trim().is_empty() {
+            return;
+        }
+        if !snapshot.compare_file_locate_has_match() {
+            dispatch_compare_file_locate_no_match_toast(&compare_file_locate_next_toast_controller);
+            return;
+        }
+        compare_file_locate_next_bridge.dispatch(UiCommand::AdvanceCompareFileLocate);
+        sync_window_state_if_changed(
+            &window,
+            &compare_file_locate_next_bridge,
+            &compare_file_locate_next_cache,
+            Some(&compare_file_locate_next_context_menu_controller),
+            &compare_file_locate_next_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let compare_file_locate_clear_bridge = bridge.clone();
+    let compare_file_locate_clear_cache = Arc::clone(&sync_cache);
+    let compare_file_locate_clear_context_menu_controller = context_menu_controller.clone();
+    let compare_file_locate_clear_loading_mask_controller = loading_mask_controller.clone();
+    app.on_compare_file_locate_clear_requested(move || {
+        let Some(window) = app_weak.upgrade() else {
+            return;
+        };
+
+        compare_file_locate_clear_context_menu_controller.close();
+        compare_file_locate_clear_bridge.dispatch(UiCommand::ClearCompareFileLocate);
+        sync_window_state_if_changed(
+            &window,
+            &compare_file_locate_clear_bridge,
+            &compare_file_locate_clear_cache,
+            Some(&compare_file_locate_clear_context_menu_controller),
+            &compare_file_locate_clear_loading_mask_controller,
+            SyncMode::Passive,
+        );
+    });
+
+    let app_weak = app.as_weak();
     let compare_focus_bridge = bridge.clone();
     let compare_focus_cache = Arc::clone(&sync_cache);
     let compare_focus_context_menu_controller = context_menu_controller.clone();
@@ -9280,5 +9866,25 @@ mod tests {
             compare_file_right_content_width_px(&rows),
             estimate_compare_file_text_width_px("also short")
         );
+    }
+
+    #[test]
+    fn compare_file_locate_highlight_slots_preserve_cjk_prefix() {
+        let needle = normalize_compare_file_locate_query("日本");
+        let (prefix, hit) = compare_file_locate_highlight_slots_for_needle(
+            "本轮目标: 验证中文、日本語、한국어在列表",
+            needle.as_str(),
+        );
+        assert_eq!(prefix, "本轮目标: 验证中文、");
+        assert_eq!(hit, "日本");
+    }
+
+    #[test]
+    fn compare_file_locate_highlight_slots_match_case_insensitively() {
+        let needle = normalize_compare_file_locate_query("xu");
+        let (prefix, hit) =
+            compare_file_locate_highlight_slots_for_needle("Owner = Xu", needle.as_str());
+        assert_eq!(prefix, "Owner = ");
+        assert_eq!(hit, "Xu");
     }
 }

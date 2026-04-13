@@ -262,6 +262,31 @@ impl Presenter {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.return_to_compare_tree(true);
             }
+            UiCommand::UpdateCompareFileLocate(query) => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                if query.trim().is_empty() {
+                    state.clear_compare_file_locate();
+                } else {
+                    state.set_compare_file_locate_query(query.as_str());
+                    state.locate_next_in_compare_file(false);
+                }
+                state.sync_active_file_session_from_top_level();
+            }
+            UiCommand::RetreatCompareFileLocate => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.locate_previous_in_compare_file();
+                state.sync_active_file_session_from_top_level();
+            }
+            UiCommand::AdvanceCompareFileLocate => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.locate_next_in_compare_file(true);
+                state.sync_active_file_session_from_top_level();
+            }
+            UiCommand::ClearCompareFileLocate => {
+                let mut state = self.state.lock().expect("state mutex poisoned");
+                state.clear_compare_file_locate();
+                state.sync_active_file_session_from_top_level();
+            }
             UiCommand::SetFileViewModeDiff => {
                 let mut state = self.state.lock().expect("state mutex poisoned");
                 state.set_file_view_mode(FileSessionMode::Diff);
@@ -966,6 +991,10 @@ impl Presenter {
                                 state.diff_error_message = None;
                                 state.selected_diff = None;
                                 state.selected_compare_file = Some(compare_vm);
+                                state.reconcile_compare_file_navigation_state();
+                                if let Some(row_index) = state.compare_file_locate_row_index() {
+                                    state.request_compare_file_scroll_to_row(row_index);
+                                }
                                 state.analysis_available = false;
                                 state.analysis_error_message = None;
                                 state.analysis_result = None;

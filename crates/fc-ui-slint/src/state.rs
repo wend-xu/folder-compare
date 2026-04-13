@@ -294,6 +294,16 @@ pub struct FileSession {
     pub selected_diff: Option<DiffPanelViewModel>,
     /// Dedicated Compare File View payload for compare-originated file tabs.
     pub selected_compare_file: Option<CompareFilePanelViewModel>,
+    /// Current compare-file local locate query text.
+    pub compare_file_locate_query: String,
+    /// Current compare-file row anchor used by recenter when no locate hit is active.
+    pub compare_file_focus_row_index: Option<usize>,
+    /// Current compare-file locate hit row.
+    pub compare_file_locate_row_index: Option<usize>,
+    /// Revision for Compare File one-shot ensure-visible requests.
+    pub compare_file_scroll_request_revision: u64,
+    /// Compare File row requested for ensure-visible.
+    pub compare_file_scroll_target_row: Option<usize>,
     /// Optional warning from detailed diff result.
     pub diff_warning: Option<String>,
     /// Whether selected detailed diff is truncated.
@@ -333,6 +343,11 @@ impl FileSession {
             diff_error_message: None,
             selected_diff: None,
             selected_compare_file: None,
+            compare_file_locate_query: String::new(),
+            compare_file_focus_row_index: None,
+            compare_file_locate_row_index: None,
+            compare_file_scroll_request_revision: 0,
+            compare_file_scroll_target_row: None,
             diff_warning: None,
             diff_truncated: false,
             analysis_available: false,
@@ -453,6 +468,16 @@ pub struct AppState {
     pub compare_view_scroll_request_revision: u64,
     /// Relative path requested for Compare View ensure-visible.
     pub compare_view_scroll_target_relative_path: Option<String>,
+    /// Current compare-file local locate query text.
+    pub compare_file_locate_query: String,
+    /// Current compare-file row anchor used by recenter when no locate hit is active.
+    pub compare_file_focus_row_index: Option<usize>,
+    /// Current compare-file locate hit row.
+    pub compare_file_locate_row_index: Option<usize>,
+    /// Revision for Compare File one-shot ensure-visible requests.
+    pub compare_file_scroll_request_revision: u64,
+    /// Compare File row requested for ensure-visible.
+    pub compare_file_scroll_target_row: Option<usize>,
     /// Whether current File View session should show compare-context header treatment.
     pub can_return_to_compare_view: bool,
     /// Current active file-view inner mode (`Diff` / `Analysis`).
@@ -546,6 +571,11 @@ impl Default for AppState {
             compare_view_projection_revision: 0,
             compare_view_scroll_request_revision: 0,
             compare_view_scroll_target_relative_path: None,
+            compare_file_locate_query: String::new(),
+            compare_file_focus_row_index: None,
+            compare_file_locate_row_index: None,
+            compare_file_scroll_request_revision: 0,
+            compare_file_scroll_target_row: None,
             can_return_to_compare_view: false,
             file_view_mode: FileSessionMode::Diff,
             compare_view_expansion_overrides: BTreeMap::new(),
@@ -695,6 +725,11 @@ impl AppState {
         let diff_error_message = self.diff_error_message.clone();
         let selected_diff = self.selected_diff.clone();
         let selected_compare_file = self.selected_compare_file.clone();
+        let compare_file_locate_query = self.compare_file_locate_query.clone();
+        let compare_file_focus_row_index = self.compare_file_focus_row_index;
+        let compare_file_locate_row_index = self.compare_file_locate_row_index;
+        let compare_file_scroll_request_revision = self.compare_file_scroll_request_revision;
+        let compare_file_scroll_target_row = self.compare_file_scroll_target_row;
         let diff_warning = self.diff_warning.clone();
         let diff_truncated = self.diff_truncated;
         let analysis_available = self.analysis_available;
@@ -724,6 +759,11 @@ impl AppState {
             session.diff_error_message = diff_error_message;
             session.selected_diff = selected_diff;
             session.selected_compare_file = selected_compare_file;
+            session.compare_file_locate_query = compare_file_locate_query;
+            session.compare_file_focus_row_index = compare_file_focus_row_index;
+            session.compare_file_locate_row_index = compare_file_locate_row_index;
+            session.compare_file_scroll_request_revision = compare_file_scroll_request_revision;
+            session.compare_file_scroll_target_row = compare_file_scroll_target_row;
             session.diff_warning = diff_warning;
             session.diff_truncated = diff_truncated;
             session.analysis_available = analysis_available;
@@ -747,6 +787,15 @@ impl AppState {
         self.diff_error_message = session.diff_error_message;
         self.selected_diff = session.selected_diff;
         self.selected_compare_file = session.selected_compare_file;
+        self.compare_file_locate_query = session.compare_file_locate_query;
+        self.compare_file_focus_row_index = session.compare_file_focus_row_index;
+        self.compare_file_locate_row_index = session.compare_file_locate_row_index;
+        self.compare_file_scroll_request_revision = session.compare_file_scroll_request_revision;
+        self.compare_file_scroll_target_row = session.compare_file_scroll_target_row;
+        self.reconcile_compare_file_navigation_state();
+        if let Some(row_index) = self.compare_file_locate_row_index() {
+            self.request_compare_file_scroll_to_row(row_index);
+        }
         self.diff_warning = session.diff_warning;
         self.diff_truncated = session.diff_truncated;
         self.analysis_available = session.analysis_available;
@@ -2228,6 +2277,206 @@ impl AppState {
         })
     }
 
+    fn compare_file_rows(&self) -> &[CompareFileRowViewModel] {
+        self.selected_compare_file
+            .as_ref()
+            .map(|panel| panel.rows.as_slice())
+            .unwrap_or(&[])
+    }
+
+    fn compare_file_default_focus_row_index(&self) -> Option<usize> {
+        let rows = self.compare_file_rows();
+        rows.iter()
+            .enumerate()
+            .find(|(_, row)| row.focusable && row.row_kind != "context")
+            .or_else(|| rows.iter().enumerate().find(|(_, row)| row.focusable))
+            .map(|(index, _)| index)
+    }
+
+    fn resolve_compare_file_focus_row_index(&self, preferred: Option<usize>) -> Option<usize> {
+        let rows = self.compare_file_rows();
+        if rows.is_empty() {
+            return None;
+        }
+
+        preferred
+            .filter(|index| rows.get(*index).is_some_and(|row| row.focusable))
+            .or_else(|| self.compare_file_default_focus_row_index())
+    }
+
+    fn compare_file_locate_match_rows_for(&self, needle: &str) -> Vec<usize> {
+        if needle.trim().is_empty() {
+            return Vec::new();
+        }
+
+        self.compare_file_rows()
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.focusable && compare_file_row_matches(row, needle))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    pub fn reconcile_compare_file_navigation_state(&mut self) -> bool {
+        if self.selected_compare_file.is_none() {
+            return false;
+        }
+
+        let next_focus =
+            self.resolve_compare_file_focus_row_index(self.compare_file_focus_row_index);
+        let query = normalize_filter_needle(self.compare_file_locate_query.as_str());
+        let matches = self.compare_file_locate_match_rows_for(query.as_str());
+        let next_locate = if query.is_empty() || matches.is_empty() {
+            None
+        } else if self
+            .compare_file_locate_row_index
+            .is_some_and(|index| matches.contains(&index))
+        {
+            self.compare_file_locate_row_index
+        } else if next_focus.is_some_and(|index| matches.contains(&index)) {
+            next_focus
+        } else {
+            matches.first().copied()
+        };
+
+        let mut changed = false;
+        if self.compare_file_focus_row_index != next_focus {
+            self.compare_file_focus_row_index = next_focus;
+            changed = true;
+        }
+        if self.compare_file_locate_row_index != next_locate {
+            self.compare_file_locate_row_index = next_locate;
+            changed = true;
+        }
+        if self
+            .compare_file_scroll_target_row
+            .is_some_and(|index| self.compare_file_rows().get(index).is_none())
+        {
+            self.compare_file_scroll_target_row = None;
+            changed = true;
+        }
+        changed
+    }
+
+    pub fn set_compare_file_locate_query(&mut self, query: &str) -> bool {
+        let next = query.trim().to_string();
+        if self.compare_file_locate_query == next {
+            return false;
+        }
+        self.compare_file_locate_query = next;
+        self.reconcile_compare_file_navigation_state()
+    }
+
+    pub fn clear_compare_file_locate(&mut self) -> bool {
+        let mut changed = false;
+        if !self.compare_file_locate_query.is_empty() {
+            self.compare_file_locate_query.clear();
+            changed = true;
+        }
+        if self.compare_file_locate_row_index.take().is_some() {
+            changed = true;
+        }
+        changed
+    }
+
+    pub fn compare_file_locate_has_match(&self) -> bool {
+        let query = self.compare_file_locate_query.trim().to_string();
+        let needle = normalize_filter_needle(query.as_str());
+        if needle.is_empty() {
+            return false;
+        }
+
+        !self
+            .compare_file_locate_match_rows_for(needle.as_str())
+            .is_empty()
+    }
+
+    pub fn request_compare_file_scroll_to_row(&mut self, row_index: usize) -> bool {
+        if self.compare_file_rows().get(row_index).is_none() {
+            return false;
+        }
+        self.compare_file_scroll_target_row = Some(row_index);
+        self.compare_file_scroll_request_revision =
+            self.compare_file_scroll_request_revision.wrapping_add(1);
+        true
+    }
+
+    fn focus_compare_file_row(&mut self, row_index: usize, locate_hit: bool) -> bool {
+        let next_focus = self.resolve_compare_file_focus_row_index(Some(row_index));
+        let Some(next_focus) = next_focus else {
+            return false;
+        };
+
+        let mut changed = false;
+        if self.compare_file_focus_row_index != Some(next_focus) {
+            self.compare_file_focus_row_index = Some(next_focus);
+            changed = true;
+        }
+        let next_locate = locate_hit.then_some(next_focus);
+        if self.compare_file_locate_row_index != next_locate {
+            self.compare_file_locate_row_index = next_locate;
+            changed = true;
+        }
+        self.request_compare_file_scroll_to_row(next_focus) || changed
+    }
+
+    pub fn locate_next_in_compare_file(&mut self, advance: bool) -> bool {
+        let query = self.compare_file_locate_query.trim().to_string();
+        let needle = normalize_filter_needle(query.as_str());
+        if needle.is_empty() {
+            return false;
+        }
+
+        let candidates = self.compare_file_locate_match_rows_for(needle.as_str());
+        if candidates.is_empty() {
+            return false;
+        }
+
+        let current = self
+            .compare_file_locate_row_index
+            .or(self.compare_file_focus_row_index);
+        let target = if advance {
+            candidates
+                .iter()
+                .copied()
+                .find(|index| current.is_none_or(|current_index| *index > current_index))
+                .or_else(|| candidates.first().copied())
+        } else {
+            candidates
+                .iter()
+                .copied()
+                .find(|index| current.is_none_or(|current_index| *index >= current_index))
+                .or_else(|| candidates.first().copied())
+        };
+
+        target.is_some_and(|row_index| self.focus_compare_file_row(row_index, true))
+    }
+
+    pub fn locate_previous_in_compare_file(&mut self) -> bool {
+        let query = self.compare_file_locate_query.trim().to_string();
+        let needle = normalize_filter_needle(query.as_str());
+        if needle.is_empty() {
+            return false;
+        }
+
+        let candidates = self.compare_file_locate_match_rows_for(needle.as_str());
+        if candidates.is_empty() {
+            return false;
+        }
+
+        let current = self
+            .compare_file_locate_row_index
+            .or(self.compare_file_focus_row_index);
+        let target = candidates
+            .iter()
+            .copied()
+            .rev()
+            .find(|index| current.is_none_or(|current_index| *index < current_index))
+            .or_else(|| candidates.last().copied());
+
+        target.is_some_and(|row_index| self.focus_compare_file_row(row_index, true))
+    }
+
     /// Returns one formatted root-pair context string for Compare/File view headers.
     pub fn compare_root_pair_text(&self) -> String {
         let (left_root, right_root) = self
@@ -2455,6 +2704,20 @@ impl AppState {
             .as_ref()
             .map(|panel| !panel.rows.is_empty())
             .unwrap_or(false)
+    }
+
+    pub fn compare_file_locate_query(&self) -> String {
+        self.compare_file_locate_query.clone()
+    }
+
+    pub fn compare_file_focus_row_index(&self) -> Option<usize> {
+        self.compare_file_focus_row_index
+            .filter(|index| self.compare_file_rows().get(*index).is_some())
+    }
+
+    pub fn compare_file_locate_row_index(&self) -> Option<usize> {
+        self.compare_file_locate_row_index
+            .filter(|index| self.compare_file_rows().get(*index).is_some())
     }
 
     pub fn compare_file_helper_text(&self) -> String {
@@ -3375,6 +3638,8 @@ impl AppState {
     /// Clears dedicated Compare File View state without changing compare selection.
     pub fn clear_compare_file_panel(&mut self) {
         self.selected_compare_file = None;
+        self.compare_file_locate_row_index = None;
+        self.compare_file_scroll_target_row = None;
     }
 
     /// Clears AI analysis panel state without changing compare/diff state.
@@ -4353,6 +4618,11 @@ fn compare_tree_locate_matches(
         || normalize_filter_needle(node.display_name.as_str()).contains(needle)
 }
 
+fn compare_file_row_matches(row: &CompareFileRowViewModel, needle: &str) -> bool {
+    normalize_filter_needle(row.left_text.as_str()).contains(needle)
+        || normalize_filter_needle(row.right_text.as_str()).contains(needle)
+}
+
 fn status_filter_matches(status: &str, filter: &str) -> bool {
     filter == "all" || status.eq_ignore_ascii_case(filter)
 }
@@ -4742,6 +5012,73 @@ mod tests {
         }
     }
 
+    fn sample_compare_file_panel(relative_path: &str) -> CompareFilePanelViewModel {
+        CompareFilePanelViewModel {
+            relative_path: relative_path.to_string(),
+            summary_text: "hunks=1 +2 -1 ctx=1".to_string(),
+            rows: vec![
+                CompareFileRowViewModel {
+                    row_kind: "context".to_string(),
+                    relation_label: String::new(),
+                    relation_tone: "context".to_string(),
+                    left_line_no: Some(1),
+                    right_line_no: Some(1),
+                    left_text: "alpha".to_string(),
+                    right_text: "alpha".to_string(),
+                    left_segments: vec![],
+                    right_segments: vec![],
+                    left_padding: false,
+                    right_padding: false,
+                    focusable: true,
+                },
+                CompareFileRowViewModel {
+                    row_kind: "modified".to_string(),
+                    relation_label: "Diff".to_string(),
+                    relation_tone: "modified".to_string(),
+                    left_line_no: Some(2),
+                    right_line_no: Some(2),
+                    left_text: "left needle".to_string(),
+                    right_text: "left branch".to_string(),
+                    left_segments: vec![],
+                    right_segments: vec![],
+                    left_padding: false,
+                    right_padding: false,
+                    focusable: true,
+                },
+                CompareFileRowViewModel {
+                    row_kind: "modified".to_string(),
+                    relation_label: "Diff".to_string(),
+                    relation_tone: "modified".to_string(),
+                    left_line_no: Some(3),
+                    right_line_no: Some(3),
+                    left_text: "right branch".to_string(),
+                    right_text: "needle target".to_string(),
+                    left_segments: vec![],
+                    right_segments: vec![],
+                    left_padding: false,
+                    right_padding: false,
+                    focusable: true,
+                },
+                CompareFileRowViewModel {
+                    row_kind: "modified".to_string(),
+                    relation_label: "Diff".to_string(),
+                    relation_tone: "modified".to_string(),
+                    left_line_no: Some(4),
+                    right_line_no: Some(4),
+                    left_text: "needle both".to_string(),
+                    right_text: "needle both".to_string(),
+                    left_segments: vec![],
+                    right_segments: vec![],
+                    left_padding: false,
+                    right_padding: false,
+                    focusable: true,
+                },
+            ],
+            warning: None,
+            truncated: false,
+        }
+    }
+
     #[test]
     fn invalid_status_filter_falls_back_to_all() {
         let mut state = AppState::default();
@@ -4959,6 +5296,89 @@ mod tests {
         assert_eq!(state.diff_left_column_label(), "left");
         assert_eq!(state.diff_right_column_label(), "right");
         assert!(state.diff_context_hint_text().contains("type .md"));
+    }
+
+    #[test]
+    fn compare_file_locate_navigates_in_row_order_and_wraps() {
+        let mut state = AppState {
+            selected_compare_file: Some(sample_compare_file_panel("src/main.txt")),
+            ..AppState::default()
+        };
+        state.reconcile_compare_file_navigation_state();
+        assert_eq!(state.compare_file_focus_row_index(), Some(1));
+
+        state.set_compare_file_locate_query("needle");
+        assert!(state.locate_next_in_compare_file(false));
+        assert_eq!(state.compare_file_locate_row_index(), Some(1));
+        assert_eq!(state.compare_file_scroll_target_row, Some(1));
+
+        assert!(state.locate_next_in_compare_file(true));
+        assert_eq!(state.compare_file_locate_row_index(), Some(2));
+
+        assert!(state.locate_next_in_compare_file(true));
+        assert_eq!(state.compare_file_locate_row_index(), Some(3));
+
+        assert!(state.locate_next_in_compare_file(true));
+        assert_eq!(state.compare_file_locate_row_index(), Some(1));
+
+        assert!(state.locate_previous_in_compare_file());
+        assert_eq!(state.compare_file_locate_row_index(), Some(3));
+    }
+
+    #[test]
+    fn compare_file_clear_locate_keeps_focus_row_but_clears_active_hit() {
+        let mut state = AppState {
+            selected_compare_file: Some(sample_compare_file_panel("src/main.txt")),
+            ..AppState::default()
+        };
+        state.reconcile_compare_file_navigation_state();
+        state.set_compare_file_locate_query("needle");
+        state.locate_next_in_compare_file(false);
+
+        assert_eq!(state.compare_file_focus_row_index(), Some(1));
+        assert_eq!(state.compare_file_locate_row_index(), Some(1));
+
+        assert!(state.clear_compare_file_locate());
+        assert_eq!(state.compare_file_locate_query(), "");
+        assert_eq!(state.compare_file_focus_row_index(), Some(1));
+        assert_eq!(state.compare_file_locate_row_index(), None);
+    }
+
+    #[test]
+    fn compare_file_locate_state_is_isolated_per_file_session() {
+        let mut state = AppState::default();
+        state.compare_tree_session = Some(CompareTreeSession::new("/left", "/right", true));
+        state.file_sessions = vec![
+            FileSession::new("src/a.txt", COMPARE_TREE_SESSION_ID, true),
+            FileSession::new("src/b.txt", COMPARE_TREE_SESSION_ID, true),
+        ];
+        state.refresh_workspace_sessions();
+
+        state.active_session_id = Some(file_session_id("src/a.txt"));
+        state.restore_file_session_to_top_level(0);
+        state.selected_compare_file = Some(sample_compare_file_panel("src/a.txt"));
+        state.reconcile_compare_file_navigation_state();
+        state.set_compare_file_locate_query("needle");
+        state.locate_next_in_compare_file(false);
+        state.sync_active_file_session_from_top_level();
+
+        state.active_session_id = Some(file_session_id("src/b.txt"));
+        state.restore_file_session_to_top_level(1);
+        state.selected_compare_file = Some(sample_compare_file_panel("src/b.txt"));
+        state.reconcile_compare_file_navigation_state();
+        state.set_compare_file_locate_query("target");
+        state.locate_next_in_compare_file(false);
+        state.sync_active_file_session_from_top_level();
+
+        state.active_session_id = Some(file_session_id("src/a.txt"));
+        state.restore_file_session_to_top_level(0);
+        assert_eq!(state.compare_file_locate_query(), "needle");
+        assert_eq!(state.compare_file_locate_row_index(), Some(1));
+
+        state.active_session_id = Some(file_session_id("src/b.txt"));
+        state.restore_file_session_to_top_level(1);
+        assert_eq!(state.compare_file_locate_query(), "target");
+        assert_eq!(state.compare_file_locate_row_index(), Some(2));
     }
 
     #[test]
